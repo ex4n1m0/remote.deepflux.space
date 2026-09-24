@@ -8,4 +8,40 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+frame-surface = { path = "../frame-surface" }
 diagnostics = { path = "../diagnostics" }
+# Cursor shape/position reuse `protocol::wire::CursorMessage` verbatim so the
+# capture stage emits exactly what the `cursor` data channel will carry in M2
+# (ADR-001 rule 3 explicitly allows platform crates to depend on `protocol`).
+protocol = { path = "../protocol" }
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+] }
+
+[dev-dependencies]
+# The diagnostic binaries (examples/) are the M1 "node runtime": the one
+# place the capture, codec and render platform crates are composed
+# (ADR-001 rule 3 — composition happens in binaries, not library deps).
+codec-windows = { path = "../codec-windows" }
+render-windows = { path = "../render-windows" }
+serde_json = "1"
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_UI_WindowsAndMessaging",
+] }

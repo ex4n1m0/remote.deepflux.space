@@ -33,6 +33,8 @@ crates/protocol           wire vocabulary: signaling JSON envelopes, binary
 crates/session            host + controller state machines. Depends on: protocol.
                           No platform crates, no async runtime, no clock, no I/O.
 crates/diagnostics        perf-counter schema + sinks. Depends on: serde only.
+crates/frame-surface      M1 leaf: shared GPU frame handoff (see the M1
+                          amendment below).
 crates/capture-windows    CaptureSource trait + M1 DXGI implementation.
 crates/codec-windows      VideoEncoder/VideoDecoder traits + M1 MF implementation.
 crates/transport-webrtc   Transport trait + M2 webrtc-rs implementation (ADR-002).
@@ -119,3 +121,89 @@ and `crates/session/tests/two_peers.rs` is its executable reference model.
   Option<TransportEvent>`). M2 may add async plumbing *inside*
   `transport-webrtc` but must keep the public surface runtime-agnostic so the
   deterministic mock harness keeps working.
+
+## M1 amendment: the GPU frame-handoff contract (settlement of open question #1)
+
+- Status: Accepted (M1, 2026-09-24)
+- Deciders: rd-capture-codec-engineer (M1 work package RD-004/RD-005)
+
+### Decision
+
+**`crates/frame-surface` is the shared handoff crate** (pre-authorized in
+the M1 work package; a leaf like `diagnostics`, depending on nothing but
+the `windows`/D3D bindings):
+
+* `FrameSurface` — a `Clone`-cheap (COM refcount) wrapper over one
+  `ID3D11Texture2D` plus width/height/format and the host-assigned
+  `frame_id` (the perf-counter join key). It is the *only* type platform
+  crates share.
+* `GpuDevice` — one D3D11 device + immediate context per process
+  (`D3D11_CREATE_DEVICE_BGRA_SUPPORT`, `SetMultithreadProtected(TRUE)` so
+  the capture/codec/render threads can all submit). `Clone` shares the
+  device.
+* Cross-device/cross-process sharing is provided but not used by the M1
+  loop: `share_handle()` mints an NT DXGI shared handle, `open_shared()`
+  opens one on another device. The M2 runtime (or a future multi-device
+  M1 configuration) can split stages onto separate devices without a
+  contract change.
+* CPU readback/upload helpers exist for exactly two sanctioned uses:
+  the Media Foundation **software encoder fallback** (delta D3; the
+  software MFT only accepts CPU NV12) and diagnostics. Both are counted
+  (`READBACK_COUNT` / `UPLOAD_COUNT`) and reported.
+
+### Reasoning
+
+* The MF async hardware MFTs (NVENC-class) require an
+  `IMFDXGIDeviceManager` over a D3D11 device; same-device input via
+  `MFCreateDXGISurfaceBuffer` is the only zero-CPU-copy path into the
+  encoder. One shared device makes capture → convert → encode a chain of
+  GPU texture references with no CPU pixel traffic.
+* The one-device choice was *measured*, not assumed: the pipeline
+  sustains 57.7 presented fps (866 captured / 864 encoded / 864 decoded /
+  864 presented in 15 s) at 3840x2160 capture → 1920x1080 encode with
+  convert p50 ≈ 2–6 µs and encode wait ≈ 2–4 ms. (Two M1 bugs found by
+  these measurements are recorded below.)
+* The copies that remain, and where they are measured:
+  1. capture: duplication surface → pool texture (`CopyResource`) — forced
+     by the DDA ownership model (ReleaseFrame before next acquire);
+  2. decode: DXVA output → owned texture (`CopyResource`) — the MFT
+     recycles its pool on the next input;
+  3. software-codec fallback only: NV12 GPU→CPU readback + CPU→MF-buffer
+     copy (encode side) and CPU→GPU upload (decode side) — counted by
+     frame-surface's atomic counters and printed in the run summary.
+* Color conversion (BGRA→NV12, with 4K→1080p scaling) is a GPU
+  `ID3D11VideoProcessor` pass inside `codec-windows`
+  (`Nv12Converter`); the reverse (NV12→backbuffer) is the same mechanism
+  inside `render-windows`. No CPU pixels anywhere on the hot path.
+
+### M1 measurement notes (for the record)
+
+* `VideoProcessor*View` creation costs tens of milliseconds of driver
+  sync; the converter and renderer cache views per pool texture. Before
+  caching, encode ran at ~7 fps; after, convert p50 returned to
+  single-digit microseconds.
+* A `VideoProcessorSetStreamDestRect` given the *source* rect fails Blt
+  with `E_INVALIDARG` only when input ≠ output size — caught by a
+  dedicated scaling test (`converter_scales_directly`), which is why the
+  1:1-only smoke test passed while the real loop failed.
+* Capture must attach its thread to the input desktop
+  (`frame_surface::attach_thread_to_input_desktop`) or Desktop
+  Duplication returns `E_ACCESSDENIED` even in an interactive session
+  (processes spawned from services/agents start on a private desktop).
+
+### Consequences
+
+- Positive: platform crates still never import each other; the node
+  runtime (M1 diagnostic binaries, M4 app) composes them through
+  `frame-surface` types only.
+- Positive: the M2 transport receives `EncodedPacket` bytes (Annex-B)
+  produced at the encode stage boundary — no GPU type crosses the wire
+  seam, matching ADR-002's RTP framing plans.
+- Negative: one shared device means MF's device-manager serialization and
+  the app's direct immediate-context use contend; at capture rates above
+  the sustainable composition rate this was observed to back-pressure
+  `Present` until the encode stage starves (uncapped ~74 Hz desktop).
+  The M1 loop therefore caps capture at the session target (60 fps);
+  pacing under real network conditions is M2 transport work. A
+  multi-device split (already supported by the shared-handle API) is the
+  documented escalation if profiling demands it.

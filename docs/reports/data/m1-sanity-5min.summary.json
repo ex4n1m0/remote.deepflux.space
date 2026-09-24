@@ -1,0 +1,190 @@
+{
+  "decoder": "Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)",
+  "encoder": "NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 8000000 bps CBR, GOP 120)",
+  "frames": {
+    "host": 17184,
+    "presented": 17184
+  },
+  "keyframes": 144,
+  "queues": {
+    "CaptureToEncode": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 26
+    },
+    "DecodeToPresent": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    },
+    "EncodeToSend": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    },
+    "RecvToDecode": {
+      "capacity": 2,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    }
+  },
+  "resource": {
+    "cpu_percent_min_max": [
+      1.5625,
+      29.6875
+    ],
+    "working_set_bytes_min_max": [
+      126201856,
+      152641536
+    ]
+  },
+  "run_secs": 300,
+  "session_id": "local-loop",
+  "sink_backpressure_events": 0,
+  "stages": {
+    "capture_to_encode": {
+      "count": 13777,
+      "max_ms": 8.9275,
+      "p50_ms": 0.0148,
+      "p95_ms": 3.3168,
+      "p99_ms": 4.4065
+    },
+    "capture_to_present_same_clock": {
+      "count": 13777,
+      "max_ms": 21.7559,
+      "p50_ms": 4.2152,
+      "p95_ms": 13.4761,
+      "p99_ms": 14.9731
+    },
+    "controller_half_total": {
+      "count": 13777,
+      "max_ms": 7.6353,
+      "p50_ms": 0.2719,
+      "p95_ms": 0.5203,
+      "p99_ms": 3.3772
+    },
+    "decode_to_present": {
+      "count": 13777,
+      "max_ms": 2.362,
+      "p50_ms": 0.0701,
+      "p95_ms": 0.1035,
+      "p99_ms": 0.1575
+    },
+    "encode_done_to_send": {
+      "count": 13777,
+      "max_ms": 0.1623,
+      "p50_ms": 0.0169,
+      "p95_ms": 0.0299,
+      "p99_ms": 0.0502
+    },
+    "encode_submit_to_done": {
+      "count": 13777,
+      "max_ms": 21.1871,
+      "p50_ms": 3.6045,
+      "p95_ms": 12.9109,
+      "p99_ms": 14.4459
+    },
+    "host_half_total": {
+      "count": 13777,
+      "max_ms": 21.2152,
+      "p50_ms": 3.937,
+      "p95_ms": 13.0194,
+      "p99_ms": 14.4998
+    },
+    "recv_to_decode": {
+      "count": 13777,
+      "max_ms": 7.4473,
+      "p50_ms": 0.2036,
+      "p95_ms": 0.4313,
+      "p99_ms": 3.289
+    }
+  },
+  "unstable_windows": [
+    {
+      "reason": "EncodeToSend at capacity",
+      "window": 1
+    },
+    {
+      "reason": "DecodeToPresent at capacity",
+      "window": 1
+    },
+    {
+      "reason": "CaptureToEncode at capacity",
+      "window": 1
+    },
+    {
+      "reason": "CaptureToEncode drop/replaced delta",
+      "window": 1
+    },
+    {
+      "reason": "CaptureToEncode at capacity",
+      "window": 2
+    },
+    {
+      "reason": "CaptureToEncode drop/replaced delta",
+      "window": 2
+    },
+    {
+      "reason": "EncodeToSend at capacity",
+      "window": 2
+    },
+    {
+      "reason": "DecodeToPresent at capacity",
+      "window": 2
+    },
+    {
+      "reason": "CaptureToEncode at capacity",
+      "window": 3
+    },
+    {
+      "reason": "CaptureToEncode drop/replaced delta",
+      "window": 3
+    },
+    {
+      "reason": "EncodeToSend at capacity",
+      "window": 3
+    },
+    {
+      "reason": "DecodeToPresent at capacity",
+      "window": 3
+    },
+    {
+      "reason": "CaptureToEncode at capacity",
+      "window": 4
+    },
+    {
+      "reason": "CaptureToEncode drop/replaced delta",
+      "window": 4
+    },
+    {
+      "reason": "EncodeToSend at capacity",
+      "window": 4
+    },
+    {
+      "reason": "DecodeToPresent at capacity",
+      "window": 4
+    },
+    {
+      "reason": "EncodeToSend at capacity",
+      "window": 5
+    },
+    {
+      "reason": "DecodeToPresent at capacity",
+      "window": 5
+    },
+    {
+      "reason": "CaptureToEncode at capacity",
+      "window": 5
+    },
+    {
+      "reason": "CaptureToEncode drop/replaced delta",
+      "window": 5
+    }
+  ],
+  "warmup_secs": 60,
+  "wire_bytes": 276450427
+}

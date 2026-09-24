@@ -4,6 +4,7 @@ members = [
     "crates/protocol",
     "crates/session",
     "crates/diagnostics",
+    "crates/frame-surface",
     "crates/capture-windows",
     "crates/codec-windows",
     "crates/transport-webrtc",
