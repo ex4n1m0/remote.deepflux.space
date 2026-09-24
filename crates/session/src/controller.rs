@@ -3,12 +3,14 @@
 //!
 //! Deterministic, event-injected, clock-injected — mirrors
 //! [`crate::host`]. The simultaneous-call collision rule lives here:
-//! when our host side receives a `connect_request` from a device we are also
-//! calling, the runtime raises [`ControllerEvent::CollisionDetected`] and the
-//! **lexicographically smaller device id keeps the controller role**; the
-//! losing controller cancels with `Cancel{reason: "collision"}`. Both nodes
-//! apply the same rule from their own view, so the outcome is deterministic
-//! without communication (see `docs/protocol/state-machines.md`).
+//! when our host side and our controller side both have a session toward the
+//! same peer (request, offer, or ICE — the runtime raises
+//! [`ControllerEvent::CollisionDetected`] in `Requesting`, `Offering`, and
+//! `Connecting`), the **lexicographically smaller device id keeps the
+//! controller role**; the losing controller cancels with
+//! `Cancel{reason: "collision"}`. Both nodes apply the same rule from their
+//! own view, so the outcome is deterministic without communication (see
+//! `docs/protocol/state-machines.md`).
 
 use protocol::capabilities::Capabilities;
 use protocol::signaling::{
@@ -17,7 +19,8 @@ use protocol::signaling::{
 };
 
 use crate::common::{
-    Action, DedupeLog, DisconnectCause, EnvelopeBuilder, IllegalTransition, SessionConfig, TimerId,
+    Action, DedupeLog, DisconnectCause, EnvelopeBuilder, IdRole, IllegalTransition, SessionConfig,
+    TimerId,
 };
 
 /// What the controller tracks about the session it is trying to run.
@@ -83,7 +86,7 @@ pub enum ControllerEvent {
     },
     HeartbeatDue,
     /// User asked to control `host_device_id`. Creates the session id
-    /// deterministically (`"{device}-{n}"`).
+    /// deterministically (`"{device}-ctrl-{n}"`, role-namespaced — QA F1).
     Connect {
         host_device_id: DeviceId,
     },
@@ -112,16 +115,21 @@ pub enum ControllerEvent {
     ConnectTimeout,
     /// User withdrew the attempt.
     Cancel,
-    /// Simultaneous-call collision: our host side got a `connect_request`
-    /// from a peer we are also calling. Tie-break on device ids.
+    /// Simultaneous-call collision: this device's host side and controller
+    /// side both have a session toward the same peer (possible in
+    /// `Requesting`, `Offering`, and `Connecting` — a peer request can
+    /// arrive after our own was already accepted, via mailbox latency or
+    /// redelivery). Tie-break on device ids. (QA F2: the whole window is
+    /// covered, not just `Requesting`.)
     CollisionDetected {
         peer_device_id: DeviceId,
     },
-    /// Trickle ICE candidate from the host (no state change).
+    /// Trickle ICE candidate from the host (no state change). `sdp_mid` is
+    /// the JSEP string mid (protocol version 1, QA F9).
     IceCandidateReceived {
         message_id: MessageId,
         candidate: String,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<String>,
         sdp_mline_index: Option<u16>,
     },
     DataChannelOpen,
@@ -189,7 +197,7 @@ impl ControllerSession {
             state: ControllerState::Idle,
             seen: DedupeLog::new(cfg.dedupe_capacity),
             cfg,
-            envelopes: EnvelopeBuilder::new(device_id),
+            envelopes: EnvelopeBuilder::new(device_id, IdRole::Controller),
             capabilities: None,
         }
     }
@@ -355,9 +363,13 @@ impl ControllerSession {
                         },
                     ])
                 }
-                ControllerEvent::CollisionDetected { peer_device_id } => {
-                    self.resolve_collision(state_name, event_name, &peer_device_id, now_ms)
-                }
+                ControllerEvent::CollisionDetected { peer_device_id } => self.resolve_collision(
+                    state_name,
+                    event_name,
+                    &peer_device_id,
+                    TimerId::ControllerRequest,
+                    now_ms,
+                ),
                 _ => Err(IllegalTransition::new(state_name, event_name)),
             },
 
@@ -470,6 +482,17 @@ impl ControllerSession {
                     sdp_mid,
                     sdp_mline_index,
                 }]),
+                // QA F2: a peer's request can reach our host after our own
+                // request was already accepted (mailbox latency/redelivery).
+                // Same tie-break as in `Requesting`; the loser abandons its
+                // accepted session in favor of its host role.
+                ControllerEvent::CollisionDetected { peer_device_id } => self.resolve_collision(
+                    state_name,
+                    event_name,
+                    &peer_device_id,
+                    TimerId::ControllerConnect,
+                    now_ms,
+                ),
                 _ => Err(IllegalTransition::new(state_name, event_name)),
             },
 
@@ -588,6 +611,15 @@ impl ControllerSession {
                     sdp_mid,
                     sdp_mline_index,
                 }]),
+                // QA F2: same tie-break as Requesting/Offering; the loser
+                // cancels its in-flight connection attempt.
+                ControllerEvent::CollisionDetected { peer_device_id } => self.resolve_collision(
+                    state_name,
+                    event_name,
+                    &peer_device_id,
+                    TimerId::ControllerConnect,
+                    now_ms,
+                ),
                 _ => Err(IllegalTransition::new(state_name, event_name)),
             },
 
@@ -693,14 +725,19 @@ impl ControllerSession {
     }
 
     /// Simultaneous-call tie-break: the lexicographically smaller device id
-    /// keeps the controller role. Loser cancels with `reason: "collision"`;
-    /// winner stays `Requesting` and does nothing (its own host side will
-    /// reject or prompt for the loser's request as usual).
+    /// keeps the controller role. Legal in `Requesting`, `Offering`, and
+    /// `Connecting`; `timer_to_cancel` is the timer active in that state.
+    /// The loser cancels its outbound attempt/session with
+    /// `reason: "collision"` and goes `Disconnected{Collision}` — abandoning
+    /// its own controller side in favor of its host side. The winner does
+    /// nothing and keeps its state (its host side will reject or prompt for
+    /// the loser's request as usual; the loser's cancel cleans any prompt).
     fn resolve_collision(
         &mut self,
         state_name: &'static str,
         event_name: &'static str,
         peer_device_id: &str,
+        timer_to_cancel: TimerId,
         now_ms: u64,
     ) -> Result<Vec<Action>, IllegalTransition> {
         let we_keep_controller_role = self.envelopes.device_id() < peer_device_id;
@@ -724,7 +761,7 @@ impl ControllerSession {
             };
             Ok(vec![
                 Action::CancelTimer {
-                    id: TimerId::ControllerRequest,
+                    id: timer_to_cancel,
                 },
                 Action::Send(env),
                 Action::SessionEnded {
@@ -848,7 +885,7 @@ mod tests {
             ControllerEvent::IceCandidateReceived {
                 message_id: "e4".to_owned(),
                 candidate: "candidate:1".to_owned(),
-                sdp_mid: Some(0),
+                sdp_mid: Some("0".to_owned()),
                 sdp_mline_index: Some(0),
             },
             ControllerEvent::DataChannelOpen,
@@ -863,9 +900,9 @@ mod tests {
         ]
     }
 
-    /// Documented legal table. Note: `CollisionDetected` in `Requesting` is
-    /// legal but its outcome depends on the device-id tie-break, so the
-    /// table test only asserts `is_ok()` for it.
+    /// Documented legal table. Note: `CollisionDetected` is legal in
+    /// `Requesting`/`Offering`/`Connecting` but its outcome depends on the
+    /// device-id tie-break, so the table test only asserts `is_ok()` for it.
     fn legal_pairs() -> Vec<(&'static str, &'static str)> {
         vec![
             ("Idle", "Start"),
@@ -887,6 +924,7 @@ mod tests {
             ("Offering", "Cancel"),
             ("Offering", "DisconnectReceived"),
             ("Offering", "IceCandidateReceived"),
+            ("Offering", "CollisionDetected"),
             ("Connecting", "HeartbeatDue"),
             ("Connecting", "DataChannelOpen"),
             ("Connecting", "ConnectTimeout"),
@@ -894,6 +932,7 @@ mod tests {
             ("Connecting", "DisconnectReceived"),
             ("Connecting", "TransportFailed"),
             ("Connecting", "IceCandidateReceived"),
+            ("Connecting", "CollisionDetected"),
             ("Connected", "HeartbeatDue"),
             ("Connected", "Disconnect"),
             ("Connected", "DisconnectReceived"),
@@ -997,7 +1036,7 @@ mod tests {
         assert!(
             actions.contains(&Action::Send(protocol::signaling::SignalingEnvelope {
                 protocol_version: protocol::signaling::SIGNALING_PROTOCOL_VERSION,
-                message_id: "host-b-1".to_owned(),
+                message_id: "host-b-ctrl-1".to_owned(),
                 session_id: Some("host-b-1".to_owned()),
                 from_device_id: "host-b".to_owned(),
                 to_device_id: "ctrl-a".to_owned(),
@@ -1007,6 +1046,73 @@ mod tests {
                 },
             }))
         );
+    }
+
+    /// QA F2: a peer's request arriving *after* our own request was accepted
+    /// (states `Offering`/`Connecting`) must hit the same tie-break — loser
+    /// cancels its accepted session, winner continues — never an
+    /// `IllegalTransition` and never a second parallel session.
+    #[test]
+    fn collision_after_accept_hits_the_same_tie_break() {
+        let make_offering = |s: ControllerSessionInfo| ControllerState::Offering { session: s };
+        let make_connecting = |s: ControllerSessionInfo| ControllerState::Connecting { session: s };
+        for make_state in [make_offering, make_connecting] {
+            // Winner ("ctrl-a" < "host-b"): no action, state unchanged.
+            let winner_session = ControllerSessionInfo {
+                session_id: "s1".to_owned(),
+                peer_device_id: "host-b".to_owned(),
+                secret: None,
+            };
+            let mut winner = machine();
+            winner.force_state(make_state(winner_session));
+            let actions = winner
+                .step(
+                    ControllerEvent::CollisionDetected {
+                        peer_device_id: "host-b".to_owned(),
+                    },
+                    10,
+                )
+                .unwrap();
+            let winner_state = winner.state().name().to_owned();
+            assert!(actions.is_empty(), "winner must not act in {winner_state}");
+            assert_eq!(winner.state().name(), winner_state);
+
+            // Loser ("host-b" > "ctrl-a"): cancel with reason "collision",
+            // connect timer canceled, session ended.
+            let loser_session = ControllerSessionInfo {
+                session_id: "s2".to_owned(),
+                peer_device_id: "ctrl-a".to_owned(),
+                secret: None,
+            };
+            let mut loser = ControllerSession::new("host-b".to_owned(), SessionConfig::default());
+            loser.force_state(make_state(loser_session));
+            let actions = loser
+                .step(
+                    ControllerEvent::CollisionDetected {
+                        peer_device_id: "ctrl-a".to_owned(),
+                    },
+                    10,
+                )
+                .unwrap();
+            assert!(matches!(
+                loser.state(),
+                ControllerState::Disconnected {
+                    cause: DisconnectCause::Collision
+                }
+            ));
+            assert!(actions.contains(&Action::CancelTimer {
+                id: TimerId::ControllerConnect
+            }));
+            assert!(actions.iter().any(|a| matches!(
+                a,
+                Action::Send(env)
+                    if matches!(env.body, SignalingBody::Cancel { reason: CancelReason::Collision })
+                        && env.to_device_id == "ctrl-a"
+            )));
+            assert!(actions.contains(&Action::SessionEnded {
+                cause: DisconnectCause::Collision
+            }));
+        }
     }
 
     #[test]
@@ -1032,7 +1138,10 @@ mod tests {
             ControllerState::Requesting { session } => session.session_id.clone(),
             other => panic!("expected Requesting, got {other:?}"),
         };
-        assert_eq!(session_id, "ctrl-a-2", "session id reuses the id counter");
+        assert_eq!(
+            session_id, "ctrl-a-ctrl-2",
+            "session id reuses the id counter"
+        );
         match actions.as_slice() {
             [Action::Send(env), Action::ScheduleTimer { id, fire_at_ms }] => {
                 assert!(matches!(env.body, SignalingBody::ConnectRequest { .. }));

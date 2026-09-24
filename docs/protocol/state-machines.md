@@ -30,6 +30,12 @@ Shared semantics:
 - **Reconnect.** No automatic reconnect in MVP
   (`ReconnectPolicy::max_attempts == 0` placeholder; M5 wires the real
   policy). Re-enabling a role is an explicit `Start`.
+- **Message ids (QA F1).** Every envelope the machines mint gets a
+  role-namespaced, deterministic id: `"{device}-host-{n}"` from the host
+  machine, `"{device}-ctrl-{n}"` from the controller machine (session ids
+  share the controller's counter space). One process runs both roles, and the
+  signaling service dedupes on `message_id` process-wide — the role tag is
+  what keeps the two machines' envelopes distinct.
 
 ## Host state machine
 
@@ -88,9 +94,13 @@ stateDiagram-v2
     Requesting --> Requesting: CollisionDetected (tie-break won: no-op)
     Requesting --> Disconnected: CollisionDetected (tie-break lost) / Send(Cancel collision)
     Offering --> Offering: OfferComposed / Send(Offer)
+    Offering --> Offering: CollisionDetected (tie-break won: no-op)
+    Offering --> Disconnected: CollisionDetected (tie-break lost) / Send(Cancel collision)
     Offering --> Connecting: AnswerReceived
     Offering --> Disconnected: RejectReceived | ConnectTimeout | Cancel | DisconnectReceived
     Connecting --> Connected: DataChannelOpen / StartRendering
+    Connecting --> Connecting: CollisionDetected (tie-break won: no-op)
+    Connecting --> Disconnected: CollisionDetected (tie-break lost) / Send(Cancel collision)
     Connecting --> Disconnected: ConnectTimeout | Cancel | DisconnectReceived | TransportFailed
     Connected --> Disconnected: Disconnect | DisconnectReceived | TransportFailed / Send(Disconnect)
     Disconnected --> Registering: Start (restart controller)
@@ -100,18 +110,27 @@ stateDiagram-v2
 
 Both roles of one device are separate machines, so the collision rule spans
 them and is implemented by the **node runtime** (the M0 test harness `World`
-is the reference):
+is the reference). Per QA F2, the rule covers the *whole* outbound window —
+a peer's request can arrive while our controller is `Requesting`,
+`Offering`, or `Connecting` (mailbox latency, stale TTL redelivery, or an
+accept that raced the cross-delivery):
 
 1. When a `connect_request` from peer **X** is delivered to our host and our
-   controller is `Requesting` toward **X**, the runtime raises
+   controller has an outbound session toward **X** (`Requesting` /
+   `Offering` / `Connecting`), the runtime raises
    `CollisionDetected{peer: X}` on the controller.
-2. When the user issues `Connect` to peer **X** and our host already shows a
-   consent prompt for **X**, the runtime raises the same event.
+2. Symmetrically, when the user issues `Connect` to peer **X** while our host
+   already holds an inbound session from **X** (consent prompt, exchanging,
+   or connecting), the runtime raises the same event.
 3. Tie-break: **the lexicographically smaller device id keeps the controller
-   role.** The losing controller sends `Cancel{reason: "collision"}` and goes
-   `Disconnected{Collision}`; the winner does nothing. The loser's cancel
+   role.** The losing controller cancels its outbound attempt —
+   `Cancel{reason: "collision"}`, canceling its active timer
+   (`ControllerRequest` in `Requesting`, `ControllerConnect` otherwise) —
+   and goes `Disconnected{Collision}`, abandoning its own controller side in
+   favor of its host side. The winner does nothing. The loser's cancel
    clears the winner's host prompt. Both nodes apply the same rule locally,
-   so the outcome is deterministic without extra communication.
+   so the outcome is deterministic without extra communication, and exactly
+   one session survives in every realizable interleaving.
 
 The host's `CancelReceived` is tolerated in `Online` (no-op) because the
 loser's cancel can race the delivery of its own request through the mailbox.

@@ -94,10 +94,13 @@ Two surfaces, both owned by `crates/protocol` (delta D7):
 1. **Signaling envelopes = JSON**, stable **snake_case** field names,
    flattened `type` discriminant. The TypeScript signaling service (M3) is
    generated against exactly these keys — renaming a field is a breaking
-   change. `protocol_version` is currently `0`
-   (`SIGNALING_PROTOCOL_VERSION`). JSON is self-describing, so *additive
-   optional fields* may appear within a version (serde ignores unknown
-   keys); anything else requires a bump.
+   change. `protocol_version` is currently **1**
+   (`SIGNALING_PROTOCOL_VERSION`; bumped 0→1 in the M0 QA patch —
+   `ice_candidate.sdp_mid` changed `Option<u16>` → `Option<String>` because
+   JSEP mids are strings; the first bump is the precedent for the policy
+   below). JSON is self-describing, so *additive optional fields* may appear
+   within a version (serde ignores unknown keys); anything else — type
+   change, rename, removal — requires a bump.
 2. **Data-channel/control messages = compact versioned binary**:
    `[version byte][bincode payload]` (bincode 1.x default options:
    little-endian, varint, trailing bytes rejected, 1 MiB decode limit).
@@ -112,7 +115,9 @@ Rules:
   typed `DecodeError::UnsupportedVersion` / `SignalingVersionError`, never
   garbage).
 - Never log SDP bodies, the one-time session secret (`SessionSecret`'s
-  Debug is redacted — keep it that way), or input event contents.
+  Debug is redacted — keep it that way), or input event contents —
+  `InputEvent`'s `Debug` is redacted too (QA F3), and new input-carrying
+  types must follow that pattern.
 - Cursor shape pixels travel on the direct `cursor` data channel (bounded
   binary). They never appear in signaling, Tauri IPC, or logs. Video frames
   are an RTP track, not messages (invariant 1).

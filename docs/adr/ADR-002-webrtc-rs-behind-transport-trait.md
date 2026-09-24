@@ -65,6 +65,26 @@ state-machine code changes*; the trait is the contract and step 1 exists only
 so two implementations can coexist for A/B measurement during the spike
 decision.
 
+### Frame-id carriage (QA F4 decision, recorded here because it is a transport contract)
+
+The perf-counter schema joins the host and controller halves of each frame by
+`frame_id` (host-assigned at capture). Over the real transport the controller
+cannot know that id from RTP alone, so the carriage mechanism is part of this
+ADR:
+
+- **Decision: RTP header extension.** The host stamps every RTP packet of a
+  frame with a header extension carrying the 64-bit `frame_id`; the
+  controller reads it and stamps its controller-side `FrameTiming` records.
+  Header extensions are codec-agnostic and per-packet, which is exactly the
+  needed granularity (SEI embedding is rejected — it couples diagnostics to
+  codec particulars; a `control`-channel mapping is the documented fallback
+  if the webrtc-rs header-extension API proves impractical at M2).
+- **Open item for M2 (not pre-built):** confirm the webrtc-rs API for
+  registering/negotiating the extension URI (`urn:rd:frame-id`) and expose it
+  through the `Transport` trait as a per-frame marker — an additive trait
+  change, reviewed with the first M2 transport patch. M1's in-process loop
+  needs none of this (the handoff types carry `frame_id` directly).
+
 ## Consequences
 
 - Positive: the spike decision is reversible and measurable; transport

@@ -21,8 +21,16 @@ use serde::{Deserialize, Serialize};
 use crate::capabilities::Capabilities;
 
 /// Current signaling protocol version. Bumps are explicit contract changes
-/// (AGENTS.md invariant 5) and must update the compatibility test below.
-pub const SIGNALING_PROTOCOL_VERSION: u16 = 0;
+/// (AGENTS.md invariant 5) and must update the compatibility tests below.
+///
+/// Version history:
+/// - **1** (M0 QA patch, 2026-09-24): `ice_candidate.sdp_mid` changed
+///   `Option<u16>` → `Option<String>` (QA F9). JSEP/SDP mids are strings
+///   ("0", "video", ...) and u16 cannot represent them. A field *type*
+///   change is not additive-optional, so the version bumped; no v0 peers
+///   were ever deployed.
+/// - **0**: initial M0 schema.
+pub const SIGNALING_PROTOCOL_VERSION: u16 = 1;
 
 /// Pseudo-device-id used to address messages that go *to the service itself*
 /// (`Register`, `Heartbeat`) rather than to a peer device.
@@ -51,9 +59,9 @@ impl core::fmt::Debug for SessionSecret {
 ///
 /// ```json
 /// {
-///   "protocol_version": 0,
-///   "message_id": "device-a-7",
-///   "session_id": "device-a-1",
+///   "protocol_version": 1,
+///   "message_id": "device-a-ctrl-7",
+///   "session_id": "device-a-ctrl-1",
 ///   "from_device_id": "device-a",
 ///   "to_device_id": "device-b",
 ///   "timestamp_ms": 1695000000000,
@@ -144,10 +152,12 @@ pub enum SignalingBody {
     Offer { sdp: String },
     /// SDP answer (host to controller), via the mailbox.
     Answer { sdp: String },
-    /// Trickle ICE candidate, forwarded verbatim.
+    /// Trickle ICE candidate, forwarded verbatim. `sdp_mid` is the JSEP mid
+    /// — a string such as "0" or "video" (string since protocol version 1,
+    /// QA F9); `sdp_mline_index` stays numeric per JSEP.
     IceCandidate {
         candidate: String,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<String>,
         sdp_mline_index: Option<u16>,
     },
     /// ICE gathering finished on the sender (no payload).
@@ -234,7 +244,7 @@ mod tests {
             },
             SignalingBody::IceCandidate {
                 candidate: "candidate:1 1 UDP 2130706431 192.168.1.10 54321 typ host".to_owned(),
-                sdp_mid: Some(0),
+                sdp_mid: Some("0".to_owned()),
                 sdp_mline_index: Some(0),
             },
             SignalingBody::IceComplete,
@@ -267,7 +277,7 @@ mod tests {
         }))
         .expect("serialize");
 
-        assert_eq!(value["protocol_version"], 0);
+        assert_eq!(value["protocol_version"], SIGNALING_PROTOCOL_VERSION);
         assert_eq!(value["message_id"], "device-a-7");
         assert_eq!(value["session_id"], "device-a-1");
         assert_eq!(value["from_device_id"], "device-a");
@@ -335,7 +345,7 @@ mod tests {
             err,
             SignalingVersionError::Unsupported {
                 supported: SIGNALING_PROTOCOL_VERSION,
-                found: 1,
+                found: SIGNALING_PROTOCOL_VERSION + 1,
             }
         );
         // A future-version envelope still parses as JSON (the service must be
@@ -344,6 +354,74 @@ mod tests {
         let json = serde_json::to_string(&env).unwrap();
         let parsed: SignalingEnvelope = serde_json::from_str(&json).unwrap();
         assert!(parsed.check_version().is_err());
+    }
+
+    /// QA F9 compatibility: version 0 is rejected by the typed version gate,
+    /// and the v0 `ice_candidate` payload (numeric `sdp_mid`) does not decode
+    /// under v1 types at all — which is exactly why receivers must check
+    /// `protocol_version` on the raw JSON before deserializing the body.
+    #[test]
+    fn version_zero_is_rejected_typed_and_not_decoded() {
+        // A v0 envelope whose body shape is unchanged parses, but the typed
+        // version gate rejects it.
+        let v0_heartbeat = serde_json::json!({
+            "protocol_version": 0,
+            "message_id": "device-a-host-1",
+            "session_id": null,
+            "from_device_id": "device-a",
+            "to_device_id": "device-b",
+            "timestamp_ms": 1000u64,
+            "type": "heartbeat",
+        });
+        let parsed: SignalingEnvelope = serde_json::from_value(v0_heartbeat).unwrap();
+        assert_eq!(
+            parsed.check_version(),
+            Err(SignalingVersionError::Unsupported {
+                supported: SIGNALING_PROTOCOL_VERSION,
+                found: 0,
+            })
+        );
+
+        // The v0 ice_candidate shape fails deserialization loudly instead of
+        // coercing a number into the string mid.
+        let v0_ice = serde_json::json!({
+            "protocol_version": SIGNALING_PROTOCOL_VERSION,
+            "message_id": "device-a-host-1",
+            "session_id": null,
+            "from_device_id": "device-a",
+            "to_device_id": "device-b",
+            "timestamp_ms": 1000u64,
+            "type": "ice_candidate",
+            "candidate": "candidate:1 1 UDP 1 10.0.0.1 5000 typ host",
+            "sdp_mid": 0,
+            "sdp_mline_index": 0,
+        });
+        assert!(
+            serde_json::from_value::<SignalingEnvelope>(v0_ice).is_err(),
+            "numeric sdp_mid must not decode as v1"
+        );
+
+        // The v1 shape (string mid) decodes and passes the gate.
+        let v1_ice = serde_json::json!({
+            "protocol_version": SIGNALING_PROTOCOL_VERSION,
+            "message_id": "device-a-host-1",
+            "session_id": null,
+            "from_device_id": "device-a",
+            "to_device_id": "device-b",
+            "timestamp_ms": 1000u64,
+            "type": "ice_candidate",
+            "candidate": "candidate:1 1 UDP 1 10.0.0.1 5000 typ host",
+            "sdp_mid": "0",
+            "sdp_mline_index": 0,
+        });
+        let parsed: SignalingEnvelope = serde_json::from_value(v1_ice).unwrap();
+        parsed.check_version().unwrap();
+        match parsed.body {
+            SignalingBody::IceCandidate {
+                sdp_mid: Some(mid), ..
+            } => assert_eq!(mid, "0"),
+            other => panic!("expected IceCandidate, got {other:?}"),
+        }
     }
 
     #[test]

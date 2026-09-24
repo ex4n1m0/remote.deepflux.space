@@ -111,7 +111,13 @@ pub enum ControlDisconnectReason {
 /// Controller-to-host input events. `seq` is per-channel monotonic from the
 /// controller; the host never trusts it for ordering on `input-fast`
 /// (unordered channel) but does detect gaps on `input-reliable`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Invariant 6 (input never logged) is enforced here, not just in docstrings:
+/// [`core::fmt::Debug`] prints only the variant name and `seq`; every payload
+/// field — coordinates, buttons, scan codes, typed text — is redacted (QA
+/// F3). Logging frameworks get the redacted form for free via the derived
+/// `Debug` on [`WireMessage`] and on transport event types wrapping it.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum InputEvent {
     /// Coalesced pointer position. Normalized `0..=65535` over the active
     /// monitor. Travels on `input-fast`.
@@ -153,6 +159,35 @@ pub enum MouseButton {
     Middle,
     X1,
     X2,
+}
+
+/// Invariant 6: input payloads (coordinates, buttons, keys, text) are never
+/// printable via `Debug`. Only the variant name and `seq` appear; the safety
+/// trigger on `AllKeysUp` is diagnostic state, not user input, and stays
+/// visible. Regression-tested in `tests` below (QA F3).
+impl core::fmt::Debug for InputEvent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            InputEvent::MouseMove { seq, .. } => {
+                write!(f, "MouseMove {{ seq: {seq}, payload: <redacted> }}")
+            }
+            InputEvent::MouseButton { seq, .. } => {
+                write!(f, "MouseButton {{ seq: {seq}, payload: <redacted> }}")
+            }
+            InputEvent::Wheel { seq, .. } => {
+                write!(f, "Wheel {{ seq: {seq}, payload: <redacted> }}")
+            }
+            InputEvent::Key { seq, .. } => {
+                write!(f, "Key {{ seq: {seq}, payload: <redacted> }}")
+            }
+            InputEvent::Text { seq, .. } => {
+                write!(f, "Text {{ seq: {seq}, payload: <redacted> }}")
+            }
+            InputEvent::AllKeysUp { trigger } => {
+                write!(f, "AllKeysUp {{ trigger: {trigger:?} }}")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -499,5 +534,113 @@ mod tests {
             serde_json::to_string(&AllKeysUpTrigger::SequenceGap).unwrap(),
             "\"sequence_gap\""
         );
+    }
+
+    /// QA F3: input payloads must never be printable — not as a bare event,
+    /// not wrapped in `WireMessage` (what transport/log layers actually
+    /// carry). Coordinates, buttons, scan codes, and typed text all redact.
+    #[test]
+    fn input_event_debug_is_redacted() {
+        let cases: Vec<(InputEvent, &str)> = vec![
+            (
+                InputEvent::MouseMove {
+                    seq: 7,
+                    x: 12_345,
+                    y: 54_321,
+                },
+                "12",
+            ),
+            (
+                InputEvent::MouseButton {
+                    seq: 8,
+                    button: MouseButton::Right,
+                    state: ButtonState::Pressed,
+                },
+                "Right",
+            ),
+            (
+                InputEvent::Key {
+                    seq: 9,
+                    scan_code: 0x1E,
+                    extended: true,
+                    state: ButtonState::Pressed,
+                },
+                "30",
+            ),
+            (
+                InputEvent::Text {
+                    seq: 10,
+                    code_points: "hunter2-do-not-log".to_owned(),
+                },
+                "hunter2",
+            ),
+        ];
+        for (event, secret) in cases {
+            let direct = format!("{event:?}");
+            assert!(
+                !direct.contains(secret),
+                "bare Debug leaked {secret:?}: {direct}"
+            );
+            assert!(
+                direct.contains("<redacted>"),
+                "missing redaction marker: {direct}"
+            );
+            let wrapped = format!("{:?}", WireMessage::Input(event));
+            assert!(
+                !wrapped.contains(secret),
+                "WireMessage Debug leaked {secret:?}: {wrapped}"
+            );
+        }
+        // AllKeysUp's trigger is diagnostic state, not user input — visible
+        // (derived Debug uses the Rust variant name, not the serde tag).
+        let all_up = format!(
+            "{:?}",
+            InputEvent::AllKeysUp {
+                trigger: AllKeysUpTrigger::SequenceGap
+            }
+        );
+        assert!(all_up.contains("SequenceGap"));
+        // Cursor state is host→controller metadata, not input: unaffected.
+        let cursor = format!(
+            "{:?}",
+            CursorMessage::Position {
+                seq: 3,
+                x: 100,
+                y: 200
+            }
+        );
+        assert!(cursor.contains("100"));
+    }
+
+    /// QA F11: golden bytes pin the binary layout so an accidental field
+    /// reorder/type change fails CI instead of relying on review policy
+    /// alone. If this test fails intentionally (a deliberate layout change),
+    /// bump `WIRE_VERSION` and regenerate the hex in the same patch.
+    #[test]
+    fn golden_bytes_pin_the_binary_layout() {
+        fn hex(bytes: &[u8]) -> String {
+            bytes.iter().map(|b| format!("{b:02x}")).collect()
+        }
+        let cases: Vec<(WireMessage, &str)> = vec![
+            // Ping: [version][variant 2][nonce 42]
+            (WireMessage::Ping { nonce: 42 }, "00022a"),
+            // Input/Key: [version][variant 8][InputEvent::Key=3][seq 10]
+            // [scan 29][extended false][Pressed=0]
+            (
+                WireMessage::Input(InputEvent::Key {
+                    seq: 10,
+                    scan_code: 29,
+                    extended: false,
+                    state: ButtonState::Pressed,
+                }),
+                "0008030a1d0000",
+            ),
+            // Cursor/Hide: [version][variant 9][CursorMessage::Hide=2]
+            (WireMessage::Cursor(CursorMessage::Hide), "000902"),
+        ];
+        for (message, expected) in cases {
+            let encoded = encode(&message);
+            assert_eq!(hex(&encoded), expected, "layout drift for {message:?}");
+        }
     }
 }

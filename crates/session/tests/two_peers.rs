@@ -124,11 +124,12 @@ impl World {
         self.apply(peer, MachineRef::Controller, actions);
     }
 
-    /// `Connect` with the node-level simultaneous-call rule: if this node's
-    /// host already shows a consent prompt for the same peer our controller
-    /// just started calling, the controller must run the device-id
-    /// tie-break. (The mirror case — a request arriving while we are already
-    /// calling — is handled in `route`.)
+    /// `Connect` with the node-level simultaneous-call rule (QA F2: the full
+    /// window). If this node's host already has an inbound session (prompt,
+    /// exchange, or connect) with the same peer our controller just started
+    /// calling, the controller must run the device-id tie-break. (The mirror
+    /// case — a request arriving while we are already calling — is handled
+    /// in `route`.)
     fn controller_connect(&mut self, peer: usize, host_device_id: &str) {
         self.step_controller(
             peer,
@@ -136,24 +137,31 @@ impl World {
                 host_device_id: host_device_id.to_owned(),
             },
         );
-        let overlap = match (
-            self.peers[peer].controller.state(),
-            self.peers[peer].host.state(),
-        ) {
-            (ControllerState::Requesting { session }, HostState::ConsentPrompted { info })
-                if info.controller_device_id == session.peer_device_id =>
-            {
-                Some(session.peer_device_id.clone())
-            }
+        let outbound = match self.peers[peer].controller.state() {
+            ControllerState::Requesting { session }
+            | ControllerState::Offering { session }
+            | ControllerState::Connecting { session } => Some(session.peer_device_id.clone()),
             _ => None,
         };
-        if let Some(peer_id) = overlap {
+        let Some(target) = outbound else { return };
+        if self.host_sessioned_with(peer, &target) {
             self.step_controller(
                 peer,
                 ControllerEvent::CollisionDetected {
-                    peer_device_id: peer_id,
+                    peer_device_id: target,
                 },
             );
+        }
+    }
+
+    /// Does this node's host hold an inbound session toward `device`?
+    fn host_sessioned_with(&self, peer: usize, device: &str) -> bool {
+        match self.peers[peer].host.state() {
+            HostState::ConsentPrompted { info } => info.controller_device_id == device,
+            HostState::Exchanging { session }
+            | HostState::Connecting { session }
+            | HostState::Connected { session } => session.peer_device_id == device,
+            _ => false,
         }
     }
 
@@ -237,10 +245,14 @@ impl World {
                         session_id: env.session_id.unwrap_or_default(),
                     },
                 );
-                // Mirror half of the node-level collision rule: a request
-                // arrived from a peer our controller is currently calling.
+                // Mirror half of the node-level collision rule (QA F2): a
+                // request arrived from a peer our controller has an outbound
+                // session with — including after our own request was already
+                // accepted (mailbox latency / stale redelivery).
                 let calling = match self.peers[target].controller.state() {
-                    ControllerState::Requesting { session } => session.peer_device_id == from,
+                    ControllerState::Requesting { session }
+                    | ControllerState::Offering { session }
+                    | ControllerState::Connecting { session } => session.peer_device_id == from,
                     _ => false,
                 };
                 if calling {
@@ -449,7 +461,7 @@ fn happy_path() -> (World, SessionSecret) {
         ControllerEvent::IceCandidateReceived {
             message_id: "ice-a-1".to_owned(),
             candidate: "candidate:1 1 UDP 1 10.0.0.1 5000 typ host".to_owned(),
-            sdp_mid: Some(0),
+            sdp_mid: Some("0".to_owned()),
             sdp_mline_index: Some(0),
         },
     );
@@ -458,7 +470,7 @@ fn happy_path() -> (World, SessionSecret) {
         HostEvent::IceCandidateReceived {
             message_id: "ice-b-1".to_owned(),
             candidate: "candidate:2 1 UDP 1 10.0.0.2 5001 typ host".to_owned(),
-            sdp_mid: Some(0),
+            sdp_mid: Some("0".to_owned()),
             sdp_mline_index: Some(0),
         },
     );
@@ -716,4 +728,138 @@ fn busy_host_rejects_a_second_controller() {
         w.peers[0].controller.state(),
         ControllerState::Requesting { .. }
     ));
+
+    // QA F10: the busy Reject is keyed to the *refused* controller's session
+    // id (device-c's), never to the pending one (device-a's).
+    let c_request = w
+        .sent
+        .iter()
+        .find(|(_, _, env)| {
+            env.from_device_id == "device-c"
+                && matches!(env.body, SignalingBody::ConnectRequest { .. })
+        })
+        .map(|(_, _, env)| env.session_id.clone())
+        .expect("device-c sent a connect_request");
+    let busy_reject = w
+        .sent
+        .iter()
+        .find(|(_, _, env)| {
+            env.to_device_id == "device-c"
+                && matches!(
+                    env.body,
+                    SignalingBody::Reject {
+                        reason: RejectReason::Busy
+                    }
+                )
+        })
+        .map(|(_, _, env)| env.session_id.clone())
+        .expect("host sent a busy Reject to device-c");
+    assert_eq!(
+        busy_reject, c_request,
+        "busy reject must carry the requester's session id"
+    );
+}
+
+/// QA F1: the two role machines of one device run in one process and must
+/// never mint the same `message_id` — the signaling service dedupes on it
+/// process-wide. The harness used to swallow service-directed envelopes, so
+/// this collided silently (`device-a-1` from both roles).
+#[test]
+fn message_ids_are_unique_across_both_roles_of_one_device() {
+    let (w, _) = happy_path();
+    let mut seen = std::collections::HashSet::new();
+    let mut total = 0;
+    for (_, _, env) in &w.sent {
+        total += 1;
+        assert!(
+            seen.insert(env.message_id.clone()),
+            "duplicate message_id minted: {}",
+            env.message_id
+        );
+    }
+    assert!(
+        total >= 8,
+        "expected the happy-path envelope count, got {total}"
+    );
+    // Spot-check the F1 shape: role-namespaced ids from the same device.
+    assert!(
+        w.sent
+            .iter()
+            .any(|(_, _, env)| env.message_id.starts_with("device-a-host-")),
+        "host-role ids must be namespaced"
+    );
+    assert!(
+        w.sent
+            .iter()
+            .any(|(_, _, env)| env.message_id.starts_with("device-a-ctrl-")),
+        "controller-role ids must be namespaced"
+    );
+}
+
+/// QA F2: the peer's `connect_request` can arrive *after* our own request was
+/// already accepted (mailbox latency / stale redelivery). The tie-break must
+/// still fire in `Offering`/`Connecting`: the loser (larger device id)
+/// cancels its accepted session, exactly one session survives, and no
+/// `IllegalTransition` occurs.
+#[test]
+fn late_peer_request_after_accept_still_hits_the_tie_break() {
+    let scenario = || {
+        let mut w = World::new(&["device-a", "device-b"]);
+        w.register_all();
+        // device-a calls device-b; host b accepts quickly.
+        w.now = 200;
+        w.controller_connect(0, "device-b");
+        w.now = 300;
+        w.step_host(
+            1,
+            HostEvent::ConsentAccepted {
+                secret: SessionSecret("late-collision-secret".to_owned()),
+            },
+        );
+        // device-b's own request only *now* reaches device-a's host — after
+        // a.controller is already Offering.
+        w.now = 400;
+        w.controller_connect(1, "device-a");
+        // The surviving flow completes.
+        w.now = 410;
+        w.step_controller(
+            0,
+            ControllerEvent::OfferComposed {
+                sdp: "v=0 offer".to_owned(),
+            },
+        );
+        w.now = 420;
+        w.step_host(
+            1,
+            HostEvent::AnswerComposed {
+                sdp: "v=0 answer".to_owned(),
+            },
+        );
+        w.now = 430;
+        w.step_controller(0, ControllerEvent::DataChannelOpen);
+        w.step_host(1, HostEvent::DataChannelOpen);
+        w
+    };
+
+    let w = scenario();
+    // device-a (< device-b) keeps the controller role and is connected to
+    // device-b's host; device-b's controller abandoned its accepted session.
+    assert!(matches!(
+        w.peers[0].controller.state(),
+        ControllerState::Connected { .. }
+    ));
+    assert!(matches!(
+        w.peers[1].host.state(),
+        HostState::Connected { .. }
+    ));
+    assert!(matches!(
+        w.peers[1].controller.state(),
+        ControllerState::Disconnected {
+            cause: DisconnectCause::Collision
+        }
+    ));
+    // device-a's host dropped device-b's stale prompt and returned Online.
+    assert_eq!(w.peers[0].host.state().name(), "Online");
+    // Deterministic across runs.
+    assert_eq!(w.transcript, scenario().transcript);
 }

@@ -113,10 +113,11 @@ pub enum Action {
     /// Controller runtime: build an SDP offer (M2 wires this).
     ComposeOffer,
     /// Hand a trickled ICE candidate to the local transport. No state change;
-    /// listed as an action so the runtime stays dumb.
+    /// listed as an action so the runtime stays dumb. `sdp_mid` is the JSEP
+    /// string mid (signaling protocol version 1, QA F9).
     ForwardIce {
         candidate: String,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<String>,
         sdp_mline_index: Option<u16>,
     },
     /// Host: start/stop the capture→encode→send pipeline.
@@ -163,8 +164,6 @@ impl std::error::Error for IllegalTransition {}
 
 /// Bounded LRU of recently seen `message_id`s for idempotent delivery.
 /// Capacity comes from [`SessionConfig::dedupe_capacity`]; memory is O(cap).
-/// Bounded LRU of recently seen `message_id`s for idempotent delivery.
-/// Capacity comes from [`SessionConfig::dedupe_capacity`]; memory is O(cap).
 #[derive(Debug)]
 pub(crate) struct DedupeLog {
     capacity: usize,
@@ -193,20 +192,44 @@ impl DedupeLog {
     }
 }
 
+/// Which role a builder mints ids for. The product runs host and controller
+/// of one device in the same process; the role tag keeps their ids disjoint
+/// because the signaling service dedupes on `message_id` process-wide (QA
+/// finding F1 — two builders both starting at `"{device}-1"` made the
+/// controller's envelopes look like redeliveries of the host's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IdRole {
+    Host,
+    Controller,
+}
+
+impl IdRole {
+    fn tag(self) -> &'static str {
+        match self {
+            IdRole::Host => "host",
+            IdRole::Controller => "ctrl",
+        }
+    }
+}
+
 /// Builds envelopes with deterministic, unique `message_id`s
-/// (`"{device}-{n}"`). Production runtimes may substitute real UUIDs at the
-/// transport edge if they need global uniqueness; within a device the counter
-/// is unique for the process lifetime, which is all the signaling TTL needs.
+/// (`"{device}-{role}-{n}"`, e.g. `device-a-host-3`). One process runs both
+/// roles, so uniqueness is per *device+role*; that is exactly the scope the
+/// signaling service's `messageId` dedupe needs. Production runtimes may
+/// substitute real UUIDs at the transport edge if they need global
+/// uniqueness.
 #[derive(Debug)]
 pub(crate) struct EnvelopeBuilder {
     device_id: DeviceId,
+    role: IdRole,
     counter: u64,
 }
 
 impl EnvelopeBuilder {
-    pub(crate) fn new(device_id: DeviceId) -> Self {
+    pub(crate) fn new(device_id: DeviceId, role: IdRole) -> Self {
         Self {
             device_id,
+            role,
             counter: 0,
         }
     }
@@ -215,12 +238,16 @@ impl EnvelopeBuilder {
         &self.device_id
     }
 
-    /// Allocate the next local id (`"{device}-{n}"`) without building an
-    /// envelope. Used for session ids; shares the counter with envelope
-    /// message ids so all ids from one device are unique.
+    /// Allocate the next local id (`"{device}-{role}-{n}"`) without building
+    /// an envelope. Used for session ids; shares the counter with envelope
+    /// message ids so all ids from one device-role pair are unique.
     pub(crate) fn next_local_id(&mut self) -> MessageId {
         self.counter += 1;
-        format!("{}-{}", self.device_id, self.counter)
+        self.format_id()
+    }
+
+    fn format_id(&self) -> MessageId {
+        format!("{}-{}-{}", self.device_id, self.role.tag(), self.counter)
     }
 
     pub(crate) fn envelope(
@@ -233,7 +260,7 @@ impl EnvelopeBuilder {
         self.counter += 1;
         SignalingEnvelope {
             protocol_version: SIGNALING_PROTOCOL_VERSION,
-            message_id: format!("{}-{}", self.device_id, self.counter),
+            message_id: self.format_id(),
             session_id: session_id.map(str::to_owned),
             from_device_id: self.device_id.clone(),
             to_device_id: to.to_owned(),
@@ -271,20 +298,44 @@ mod tests {
 
     #[test]
     fn envelope_builder_produces_unique_deterministic_ids() {
-        let mut builder = EnvelopeBuilder::new("device-a".to_owned());
+        let mut builder = EnvelopeBuilder::new("device-a".to_owned(), IdRole::Host);
         let a = builder.envelope("device-b", None, SignalingBody::Heartbeat, 1_000);
         let b = builder.envelope("device-b", Some("s"), SignalingBody::Heartbeat, 1_001);
-        assert_eq!(a.message_id, "device-a-1");
-        assert_eq!(b.message_id, "device-a-2");
+        assert_eq!(a.message_id, "device-a-host-1");
+        assert_eq!(b.message_id, "device-a-host-2");
         assert_eq!(a.protocol_version, SIGNALING_PROTOCOL_VERSION);
         assert_eq!(a.from_device_id, "device-a");
         assert_eq!(a.to_device_id, "device-b");
         assert_eq!(a.timestamp_ms, 1_000);
     }
 
+    /// QA F1: the two role machines of one device must never mint the same
+    /// `message_id` — the signaling service dedupes on it process-wide.
+    #[test]
+    fn host_and_controller_builders_of_one_device_mint_disjoint_ids() {
+        let mut host = EnvelopeBuilder::new("device-a".to_owned(), IdRole::Host);
+        let mut ctrl = EnvelopeBuilder::new("device-a".to_owned(), IdRole::Controller);
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..50 {
+            let h = host
+                .envelope("device-b", None, SignalingBody::Heartbeat, 0)
+                .message_id;
+            let c = ctrl
+                .envelope("device-b", None, SignalingBody::Heartbeat, 0)
+                .message_id;
+            assert!(ids.insert(h), "host id repeated");
+            assert!(ids.insert(c), "controller id collided with a host id");
+        }
+        // And session ids share the same disjoint counter space.
+        let s1 = ctrl.next_local_id();
+        let s2 = ctrl.next_local_id();
+        assert_ne!(s1, s2);
+        assert!(ids.insert(s1), "session id collided with an envelope id");
+    }
+
     #[test]
     fn envelope_builder_service_addressing() {
-        let mut builder = EnvelopeBuilder::new("device-a".to_owned());
+        let mut builder = EnvelopeBuilder::new("device-a".to_owned(), IdRole::Host);
         let env = builder.envelope(SIGNALING_SERVICE_ID, None, SignalingBody::Heartbeat, 5);
         assert_eq!(env.to_device_id, "signaling");
         assert_eq!(env.session_id, None);

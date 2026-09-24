@@ -24,7 +24,9 @@
 //!
 //! ## Versioning policy (AGENTS.md invariant 5)
 //!
-//! * Signaling `protocol_version` is currently `0` ([`signaling::SIGNALING_PROTOCOL_VERSION`]).
+//! * Signaling `protocol_version` is currently `1` ([`signaling::SIGNALING_PROTOCOL_VERSION`];
+//!   bumped 0→1 in the M0 QA patch for the `sdp_mid` string change — see the
+//!   constant's history note).
 //! * Binary wire version is currently `0` ([`wire::WIRE_VERSION`]).
 //! * A version bump is an explicit, reviewed contract change and must ship
 //!   with an updated compatibility test in this crate.

@@ -11,7 +11,7 @@ use protocol::signaling::{
     SIGNALING_SERVICE_ID, SessionId, SessionSecret, SignalingBody,
 };
 
-use crate::common::{Action, DisconnectCause, EnvelopeBuilder};
+use crate::common::{Action, DisconnectCause, EnvelopeBuilder, IdRole};
 
 use crate::common::{DedupeLog, IllegalTransition, SessionConfig, TimerId};
 
@@ -99,10 +99,11 @@ pub enum HostEvent {
         reason: CancelReason,
     },
     /// Trickle ICE candidate from the controller (no state change).
+    /// `sdp_mid` is the JSEP string mid (protocol version 1, QA F9).
     IceCandidateReceived {
         message_id: MessageId,
         candidate: String,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<String>,
         sdp_mline_index: Option<u16>,
     },
     /// Connect-timeout timer fired (Exchanging/Connecting).
@@ -170,7 +171,7 @@ impl HostSession {
             state: HostState::Idle,
             seen: DedupeLog::new(cfg.dedupe_capacity),
             cfg,
-            envelopes: EnvelopeBuilder::new(device_id),
+            envelopes: EnvelopeBuilder::new(device_id, IdRole::Host),
         }
     }
 
@@ -276,12 +277,14 @@ impl HostSession {
                 }
                 HostEvent::IncomingRequest {
                     controller_device_id,
+                    session_id,
                     ..
                 } => {
-                    let info = info.clone();
+                    // Busy rejection keyed to the incoming request's session
+                    // id (QA F10), consistent with the other host states.
                     let env = self.envelopes.envelope(
                         &controller_device_id,
-                        Some(&info.session_id),
+                        Some(&session_id),
                         SignalingBody::Reject {
                             reason: RejectReason::Busy,
                         },
@@ -383,11 +386,15 @@ impl HostSession {
                 }
                 HostEvent::IncomingRequest {
                     controller_device_id,
+                    session_id,
                     ..
                 } => {
+                    // Busy rejection keyed to the *incoming* request's session
+                    // so the refused controller can correlate it (QA F10 —
+                    // every busy Reject carries the requester's session id).
                     let env = self.envelopes.envelope(
                         &controller_device_id,
-                        None,
+                        Some(&session_id),
                         SignalingBody::Reject {
                             reason: RejectReason::Busy,
                         },
@@ -493,11 +500,15 @@ impl HostSession {
                 }
                 HostEvent::IncomingRequest {
                     controller_device_id,
+                    session_id,
                     ..
                 } => {
+                    // Busy rejection keyed to the *incoming* request's session
+                    // so the refused controller can correlate it (QA F10 —
+                    // every busy Reject carries the requester's session id).
                     let env = self.envelopes.envelope(
                         &controller_device_id,
-                        None,
+                        Some(&session_id),
                         SignalingBody::Reject {
                             reason: RejectReason::Busy,
                         },
@@ -591,11 +602,15 @@ impl HostSession {
                 }
                 HostEvent::IncomingRequest {
                     controller_device_id,
+                    session_id,
                     ..
                 } => {
+                    // Busy rejection keyed to the *incoming* request's session
+                    // so the refused controller can correlate it (QA F10 —
+                    // every busy Reject carries the requester's session id).
                     let env = self.envelopes.envelope(
                         &controller_device_id,
-                        None,
+                        Some(&session_id),
                         SignalingBody::Reject {
                             reason: RejectReason::Busy,
                         },
@@ -796,7 +811,7 @@ mod tests {
             HostEvent::IceCandidateReceived {
                 message_id: "e4".to_owned(),
                 candidate: "candidate:1".to_owned(),
-                sdp_mid: Some(0),
+                sdp_mid: Some("0".to_owned()),
                 sdp_mline_index: Some(0),
             },
             HostEvent::ConnectTimeout,
@@ -957,10 +972,48 @@ mod tests {
                         reason: RejectReason::Busy
                     }
                 );
+                // QA F10: the busy reject is keyed to the *incoming*
+                // request's session ("ctrl-c-1"), not the pending one.
+                assert_eq!(env.session_id.as_deref(), Some("ctrl-c-1"));
             }
             other => panic!("expected one busy Reject, got {other:?}"),
         }
         assert!(matches!(m.state(), HostState::ConsentPrompted { .. }));
+    }
+
+    /// QA F10: busy rejections carry the requester's session id in *every*
+    /// host state, so consumers can correlate them uniformly.
+    #[test]
+    fn busy_reject_session_id_is_consistent_across_host_states() {
+        for state in [
+            HostState::Exchanging { session: session() },
+            HostState::Connecting { session: session() },
+            HostState::Connected { session: session() },
+        ] {
+            let mut m = machine();
+            m.force_state(state);
+            let actions = m
+                .step(
+                    HostEvent::IncomingRequest {
+                        message_id: "r9".to_owned(),
+                        controller_device_id: "ctrl-c".to_owned(),
+                        session_id: "ctrl-c-7".to_owned(),
+                    },
+                    20,
+                )
+                .unwrap();
+            match actions.as_slice() {
+                [Action::Send(env)] => {
+                    assert_eq!(
+                        env.session_id.as_deref(),
+                        Some("ctrl-c-7"),
+                        "busy reject must carry the requester's session id in {:?}",
+                        m.state()
+                    );
+                }
+                other => panic!("expected one busy Reject, got {other:?}"),
+            }
+        }
     }
 
     #[test]

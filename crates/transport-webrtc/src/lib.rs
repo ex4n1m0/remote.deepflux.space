@@ -45,10 +45,11 @@ pub enum TransportEvent {
     /// `compose_answer` from the session machines).
     LocalAnswer { sdp: String },
     /// ICE selected a new candidate pair, or a candidate trickled in
-    /// (forwarded over signaling by the runtime).
+    /// (forwarded over signaling by the runtime). `sdp_mid` is the JSEP
+    /// string mid (protocol version 1, QA F9).
     IceCandidate {
         candidate: String,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<String>,
         sdp_mline_index: Option<u16>,
     },
     /// Transport-level failure (ICE dead, DTLS error, protocol violation).
@@ -94,11 +95,12 @@ pub trait Transport: Send {
     /// Apply the remote answer (controller role).
     fn apply_answer(&mut self, answer_sdp: &str) -> Result<(), TransportError>;
 
-    /// Feed a trickled remote candidate (both roles).
+    /// Feed a trickled remote candidate (both roles). `sdp_mid` is the JSEP
+    /// string mid (protocol version 1, QA F9).
     fn add_remote_candidate(
         &mut self,
         candidate: &str,
-        sdp_mid: Option<u16>,
+        sdp_mid: Option<&str>,
         sdp_mline_index: Option<u16>,
     ) -> Result<(), TransportError>;
 
@@ -118,3 +120,38 @@ pub trait Transport: Send {
 // M2 implementation slot (RD-006, RD-007, RD-008): webrtc-rs-backed
 // `WebrtcTransport` and a `MockTransport` for deterministic tests.
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use protocol::wire::{ButtonState, InputEvent};
+
+    /// QA F3: the transport event surface carries `WireMessage`s; logging a
+    /// `TransportEvent` at debug level must not print input payloads.
+    /// `InputEvent`'s manual `Debug` provides the redaction; this test pins
+    /// it end-to-end through the wrapper.
+    #[test]
+    fn transport_event_debug_redacts_input_payloads() {
+        let event = TransportEvent::Message(
+            Channel::InputReliable,
+            WireMessage::Input(InputEvent::Key {
+                seq: 10,
+                scan_code: 0x1E,
+                extended: true,
+                state: ButtonState::Pressed,
+            }),
+        );
+        let formatted = format!("{event:?}");
+        assert!(
+            !formatted.contains("30") && !formatted.contains("0x1e"),
+            "TransportEvent Debug leaked key content: {formatted}"
+        );
+        assert!(
+            formatted.contains("<redacted>"),
+            "expected redaction: {formatted}"
+        );
+        // Channel identity and event kind remain diagnosable.
+        assert!(formatted.contains("InputReliable"));
+        assert!(formatted.contains("Message"));
+    }
+}
