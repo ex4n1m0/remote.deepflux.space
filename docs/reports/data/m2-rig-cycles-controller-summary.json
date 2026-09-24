@@ -1,0 +1,117 @@
+{
+ "files": [
+  "C:/Users/igorc/AppData/Local/Temp/rd-m2-metrics/m2-rig-20260924-rig-controller-24.jsonl"
+ ],
+ "origin": "controller",
+ "sessions": [
+  "rig-controller-ctrl-14",
+  "rig-controller-ctrl-2",
+  "rig-controller-ctrl-20",
+  "rig-controller-ctrl-26",
+  "rig-controller-ctrl-32",
+  "rig-controller-ctrl-38",
+  "rig-controller-ctrl-44",
+  "rig-controller-ctrl-50",
+  "rig-controller-ctrl-56",
+  "rig-controller-ctrl-8"
+ ],
+ "joined_frames_post_warmup": 10050,
+ "warmup_secs": 0.0,
+ "stages": {
+  "recv_to_decode": {
+   "p50_ms": 0.339,
+   "p95_ms": 0.463,
+   "p99_ms": 0.529,
+   "max_ms": 24.989,
+   "count": 10050
+  },
+  "decode_to_present": {
+   "p50_ms": 0.073,
+   "p95_ms": 0.111,
+   "p99_ms": 0.136,
+   "max_ms": 1.859,
+   "count": 10050
+  },
+  "controller_half_total": {
+   "p50_ms": 0.416,
+   "p95_ms": 0.548,
+   "p99_ms": 0.623,
+   "max_ms": 25.428,
+   "count": 10050
+  }
+ },
+ "queues": {
+  "channel_control": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 219,
+   "at_capacity": 0,
+   "drained": 219
+  },
+  "channel_cursor": {
+   "high_water": 0,
+   "capacity": 8,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 219,
+   "at_capacity": 0,
+   "drained": 219
+  },
+  "channel_input_fast": {
+   "high_water": 0,
+   "capacity": 32,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 219,
+   "at_capacity": 0,
+   "drained": 219
+  },
+  "channel_input_reliable": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 219,
+   "at_capacity": 0,
+   "drained": 219
+  },
+  "decode_to_present": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 20104,
+   "at_capacity": 10054,
+   "drained": 10050
+  },
+  "recv_to_decode": {
+   "high_water": 2,
+   "capacity": 2,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 22234,
+   "at_capacity": 17,
+   "drained": 11100
+  }
+ },
+ "link": {
+  "samples": 219,
+  "rtt_ms_min_max": [
+   0,
+   0
+  ],
+  "loss_max": 0
+ },
+ "resource": {
+  "cpu_min_max": [
+   0.0,
+   64.0625
+  ],
+  "ws_mib_min_max": [
+   49.2,
+   219.5
+  ]
+ }
+}

@@ -1,0 +1,124 @@
+{
+ "files": [
+  "C:/Users/igorc/AppData/Local/Temp/rd-m2-metrics/m2-rig-20260924-rig-host-24.jsonl"
+ ],
+ "origin": "host",
+ "sessions": [
+  "rig-controller-ctrl-14",
+  "rig-controller-ctrl-2",
+  "rig-controller-ctrl-20",
+  "rig-controller-ctrl-26",
+  "rig-controller-ctrl-32",
+  "rig-controller-ctrl-38",
+  "rig-controller-ctrl-44",
+  "rig-controller-ctrl-50",
+  "rig-controller-ctrl-56",
+  "rig-controller-ctrl-8"
+ ],
+ "joined_frames_post_warmup": 11118,
+ "warmup_secs": 0.0,
+ "stages": {
+  "capture_to_encode_submit": {
+   "p50_ms": 0.111,
+   "p95_ms": 3.461,
+   "p99_ms": 4.157,
+   "max_ms": 13.02,
+   "count": 11118
+  },
+  "encode_submit_to_done": {
+   "p50_ms": 3.715,
+   "p95_ms": 13.272,
+   "p99_ms": 22.787,
+   "max_ms": 33.839,
+   "count": 11118
+  },
+  "encode_done_to_send": {
+   "p50_ms": 1.733,
+   "p95_ms": 2.952,
+   "p99_ms": 3.343,
+   "max_ms": 11.741,
+   "count": 11118
+  },
+  "host_half_total": {
+   "p50_ms": 5.929,
+   "p95_ms": 15.724,
+   "p99_ms": 24.331,
+   "max_ms": 36.49,
+   "count": 11118
+  }
+ },
+ "queues": {
+  "capture_to_encode": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 52,
+   "samples": 22668,
+   "at_capacity": 11540,
+   "drained": 11128
+  },
+  "channel_control": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 221,
+   "at_capacity": 0,
+   "drained": 221
+  },
+  "channel_cursor": {
+   "high_water": 0,
+   "capacity": 8,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 221,
+   "at_capacity": 0,
+   "drained": 221
+  },
+  "channel_input_fast": {
+   "high_water": 0,
+   "capacity": 32,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 221,
+   "at_capacity": 0,
+   "drained": 221
+  },
+  "channel_input_reliable": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 221,
+   "at_capacity": 0,
+   "drained": 221
+  },
+  "encode_to_send": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 1,
+   "samples": 22246,
+   "at_capacity": 11128,
+   "drained": 11118
+  }
+ },
+ "link": {
+  "samples": 221,
+  "rtt_ms_min_max": [
+   0,
+   0
+  ],
+  "loss_max": 0
+ },
+ "resource": {
+  "cpu_min_max": [
+   14.062498,
+   59.375
+  ],
+  "ws_mib_min_max": [
+   51.0,
+   243.0
+  ]
+ }
+}

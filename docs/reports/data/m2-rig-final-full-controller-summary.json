@@ -1,0 +1,109 @@
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable"
+  ],
+  "chaos": {
+    "dropped": 118,
+    "final_position_sent": [
+      31000,
+      37000
+    ],
+    "moves_sent": 1000,
+    "reliable_send_errors": 0,
+    "reliable_sent": 34,
+    "reordered": 54,
+    "seed": 2026
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 51.59087664059113,
+    "frame_id_gaps": 73,
+    "frames_decoded": 2581,
+    "frames_missing_packets": 0,
+    "frames_presented": 2581,
+    "frames_received": 2800,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 219,
+    "keyframe_requests_sent": 73,
+    "render_secs": 50.0282253
+  },
+  "cursor": {
+    "overlays_received": 2,
+    "shapes_received": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 54.5200995,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:\\Users\\igorc\\AppData\\Local\\Temp\\rd-m2-metrics\\m2-rig-20260924-rig-controller-26.jsonl",
+    "records": 13663
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 10,
+    "heartbeats_raised": 3,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 993
+  },
+  "prompts": 0,
+  "role": "controller",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1136
+      ],
+      [
+        "rig-controller-ctrl-7",
+        1138
+      ]
+    ],
+    "ends": [
+      "Peer",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-7"
+    ],
+    "netchange_at_stream_elapsed_s": 20.0007661
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 1702,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 22563,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 5773.201964703492,
+    "relay_in_use": false,
+    "rtt_ms": 0.182,
+    "selected_pair": {
+      "local": "127.0.0.1:57024",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:57023",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

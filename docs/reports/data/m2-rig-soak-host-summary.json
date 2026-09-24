@@ -1,0 +1,115 @@
+{
+ "files": [
+  "C:/Users/igorc/AppData/Local/Temp/rd-m2-metrics/m2-rig-20260924-rig-host-25.jsonl"
+ ],
+ "origin": "host",
+ "sessions": [
+  "rig-controller-ctrl-2"
+ ],
+ "joined_frames_post_warmup": 30380,
+ "warmup_secs": 60,
+ "stages": {
+  "capture_to_encode_submit": {
+   "p50_ms": 0.11,
+   "p95_ms": 3.45,
+   "p99_ms": 4.202,
+   "max_ms": 5.87,
+   "count": 30380
+  },
+  "encode_submit_to_done": {
+   "p50_ms": 3.824,
+   "p95_ms": 13.284,
+   "p99_ms": 22.761,
+   "max_ms": 32.419,
+   "count": 30380
+  },
+  "encode_done_to_send": {
+   "p50_ms": 1.837,
+   "p95_ms": 3.425,
+   "p99_ms": 3.719,
+   "max_ms": 9.8,
+   "count": 30380
+  },
+  "host_half_total": {
+   "p50_ms": 6.191,
+   "p95_ms": 16.008,
+   "p99_ms": 24.875,
+   "max_ms": 35.505,
+   "count": 30380
+  }
+ },
+ "queues": {
+  "capture_to_encode": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 1056,
+   "samples": 68203,
+   "at_capacity": 34630,
+   "drained": 33573
+  },
+  "channel_control": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 601,
+   "at_capacity": 0,
+   "drained": 601
+  },
+  "channel_cursor": {
+   "high_water": 0,
+   "capacity": 8,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 601,
+   "at_capacity": 0,
+   "drained": 601
+  },
+  "channel_input_fast": {
+   "high_water": 0,
+   "capacity": 32,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 601,
+   "at_capacity": 0,
+   "drained": 601
+  },
+  "channel_input_reliable": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 601,
+   "at_capacity": 0,
+   "drained": 601
+  },
+  "encode_to_send": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 28,
+   "samples": 67117,
+   "at_capacity": 33573,
+   "drained": 33544
+  }
+ },
+ "link": {
+  "samples": 601,
+  "rtt_ms_min_max": [
+   0,
+   0
+  ],
+  "loss_max": 0
+ },
+ "resource": {
+  "cpu_min_max": [
+   7.8125,
+   76.5625
+  ],
+  "ws_mib_min_max": [
+   51.0,
+   117.5
+  ]
+ }
+}

@@ -773,6 +773,7 @@ name = "input-windows"
 version = "0.1.0"
 dependencies = [
  "protocol",
+ "windows",
 ]
 
 [[package]]
@@ -908,6 +909,24 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "node-runtime"
+version = "0.1.0"
+dependencies = [
+ "capture-windows",
+ "codec-windows",
+ "diagnostics",
+ "frame-surface",
+ "input-windows",
+ "protocol",
+ "render-windows",
+ "serde",
+ "serde_json",
+ "session",
+ "transport-webrtc",
+ "windows",
 ]
 
 [[package]]
