@@ -653,6 +653,13 @@ pub struct Summary {
     pub resource_ws_min_max: Option<(u64, u64)>,
     pub unstable_windows: Vec<(u64, String)>,
     pub backpressure_events: u64,
+    /// CPU copy counts over the run (F16): GPU->CPU readbacks and
+    /// CPU->GPU uploads, from `frame_surface`'s process-wide atomics.
+    /// Zero/zero is the hardware path's claim-to-fame; the software
+    /// codec fallback shows one readback + memcpy per encoded frame and
+    /// one upload per decoded frame.
+    pub readbacks: u64,
+    pub uploads: u64,
     pub warmup_secs: u64,
     pub run_secs: u64,
 }
@@ -697,9 +704,17 @@ pub fn summarize(path: &std::path::Path, warmup_secs: u64) -> Summary {
     let mut frames_presented = 0u64;
     let mut queues: std::collections::HashMap<String, (u32, u32, u64, u64)> =
         std::collections::HashMap::new();
-    // (window, queue) -> (samples, at_capacity, last_dropped, delta_drops, last_replaced)
-    type WinStats = std::collections::HashMap<(u64, String), (u64, u64, u64, u64, u64)>;
+    // (window, queue) -> (samples, at_capacity, drained, max_drop_delta)
+    type WinStats = std::collections::HashMap<(u64, String), (u64, u64, u64, u64)>;
     let mut win_stats: WinStats = std::collections::HashMap::new();
+    // F15: carry the previous window's last cumulative counters into the
+    // next window's baseline so deltas are computed against what the
+    // queue had when the window started — not against zero (which
+    // re-counted the whole run's `dropped` in every window) and not
+    // against the window's first sample (which swallowed a replacement
+    // landing exactly at the boundary).
+    let mut carried: std::collections::HashMap<String, (u64, u64)> =
+        std::collections::HashMap::new();
     let mut unstable: Vec<(u64, String)> = Vec::new();
     let mut cpus: Vec<f32> = Vec::new();
     let mut wss: Vec<u64> = Vec::new();
@@ -733,23 +748,33 @@ pub fn summarize(path: &std::path::Path, warmup_secs: u64) -> Summary {
                 // depth 1 between push and pop is normal steady state.
                 if q.at_ns >= warmup_ns {
                     let window = q.at_ns / 60_000_000_000;
-                    let w = win_stats
-                        .entry((window, key.clone()))
-                        .or_insert((0u64, 0u64, 0u64, 0u64, 0u64));
+                    let entry = win_stats.entry((window, key.clone()));
+                    use std::collections::hash_map::Entry;
+                    let w = match entry {
+                        Entry::Occupied(o) => o.into_mut(),
+                        Entry::Vacant(v) => {
+                            // Window baseline = counters carried from the
+                            // previous window (zero for the first window).
+                            let (base_d, base_r) = carried.get(&key).copied().unwrap_or((0, 0));
+                            v.insert((
+                                0,
+                                0,
+                                0,
+                                (q.dropped + q.replaced).saturating_sub(base_d + base_r),
+                            ))
+                        }
+                    };
                     w.0 += 1; // samples
                     if q.depth == q.capacity {
                         w.1 += 1; // at-capacity samples
                     }
-                    if w.2 < q.dropped {
-                        w.3 = w.3.max(q.dropped - w.2);
+                    if q.depth == 0 {
+                        w.2 += 1; // drained samples (cap-1 residency signal)
                     }
-                    w.2 = q.dropped;
-                    if w.4 == 0 && q.replaced > 0 && w.4 < q.replaced {
-                        w.4 = q.replaced; // baseline carries into window
-                    } else if q.replaced > w.4 {
-                        w.3 = w.3.max(q.replaced - w.4);
-                        w.4 = q.replaced;
-                    }
+                    let cum = q.dropped + q.replaced;
+                    let base = carried.get(&key).copied().map(|(d, r)| d + r).unwrap_or(0);
+                    w.3 = w.3.max(cum.saturating_sub(base));
+                    carried.insert(key.clone(), (q.dropped, q.replaced));
                 }
             }
             CounterRecord::ResourceSample(r) => {
@@ -810,14 +835,22 @@ pub fn summarize(path: &std::path::Path, warmup_secs: u64) -> Summary {
     }
 
     // Evaluate per-window instability from the collected stats.
+    // F15 cap-1 refinement: depth==capacity between a push and its pop
+    // is normal per-frame residency for a newest-wins slot (measured:
+    // ~50% of samples in a healthy 60 fps run). A queue is "pinned"
+    // only when it STOPS DRAINING: at capacity for >=95% of the window's
+    // samples AND zero drained samples in the window.
     for ((window, key), w) in &win_stats {
         if w.3 > 0 {
             unstable.push((*window, format!("{key} dropped/replaced {} in window", w.3)));
         }
-        if w.0 > 10 && w.1 * 100 >= w.0 * 95 {
+        if w.0 > 10 && w.1 * 100 >= w.0 * 95 && w.2 == 0 {
             unstable.push((
                 *window,
-                format!("{key} pinned at capacity ({}/{} samples)", w.1, w.0),
+                format!(
+                    "{key} pinned at capacity, never drained ({}/{} samples)",
+                    w.1, w.0
+                ),
             ));
         }
     }
@@ -883,6 +916,8 @@ pub fn summarize(path: &std::path::Path, warmup_secs: u64) -> Summary {
         resource_ws_min_max: wss.iter().copied().min().zip(wss.iter().copied().max()),
         unstable_windows: unstable,
         backpressure_events: 0,
+        readbacks: 0,
+        uploads: 0,
         warmup_secs,
         run_secs,
     }

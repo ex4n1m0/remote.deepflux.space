@@ -111,6 +111,11 @@ pub enum CodecError {
     Timeout(String),
     /// The transform reported a failure while processing.
     Processing(String),
+    /// The packet was dropped by the IDR-after-reset gate: `reset()` was
+    /// called (loss recovery) and this access unit is not a keyframe, so
+    /// decoding it would reference a broken reference chain. Feed packets
+    /// until the next IDR (M2 forces one via `KeyframeRequest`).
+    DroppedAfterReset(String),
     /// MF runtime not started (`MfRuntime` guard missing).
     NotReady(String),
 }
@@ -122,6 +127,9 @@ impl core::fmt::Display for CodecError {
             CodecError::FormatNegotiation(d) => write!(f, "codec format negotiation failed: {d}"),
             CodecError::Timeout(d) => write!(f, "codec bounded wait expired: {d}"),
             CodecError::Processing(d) => write!(f, "codec processing failed: {d}"),
+            CodecError::DroppedAfterReset(d) => {
+                write!(f, "packet dropped awaiting IDR after reset: {d}")
+            }
             CodecError::NotReady(d) => write!(f, "codec not initialized: {d}"),
         }
     }
@@ -201,8 +209,11 @@ pub trait VideoDecoder: Send {
         timestamp_ns: u64,
     ) -> Result<DecodedFrame, CodecError>;
 
-    /// Flush after a keyframe request / loss event. The next packet fed
-    /// must be a keyframe.
+    /// Flush after a keyframe request / loss event. The next packets fed
+    /// are gated on IDR: non-keyframe access units are dropped with
+    /// [`CodecError::DroppedAfterReset`] until the next IDR arrives
+    /// (F18 — decoding mid-GOP after a flush would reference a broken
+    /// chain and corrupt the picture).
     fn reset(&mut self) -> Result<(), CodecError>;
 
     fn set_perf_sink(&mut self, _sink: Box<dyn PerfSink>) {}

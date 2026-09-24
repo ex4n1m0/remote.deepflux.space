@@ -117,6 +117,16 @@ Cumulative counters are difference-able into any reporting window offline.
   queues), and no display-change/device-loss event was reported. Windows not
   meeting this are *unstable* and must be reported as such, never silently
   averaged in.
+- *Cap-1 refinement (M1 QA F15)*: for queues with capacity 1 — the
+  newest-wins frame slots — `depth == capacity` between a push and its
+  pop is normal per-frame residency, not saturation (measured: ~50% of
+  `capture_to_encode` samples sit at depth 1 in a healthy 1080p60 run).
+  The `depth == capacity sustained` blocker applies to cap-1 queues only
+  when the queue **stops draining**: at capacity for ≥95% of a window's
+  samples *and* zero depth-0 samples in that window (bounded-residency
+  failure), or sustained growth of `dropped`/`replaced`. For capacity ≥ 2
+  queues the original wording stands. The cap-1 gate remains
+  high-water ≤ 1 with per-window drop deltas of 0.
 
 ## ResourceSample and LinkSample (F7)
 

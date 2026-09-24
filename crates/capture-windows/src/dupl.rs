@@ -118,6 +118,11 @@ pub struct DxgiCapture {
     move_buffer: Vec<DXGI_OUTDUPL_MOVE_RECT>,
     dirty_buffer: Vec<RECT>,
     shape_buffer: Vec<u8>,
+    /// Session clock injected by the node runtime so `capture_ns` shares
+    /// the loop's zero-based monotonic clock (F17: the schema pins
+    /// `capture_ns` at "DXGI AcquireNextFrame returned", which only this
+    /// stage can stamp). Falls back to the capture's own start Instant.
+    clock: Option<Box<dyn Fn() -> u64 + Send>>,
 }
 
 impl DxgiCapture {
@@ -168,6 +173,7 @@ impl DxgiCapture {
             move_buffer: Vec::new(),
             dirty_buffer: Vec::new(),
             shape_buffer: Vec::new(),
+            clock: None,
         };
         capture.start_duplication()?;
         Ok(capture)
@@ -175,6 +181,15 @@ impl DxgiCapture {
 
     pub fn monitor_id(&self) -> &str {
         &self.monitor_id
+    }
+
+    /// Set the timestamp source used for `CapturedFrame::timestamp_ns`
+    /// (`capture_ns`). The node runtime passes its session clock so all
+    /// stages share one clock domain; without one, the capture's own
+    /// construction-time `Instant` is used (still monotonic, different
+    /// origin — fine for isolated use, wrong for joined diagnostics).
+    pub fn set_clock(&mut self, clock: Box<dyn Fn() -> u64 + Send>) {
+        self.clock = Some(clock);
     }
 
     /// Duplicated output geometry (set once duplication is live).
@@ -471,6 +486,16 @@ impl CaptureSource for DxgiCapture {
             return Err(classify_acquire_error(code));
         }
 
+        // F17: stamp exactly where the schema pins it — AcquireNextFrame
+        // returned, *before* metadata fetch, the pool copy, and
+        // ReleaseFrame — so the DDA acquire+copy work is inside the
+        // measured capture→encode stage instead of outside every stage.
+        let acquire_ns = self
+            .clock
+            .as_ref()
+            .map(|c| c())
+            .unwrap_or_else(|| self.now_ns());
+
         let (desc_w, desc_h) = self.dimensions();
         let (desk_left, desk_top, desk_w, desk_h) = unsafe {
             let d = self
@@ -501,7 +526,7 @@ impl CaptureSource for DxgiCapture {
             };
             return Ok(Some(CapturedFrame {
                 frame_id: self.next_frame_id.saturating_sub(1),
-                timestamp_ns: self.now_ns(),
+                timestamp_ns: acquire_ns,
                 width_px: desc_w,
                 height_px: desc_h,
                 surface,
@@ -541,7 +566,7 @@ impl CaptureSource for DxgiCapture {
             );
             Ok(CapturedFrame {
                 frame_id,
-                timestamp_ns: self.now_ns(),
+                timestamp_ns: acquire_ns,
                 width_px: desc_w,
                 height_px: desc_h,
                 surface: surface.clone(),
@@ -552,9 +577,8 @@ impl CaptureSource for DxgiCapture {
         unsafe {
             let _ = duplication.ReleaseFrame();
         };
-        let mut frame = result?;
+        let frame = result?;
         self.last_surface = Some(frame.surface.clone());
-        frame.timestamp_ns = self.now_ns();
         Ok(Some(frame))
     }
 }

@@ -24,7 +24,68 @@ The soak captures the desktop at native 4K and encodes at 1080p — the
 scale+colorspace GPU pass is part of the measured loop (a heavier, not
 lighter, configuration than capturing 1080p directly).
 
-## Measured performance (30-minute soak, gate run)
+## Frame-rate against the 1080p60 budget (QA F20 note)
+
+Measured sustained rate is **57.0 fps** — 95% of the 60 fps target, and
+the shortfall is deterministic pacing overhead, not saturation: the
+capture thread sleeps until `1/fps_cap` after the *start* of the previous
+iteration and then pays `next_frame` (metadata + copy submit) plus sleep
+granularity, making the loop period 16.7 ms + ~0.8 ms. Evidence it is
+not load: capture→encode p50 0.02 ms and queue high-water 1 — nothing
+downstream is back-pressured. The pacing loop (wake-before-deadline with
+drift correction) is an M2 transport work item.
+
+`present_ns` measures `Present` **submission** (Present(0), no vsync
+wait, delta D4) — it excludes the display-refresh interval;
+input-to-visible budgets at M5 must add the refresh interval or read
+frame timing (QA F25 note, recorded so it is not rediscovered).
+
+## Re-soak of the final binary (QA F13 gate evidence)
+
+`docs/reports/data/m1-soak-final.jsonl{,.1,.2}.gz` +
+`m1-soak-final.summary.json` — 1800.0 s single process, exit 0, run on
+the committed final binary (all QA code fixes F15–F19/F25 included;
+`capture_ns` now stamped at AcquireNextFrame-return per the schema, so
+`capture_to_encode` below includes the DDA acquire+copy that the
+original soak accidentally excluded).
+
+- Frames: **102,685 captured / 102,685 encoded / 102,685 decoded /
+  102,684 presented** (one frame in flight at shutdown) — 57.05 fps
+  sustained, 100.0% of encoded frames presented. Keyframes 856, wire
+  1577.10 MiB (≈7.35 Mbps), stimulus active.
+- **CPU copies (measured, F16): readbacks 0, uploads 0** — the hardware
+  path's zero-CPU-pixel-traffic claim is now an asserted, committed
+  measurement (the software-path counterpart is asserted non-zero in
+  `software_encoder_decoder_round_trip`). IDR-gate drops: 0.
+- Per-stage latency (post warm-up, n = 99,280; same-clock totals):
+
+| stage | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| capture→encode submit (now incl. DDA acquire+copy) | 0.09 ms | 3.47 ms | 3.98 ms | 7.86 ms |
+| encode submit→done | 3.51 ms | 12.71 ms | 13.60 ms | 17.57 ms |
+| encode done→send | 0.02 ms | 0.03 ms | 0.07 ms | 0.19 ms |
+| recv→decode | 0.20 ms | 0.44 ms | 3.31 ms | 7.72 ms |
+| decode→present | 0.06 ms | 0.09 ms | 0.11 ms | 0.61 ms |
+| host half total | 3.63 ms | 12.85 ms | 13.75 ms | 17.65 ms |
+| controller half total | 0.26 ms | 0.52 ms | 3.39 ms | 7.79 ms |
+| **capture→present (same clock)** | **3.92 ms** | **13.29 ms** | **14.21 ms** | **20.47 ms** |
+
+- Queues: high-water **1/1, 1/1, 1/2→1, 1/1**; **dropped 0, replaced 0**
+  on every queue across the full 30 minutes (the original soak's 146
+  sporadic replacements were startup-window transients; the corrected
+  capture pacing window contains none). **Unstable windows: none**
+  (evaluated with the F15-corrected per-window deltas and the cap-1
+  pinned-never-drains rule).
+- **Memory: flat.** Working-set range 120.7 .. 128.7 MiB; 5-minute
+  bucket averages 127.6 → 128.3 → 128.4 → 128.5 → 128.6 → 128.6 MiB —
+  saturating within the first 10 minutes, +0.0 MiB/min thereafter
+  (contrast the pre-fix soak: 136.1 → 223.3 MiB linear). CPU
+  0.0–35.9 % of one core; sink backpressure 0; 1,030,423 records,
+  0 malformed.
+
+The gate budget check (bounded memory at 30-min gate duration) is met by
+this run; the 60-minute M6 soak remains the next duration claim to
+prove.
 
 Source: `docs/reports/data/m1-soak-30min.jsonl` (+ `.jsonl.1`, `.jsonl.2`
 — the writer rotated at 128 MiB per the F6 rule; all parts retained and
@@ -76,12 +137,15 @@ single capture_to_encode replacement (one obsolete frame dropped —
 exactly the newest-frame-wins policy doing its job under a transient
 burst).
 
-Memory: working set **120.3 .. 173.0 MiB** across 30 minutes (1 Hz
-ResourceSample range; plateau, no monotonic growth — a per-frame
-decoder-texture/view allocation leak was found and fixed during the
-sanity pass: before the fix the process exceeded 1 GiB and the driver
-suspended the device at ~3600 frames). CPU: 0.0 .. 35.9 % of one core.
-Sink backpressure events: **0**.
+Memory (this run — CORRECTED per QA F13): working set **120.3 → 232.0
+MiB, strictly monotonic (~3.4–4.5 MiB/min, 5-min bucket averages 136.1 →
+154.0 → 171.3 → 188.6 → 206.0 → 223.3 MiB)**. The run's summary line
+above (120.3 .. 173.0) was part-1-only (rotation truncation, F14) and the
+"plateau" claim was wrong: this soak leaked. Root cause: one
+video-processor input view per presented frame in the renderer (fixed
+post-soak by per-slot view caching; the earlier decoder-texture leak was
+fixed pre-soak). The fixed binary's gate evidence is the **re-soak
+below**. CPU: 0.0 .. 35.9 % of one core. Sink backpressure events: **0**.
 
 5-minute sanity pass (pre-gate, `m1-sanity-5min.summary.json`): 57.3 fps,
 capture→present p50 4.22 ms / p99 14.97 ms, working set 120.4–145.6 MiB —
@@ -143,6 +207,39 @@ counted by the same atomics and visible in the summary.
    `VideoEncoder::encode(force_keyframe)`. Over a real network an IDR
    after loss costs a full GOP-dependent refresh; M2's `KeyframeRequest`
    wiring should force immediately on PLI/FIR, not wait for the interval.
+
+## QA audit disposition (2026-09-24, docs/reports/m1-qa-audit.md)
+
+- **F13 (blocking)**: discharged — the re-soak above ran the final
+  committed binary for 1800 s with flat working set (numbers above);
+  the original soak's memory line is corrected in its section.
+- **F14**: discharged — `m1-soak-final.summary.json` is generated by the
+  multi-part reader and covers all three rotation parts
+  (frames 102,685 / run_secs 1800). The stale `m1-soak-30min.summary.json`
+  is kept as the leak-run's historical artifact, clearly superseded.
+- **F15**: summarizer window-delta baselines now carry the previous
+  window's cumulative counters (no false-positive dropped / no
+  false-negative replaced at boundaries); "pinned at capacity" for cap-1
+  queues requires ≥95% at capacity *and zero drained samples*. Schema
+  wording added to `docs/perf-counter-schema.md` (cap-1 refinement).
+- **F16**: `cpu_copies` (readbacks/uploads) wired into the counters line
+  and summary JSON; software-path test asserts readback/upload deltas
+  > 0, hardware-path tests assert == 0.
+- **F17**: `capture_ns` stamped at AcquireNextFrame-return inside
+  `DxgiCapture::next_frame` on the loop's session clock (deviation
+  removed); cursor-only frame-id reuse documented on `CapturedFrame`.
+- **F18**: resize wired end-to-end (`PresenterWindow::take_resized()` →
+  `D3D11Renderer::resize` in both binaries); IDR-after-reset gate
+  implemented in `MfDecoder` (`CodecError::DroppedAfterReset`) with test
+  `decoder_idr_gate_after_reset` and an `idr-gate-drops` counter in the
+  loop.
+- **F19**: `plane_layout` now takes height; NV12 UV offset =
+  `height * width`; test pins the correct span pointer.
+- **F25**: `MF_LOW_LATENCY` set on encoder+decoder input types; stale
+  `frame_id` note in `m2-transport-spike.md` corrected; present_ns
+  submission semantics noted above.
+- F20–F24: notes, no action (F20 pacing context added to the frame-rate
+  section above; F24 tagging deferred to the integrator).
 
 ## Reproduction
 

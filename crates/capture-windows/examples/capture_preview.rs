@@ -77,7 +77,7 @@ fn main() {
                 if !window.pump() {
                     break;
                 }
-                if window.resized {
+                if window.take_resized() {
                     let (w, h) = window.client_size();
                     let _ = renderer.resize(w.max(1) as u32, h.max(1) as u32);
                 }

@@ -185,6 +185,11 @@ fn main() {
     let encode_deferred = Arc::new(AtomicU64::new(0));
     let bytes_sent = Arc::new(AtomicU64::new(0));
     let keyframes = Arc::new(AtomicU64::new(0));
+    let idr_drops = Arc::new(AtomicU64::new(0));
+
+    // F16: CPU-copy baselines so the run reports measured deltas.
+    let readbacks0 = frame_surface::readback_count();
+    let uploads0 = frame_surface::upload_count();
 
     let deadline = Instant::now() + Duration::from_secs(args.duration_secs);
     let fps_cap = args.fps_cap;
@@ -210,6 +215,10 @@ fn main() {
             .spawn(move || {
                 attach_thread_to_input_desktop().expect("input desktop");
                 let mut cap = DxgiCapture::new(device.clone(), &monitor_arg).expect("duplicate");
+                // F17: capture_ns is stamped at AcquireNextFrame-return on
+                // the loop's session clock.
+                let stamp_clock = clock.clone();
+                cap.set_clock(Box::new(move || stamp_clock.ns()));
                 eprintln!(
                     "capture: {} at {}x{}",
                     cap.monitor_id(),
@@ -234,7 +243,9 @@ fn main() {
                                 continue;
                             }
                             frames_captured.fetch_add(1, Ordering::Relaxed);
-                            let capture_ns = clock.ns();
+                            // Schema pin: stamped at AcquireNextFrame
+                            // return inside `DxgiCapture::next_frame`.
+                            let capture_ns = frame.timestamp_ns;
                             let _ = q.push(CapItem {
                                 frame_id: frame.frame_id,
                                 capture_ns,
@@ -399,6 +410,7 @@ fn main() {
         let q_in = Arc::clone(&q_recv_dec);
         let q_out = Arc::clone(&q_dec_pres);
         let frames_decoded = Arc::clone(&frames_decoded);
+        let idr_drops = Arc::clone(&idr_drops);
         let clock = clock.clone();
         std::thread::Builder::new()
             .name("decode".into())
@@ -424,6 +436,12 @@ fn main() {
                             });
                         }
                         Err(CodecError::Timeout(_)) => {}
+                        // F18: expected after a loss reset — packets are
+                        // dropped until the next IDR; counted, not an
+                        // error.
+                        Err(CodecError::DroppedAfterReset(_)) => {
+                            idr_drops.fetch_add(1, Ordering::Relaxed);
+                        }
                         Err(e) => eprintln!("decode error: {e}"),
                     }
                 }
@@ -531,11 +549,13 @@ fn main() {
     summary.keyframes = keyframes.load(Ordering::Relaxed);
     summary.encoded_bytes = bytes_sent.load(Ordering::Relaxed);
     summary.backpressure_events = backpressure;
+    summary.readbacks = frame_surface::readback_count() - readbacks0;
+    summary.uploads = frame_surface::upload_count() - uploads0;
 
     let text = human_summary(&summary, &encoder_desc, &decoder_desc);
     println!("{text}");
     eprintln!(
-        "counters: captured {} encoded {} (deferred {}) decoded {} presented {} cursor-only {} keyframes {} wire {:.2} MiB stimulus-ticks {}",
+        "counters: captured {} encoded {} (deferred {}) decoded {} presented {} cursor-only {} keyframes {} wire {:.2} MiB stimulus-ticks {} cpu-copies(readback/upload) {}/{} idr-gate-drops {}",
         frames_captured.load(Ordering::Relaxed),
         frames_encoded.load(Ordering::Relaxed),
         encode_deferred.load(Ordering::Relaxed),
@@ -545,6 +565,9 @@ fn main() {
         keyframes.load(Ordering::Relaxed),
         bytes_sent.load(Ordering::Relaxed) as f64 / (1 << 20) as f64,
         loop_common::stimulus_ticks(),
+        summary.readbacks,
+        summary.uploads,
+        idr_drops.load(Ordering::Relaxed),
     );
     eprintln!(
         "report: {} ({} records, {} sink-backpressure events)",
@@ -636,6 +659,7 @@ fn write_summary_json(
             .map(|(w, r)| json!({ "window": w, "reason": r }))
             .collect::<Vec<_>>(),
         "sink_backpressure_events": summary.backpressure_events,
+        "cpu_copies": { "readbacks": summary.readbacks, "uploads": summary.uploads },
         "session_id": SESSION_ID,
     });
     let _ = std::fs::write(path, serde_json::to_string_pretty(&doc).unwrap_or_default());

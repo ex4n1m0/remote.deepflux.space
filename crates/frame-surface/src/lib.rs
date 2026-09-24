@@ -526,12 +526,12 @@ impl Drop for OwnedHandle {
 
 /// Plane layout for a readback/upload of a format: (offset, stride) per
 /// plane, given total width.
-pub fn plane_layout(format: SurfaceFormat, width: u32) -> Vec<(usize, usize)> {
+pub fn plane_layout(format: SurfaceFormat, width: u32, height: u32) -> Vec<(usize, usize)> {
     match format {
         SurfaceFormat::Bgra8 => vec![(0, (width as usize) * 4)],
         SurfaceFormat::Nv12 => {
             let y_stride = width as usize;
-            vec![(0, y_stride), (y_stride * 2, y_stride)]
+            vec![(0, y_stride), (y_stride * height as usize, y_stride)]
         }
     }
 }
@@ -558,7 +558,7 @@ impl CpuSurface {
     }
 
     pub fn plane_span(&self, plane: usize) -> &[u8] {
-        let layout = plane_layout(self.format, self.width);
+        let layout = plane_layout(self.format, self.width, self.height);
         let (off, stride) = layout[plane];
         let rows = match (self.format, plane) {
             (SurfaceFormat::Nv12, 1) => (self.height as usize).div_ceil(2),
@@ -587,7 +587,7 @@ pub fn readback(device: &GpuDevice, surface: &FrameSurface) -> Result<CpuSurface
             .context()
             .Map(staging.texture(), 0, D3D11_MAP_READ, 0, Some(&mut mapped))
             .map_err(|e| hr_err("Map", e))?;
-        let layout = plane_layout(surface.format, surface.width);
+        let layout = plane_layout(surface.format, surface.width, surface.height);
         let rows_y = surface.height as usize;
         let uv_rows = rows_y.div_ceil(2);
         let total = match surface.format {
@@ -682,7 +682,7 @@ pub fn upload_nv12_into(
         )?);
     }
     let target = dst.as_ref().expect("dst");
-    let layout = plane_layout(SurfaceFormat::Nv12, cpu.width);
+    let layout = plane_layout(SurfaceFormat::Nv12, cpu.width, cpu.height);
     let y_stride = layout[0].1;
     let rows_y = cpu.height as usize;
     let uv_rows = rows_y.div_ceil(2);
@@ -721,7 +721,7 @@ pub fn upload_nv12(device: &GpuDevice, cpu: &CpuSurface) -> Result<FrameSurface,
     if cpu.format != SurfaceFormat::Nv12 {
         return Err(SurfaceError::new("upload_nv12", 0, "not NV12"));
     }
-    let layout = plane_layout(SurfaceFormat::Nv12, cpu.width);
+    let layout = plane_layout(SurfaceFormat::Nv12, cpu.width, cpu.height);
     let y_stride = layout[0].1;
     let rows_y = cpu.height as usize;
     let uv_rows = rows_y.div_ceil(2);
@@ -784,14 +784,18 @@ mod tests {
 
     #[test]
     fn nv12_layout_minimal_strides() {
-        let layout = plane_layout(SurfaceFormat::Nv12, 1920);
+        let layout = plane_layout(SurfaceFormat::Nv12, 1920, 1080);
         assert_eq!(layout[0], (0, 1920));
-        // UV plane starts after 2 rows of Y per D3D11 planar layout.
-        assert_eq!(layout[1], (3840, 1920));
+        // In a tight buffer the UV plane starts after all 1080 rows of Y.
+        assert_eq!(layout[1], (1080 * 1920, 1920));
         let cpu = CpuSurface::nv12_tight(64, 32);
         assert_eq!(cpu.data.len(), 64 * 32 * 3 / 2);
         assert_eq!(cpu.plane_span(0).len(), 64 * 32);
-        assert_eq!(cpu.plane_span(1).len(), 64 * 16);
+        // F19: the UV span must be the last height/2 rows, not bytes from
+        // the middle of the Y plane (old wrong offset was 2*64 = 128).
+        let span = cpu.plane_span(1);
+        assert_eq!(span.len(), 64 * 16);
+        assert_eq!(span.as_ptr(), cpu.data[64 * 32..].as_ptr());
     }
 
     #[test]

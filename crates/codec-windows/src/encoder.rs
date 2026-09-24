@@ -13,8 +13,8 @@ use windows::Win32::Media::MediaFoundation::{
     CODECAPI_AVEncMPVGOPSize, CODECAPI_AVEncVideoForceKeyFrame, CODECAPI_AVLowLatencyMode,
     ICodecAPI, IMFActivate, IMFAttributes, IMFMediaBuffer, IMFMediaEventGenerator, IMFSample,
     IMFTransform, METransformHaveOutput, METransformNeedInput, MF_E_TRANSFORM_STREAM_CHANGE,
-    MF_EVENT_FLAG_NO_WAIT, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE,
-    MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SA_D3D11_AWARE, MF_TRANSFORM_ASYNC,
+    MF_EVENT_FLAG_NO_WAIT, MF_LOW_LATENCY, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
+    MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SA_D3D11_AWARE, MF_TRANSFORM_ASYNC,
     MF_TRANSFORM_ASYNC_UNLOCK, MFCreateDXGISurfaceBuffer, MFCreateMemoryBuffer, MFCreateSample,
     MFMediaType_Video, MFSampleExtension_CleanPoint, MFT_CATEGORY_VIDEO_ENCODER,
     MFT_ENUM_ADAPTER_LUID, MFT_ENUM_FLAG, MFT_ENUM_FLAG_HARDWARE, MFT_ENUM_FLAG_SYNCMFT,
@@ -495,6 +495,10 @@ impl MfEncoder {
             in_type
                 .SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
                 .ok();
+            // F25: the low-latency media-type attribute alongside the
+            // codec-API property (the crate docs claimed both; only the
+            // property was set).
+            in_type.SetUINT32(&MF_LOW_LATENCY, 1).ok();
             transform.SetInputType(0, &in_type, 0).map_err(|e| {
                 CodecError::FormatNegotiation(format!("SetInputType: {}", e.message()))
             })?;
@@ -585,6 +589,14 @@ impl MfEncoder {
                 frames_encoded: 0,
             })
         }
+    }
+
+    /// The shared D3D11 device this encoder (and its converter) run on —
+    /// input surfaces must live on it (same-device zero-copy contract,
+    /// ADR-001 M1 amendment). Exposed for tests and node runtimes that
+    /// allocate source surfaces.
+    pub fn shared_device(&self) -> GpuDevice {
+        self.device.clone()
     }
 
     /// Which MFT is active (for the diagnostics report).

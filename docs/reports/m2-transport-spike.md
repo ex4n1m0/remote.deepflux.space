@@ -164,8 +164,9 @@ round-trips).
    is_keyframe, bytes}`). `KeyframeRequest` → `force_intra_frame` /
    M1's keyframe path is already wired end-to-end over the control channel.
 2. `VideoFrame { frame_id, timestamp_ns, is_keyframe, bytes }` is the
-   transport-side handoff; M1's `EncodedPacket` maps 1:1 (add `frame_id`
-   from the capture stage).
+   transport-side handoff; M1's `EncodedPacket` already carries all four
+   fields (frame_id flows from capture through the handoff — no codec
+   change needed; the spike's own mirror type simply lacked it).
 3. `send_video` packetizes Annex-B (RFC 6184) at MTU 1200 with 90 kHz
    timestamps from `timestamp_ns`; M1's decoder consumes
    `ReceivedFrame.bytes` (Annex-B) directly — the rig's openh264 decoder

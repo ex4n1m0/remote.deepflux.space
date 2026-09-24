@@ -28,8 +28,10 @@ pub struct PresenterWindow {
     hwnd: HWND,
     class_atom: u16,
     client: (i32, i32),
-    /// Set by WM_SIZE; consumed by the renderer to resize its swapchain.
-    pub resized: bool,
+    /// Set when the client size changed since the last `take_resized()`
+    /// (F18: previously documented but never set — the resize path was
+    /// dead code until this was wired).
+    resized: bool,
 }
 
 impl PresenterWindow {
@@ -113,6 +115,10 @@ impl PresenterWindow {
 
     /// Drain pending window messages (non-blocking). Returns `false`
     /// when the window has been closed/destroyed — stop presenting.
+    ///
+    /// WM_SIZE itself goes to `DefWindowProcW`; resize detection happens
+    /// here by comparing the client rect every pump (robust against
+    /// missed messages) and latches `resized` for the renderer.
     pub fn pump(&mut self) -> bool {
         unsafe {
             let mut msg = MSG::default();
@@ -123,9 +129,20 @@ impl PresenterWindow {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
+            let before = self.client;
             self.update_client_size();
+            if self.client != before {
+                self.resized = true;
+            }
             true
         }
+    }
+
+    /// Consume the pending-resize flag (F18). The presenting thread must
+    /// call `D3D11Renderer::resize` with the new client size when this
+    /// returns true, or the swapchain goes stale.
+    pub fn take_resized(&mut self) -> bool {
+        std::mem::take(&mut self.resized)
     }
 }
 

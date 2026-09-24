@@ -43,6 +43,8 @@ fn software_encoder_decoder_round_trip() {
         .expect("software decoder");
     assert_eq!(decoder.kind(), CodecKind::Software);
 
+    let readbacks0 = frame_surface::readback_count();
+    let uploads0 = frame_surface::upload_count();
     let mut keyframes = 0;
     let mut frames = 0;
     let mut total_bytes = 0u64;
@@ -81,6 +83,18 @@ fn software_encoder_decoder_round_trip() {
     // With the low-latency configuration the software encoder is
     // strictly one-in-one-out (measured: 31/31).
     assert_eq!(frames, 31, "expected one output per input");
+    // F16: the software path's CPU copies are MEASURED, not inspected —
+    // one NV12 readback per encoded frame, one upload per decoded frame.
+    assert!(
+        frame_surface::readback_count() - readbacks0 >= 31,
+        "software encoder must read back every input frame (got {})",
+        frame_surface::readback_count() - readbacks0
+    );
+    assert!(
+        frame_surface::upload_count() - uploads0 >= 31,
+        "software decoder must upload every output frame (got {})",
+        frame_surface::upload_count() - uploads0
+    );
     // First frame must be an IDR; with GOP 60 only one keyframe in 30.
     assert!(keyframes >= 1, "expected at least the first-frame IDR");
     eprintln!(
@@ -88,6 +102,84 @@ fn software_encoder_decoder_round_trip() {
         total_bytes * 8 * 30 / 30 / 1_000
     );
     assert!(total_bytes > 0);
+}
+
+#[test]
+#[ignore = "requires Media Foundation + real GPU (software codec path)"]
+fn decoder_idr_gate_after_reset() {
+    // F18: after `reset()` (loss recovery) non-IDR packets must be
+    // dropped until the next IDR — decoding mid-GOP after a flush
+    // references a broken chain and corrupts the picture.
+    let _mf = MfRuntime::new().expect("MFStartup");
+    let device = frame_surface::GpuDevice::create_hardware().expect("hardware device");
+    let cfg = MfEncoderConfig {
+        width: 320,
+        height: 240,
+        fps: 30,
+        bitrate_bps: 2_000_000,
+        gop_size: 10, // short GOP so keyframes arrive quickly
+        preference: MfEncoderPreference::Software,
+    };
+    let mut encoder = MfEncoder::new(device.clone(), cfg.clone()).expect("software encoder");
+    let mut decoder = MfDecoder::new(device, MfDecoderConfig { use_gpu: false }).expect("decoder");
+
+    let encode = |encoder: &mut MfEncoder, frame_id: u64, force: bool| loop {
+        let surface = frame_surface::FrameSurface::new(
+            &encoder.shared_device(),
+            cfg.width,
+            cfg.height,
+            frame_surface::SurfaceFormat::Bgra8,
+        )
+        .expect("surface");
+        let input = EncodeInput {
+            frame_id,
+            timestamp_ns: 0,
+            surface,
+        };
+        match encoder.encode(input, force) {
+            Ok(p) => return p,
+            // Software depth-1 pipeline: output defers to the next input.
+            Err(CodecError::Timeout(_)) => continue,
+            Err(e) => panic!("encode: {e}"),
+        }
+    };
+
+    // Warm up: first frame is an IDR and decodes.
+    let idr = encode(&mut encoder, 1, false);
+    assert!(idr.is_keyframe, "first frame must be an IDR");
+    decoder.decode(&idr.bytes, 1, 0).expect("decode IDR");
+
+    // Non-IDR packet after reset must be dropped by the gate.
+    decoder.reset().expect("reset");
+    let non_idr = (2u64..14)
+        .map(|i| encode(&mut encoder, i, false))
+        .find(|p| !p.is_keyframe)
+        .expect("a non-IDR packet within the GOP");
+    match decoder.decode(&non_idr.bytes, 2, 0) {
+        Err(CodecError::DroppedAfterReset(_)) => {}
+        other => panic!("expected DroppedAfterReset, got {other:?}"),
+    }
+
+    // The next IDR decodes again and clears the gate; a following
+    // non-IDR frame decodes normally.
+    let idr2 = loop {
+        let p = encode(&mut encoder, 99, true);
+        if p.is_keyframe {
+            break p;
+        }
+    };
+    decoder
+        .decode(&idr2.bytes, 3, 0)
+        .expect("IDR after reset decodes");
+    let after = loop {
+        let p = encode(&mut encoder, 100, false);
+        if !p.is_keyframe {
+            break p;
+        }
+    };
+    decoder
+        .decode(&after.bytes, 4, 0)
+        .expect("post-IDR frame decodes");
 }
 
 #[test]
@@ -184,6 +276,8 @@ fn hardware_encoder_accepts_gpu_input() {
         MfDecoder::new(device.clone(), MfDecoderConfig { use_gpu: true }).expect("decoder");
     eprintln!("decoder: {}", decoder.describe());
 
+    let readbacks0 = frame_surface::readback_count();
+    let uploads0 = frame_surface::upload_count();
     // Feed synthetic BGRA frames through the full path the loop uses:
     // BGRA -> converter (inside encoder) -> NV12 -> encode -> decode.
     let mut bgra = frame_surface::FrameSurface::new(
@@ -220,4 +314,15 @@ fn hardware_encoder_accepts_gpu_input() {
             cfg.height
         );
     }
+    // F16: the hardware path claims zero CPU pixel traffic — assert it.
+    assert_eq!(
+        frame_surface::readback_count() - readbacks0,
+        0,
+        "hardware path must not read back pixels"
+    );
+    assert_eq!(
+        frame_surface::upload_count() - uploads0,
+        0,
+        "DXVA path must not upload pixels"
+    );
 }

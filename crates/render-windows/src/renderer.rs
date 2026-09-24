@@ -162,7 +162,8 @@ impl D3D11Renderer {
         }
     }
 
-    /// Resize the swapchain (call from WM_SIZE handling).
+    /// Resize the swapchain — call when `PresenterWindow::take_resized()`
+    /// returns true (F18: this was dead code until the flag was wired).
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), RenderError> {
         unsafe {
             self.output_view = None;

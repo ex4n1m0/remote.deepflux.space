@@ -102,6 +102,12 @@ pub struct CaptureMetadata {
 
 /// One acquired desktop frame. The pixels stay on the GPU in `surface`;
 /// bytes exist only inside the platform crates (invariant 1).
+///
+/// Note on cursor-only updates (`metadata.only_cursor_update`): they
+/// carry the *previous* pixel frame's surface and `frame_id` unchanged —
+/// consumers must not emit a new `FrameTiming` record for them (the
+/// schema joins on `frame_id`; a second record with the same id smears
+/// the latency join). The M1 loop skips them for encode entirely.
 #[derive(Debug)]
 pub struct CapturedFrame {
     /// Host-assigned frame id (perf-counter schema join key; starts at 1

@@ -1,0 +1,109 @@
+{
+  "decoder": "Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)",
+  "encoder": "NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 8000000 bps CBR, GOP 120)",
+  "frames": {
+    "host": 3450,
+    "presented": 3450
+  },
+  "keyframes": 29,
+  "queues": {
+    "CaptureToEncode": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    },
+    "DecodeToPresent": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    },
+    "EncodeToSend": {
+      "capacity": 1,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    },
+    "RecvToDecode": {
+      "capacity": 2,
+      "dropped": 0,
+      "high_water": 1,
+      "replaced": 0
+    }
+  },
+  "resource": {
+    "cpu_percent_min_max": [
+      1.5625,
+      20.312498092651367
+    ],
+    "working_set_bytes_min_max": [
+      126545920,
+      133881856
+    ]
+  },
+  "run_secs": 60,
+  "session_id": "local-loop",
+  "sink_backpressure_events": 0,
+  "stages": {
+    "capture_to_encode": {
+      "count": 31,
+      "max_ms": 3.5216,
+      "p50_ms": 0.0173,
+      "p95_ms": 3.074,
+      "p99_ms": 3.5216
+    },
+    "capture_to_present_same_clock": {
+      "count": 31,
+      "max_ms": 13.9992,
+      "p50_ms": 3.8829,
+      "p95_ms": 13.4284,
+      "p99_ms": 13.9992
+    },
+    "controller_half_total": {
+      "count": 31,
+      "max_ms": 3.1618,
+      "p50_ms": 0.2712,
+      "p95_ms": 2.7102,
+      "p99_ms": 3.1618
+    },
+    "decode_to_present": {
+      "count": 31,
+      "max_ms": 0.097,
+      "p50_ms": 0.0516,
+      "p95_ms": 0.0962,
+      "p99_ms": 0.097
+    },
+    "encode_done_to_send": {
+      "count": 31,
+      "max_ms": 0.0328,
+      "p50_ms": 0.0163,
+      "p95_ms": 0.0289,
+      "p99_ms": 0.0328
+    },
+    "encode_submit_to_done": {
+      "count": 31,
+      "max_ms": 13.4364,
+      "p50_ms": 3.5682,
+      "p95_ms": 12.9801,
+      "p99_ms": 13.4364
+    },
+    "host_half_total": {
+      "count": 31,
+      "max_ms": 13.4879,
+      "p50_ms": 3.6026,
+      "p95_ms": 13.0089,
+      "p99_ms": 13.4879
+    },
+    "recv_to_decode": {
+      "count": 31,
+      "max_ms": 3.0866,
+      "p50_ms": 0.2106,
+      "p95_ms": 2.6428,
+      "p99_ms": 3.0866
+    }
+  },
+  "unstable_windows": [],
+  "warmup_secs": 60,
+  "wire_bytes": 55641938
+}

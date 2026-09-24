@@ -14,7 +14,7 @@ use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_NV12;
 use windows::Win32::Media::MediaFoundation::{
     CODECAPI_AVLowLatencyMode, ICodecAPI, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
     IMFMediaBuffer, IMFSample, IMFTransform, MF_E_TRANSFORM_NEED_MORE_INPUT,
-    MF_E_TRANSFORM_STREAM_CHANGE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
+    MF_E_TRANSFORM_STREAM_CHANGE, MF_LOW_LATENCY, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
     MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_SUBTYPE, MFCreateMemoryBuffer, MFCreateSample,
     MFMediaType_Video, MFSampleExtension_CleanPoint, MFT_CATEGORY_VIDEO_DECODER,
     MFT_ENUM_FLAG_HARDWARE, MFT_ENUM_FLAG_SYNCMFT, MFT_FRIENDLY_NAME_Attribute,
@@ -25,7 +25,7 @@ use windows::core::Interface;
 
 use frame_surface::{CpuSurface, FrameSurface, GpuDevice};
 
-use crate::{CodecError, CodecKind, DecodedFrame, VideoDecoder};
+use crate::{CodecError, CodecKind, DecodedFrame, VideoDecoder, annex_b_is_keyframe};
 
 /// Decoder configuration.
 #[derive(Debug, Clone)]
@@ -63,6 +63,9 @@ pub struct MfDecoder {
     /// (~3600 frames in); the ring bounds GPU memory.
     owned_ring: Vec<FrameSurface>,
     owned_next: usize,
+    /// F18 IDR gate: true after `reset()` until an IDR access unit is
+    /// fed; non-keyframe packets are dropped meanwhile.
+    awaiting_idr: bool,
 }
 
 unsafe impl Send for MfDecoder {}
@@ -125,6 +128,9 @@ impl MfDecoder {
             let in_type = new_media_type()?;
             in_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok();
             in_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264).ok();
+            // F25: low-latency media-type attribute (docs previously
+            // claimed MF_LOW_LATENCY without setting it).
+            in_type.SetUINT32(&MF_LOW_LATENCY, 1).ok();
             transform.SetInputType(0, &in_type, 0).map_err(|e| {
                 CodecError::FormatNegotiation(format!("decoder SetInputType: {}", e.message()))
             })?;
@@ -157,6 +163,7 @@ impl MfDecoder {
                 upload_dst: None,
                 owned_ring: Vec::new(),
                 owned_next: 0,
+                awaiting_idr: false,
             })
         }
     }
@@ -309,6 +316,16 @@ impl VideoDecoder for MfDecoder {
         frame_id: u64,
         timestamp_ns: u64,
     ) -> Result<DecodedFrame, CodecError> {
+        // F18: after a reset (loss recovery) the reference chain is gone —
+        // drop non-IDR access units instead of decoding corruption.
+        if self.awaiting_idr {
+            if !annex_b_is_keyframe(packet) {
+                return Err(CodecError::DroppedAfterReset(format!(
+                    "frame {frame_id} is not an IDR"
+                )));
+            }
+            self.awaiting_idr = false;
+        }
         unsafe {
             // Input sample from the packet bytes (this copy is the wire
             // boundary — over the network in M2 the same bytes arrive in
@@ -553,6 +570,9 @@ impl VideoDecoder for MfDecoder {
     }
 
     fn reset(&mut self) -> Result<(), CodecError> {
+        // F18: arm the IDR gate — the flushed reference chain cannot
+        // decode mid-GOP packets.
+        self.awaiting_idr = true;
         unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0)
