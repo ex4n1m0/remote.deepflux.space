@@ -11,7 +11,7 @@ workspace = true
 # nothing but the windows/D3D bindings. Platform crates (capture/codec/render)
 # share GPU textures through this type instead of depending on each other.
 [dependencies]
-windows = { version = "=0.62.2", features = [
+windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",

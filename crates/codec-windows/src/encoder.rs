@@ -243,10 +243,10 @@ fn async_encoder_worker(
             break;
         }
 
-        if pending.is_none() {
-            if let Ok(next) = submit_rx.try_recv() {
-                pending = Some(next);
-            }
+        if pending.is_none()
+            && let Ok(next) = submit_rx.try_recv()
+        {
+            pending = Some(next);
         }
         if need_input > 0
             && let Some(SubmitInput {

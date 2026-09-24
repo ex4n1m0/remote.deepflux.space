@@ -137,7 +137,9 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
 
 - **Edition 2024** (deliberate: toolchain is Rust 1.98; no legacy reason to
   stay on 2021; 2024's stricter unsafe/lifetime rules fit new code). MSRV
-  1.85 (first edition-2024 stable). Recorded in `[workspace.package]`.
+  **1.88**: edition-2024's floor is 1.85, but the transport dep tree (`rtc`
+  0.21) uses let-chains, raising the effective MSRV. Recorded in
+  `[workspace.package]`.
 - Workspace versioning/lints come from the root `Cargo.toml`
   (`clippy::all = warn` + `rust_2018_idioms = warn`, escalated to deny by the
   gate). Crate dependencies go through `[workspace.dependencies]`.

@@ -14,7 +14,7 @@ diagnostics = { path = "../diagnostics" }
 # capture stage emits exactly what the `cursor` data channel will carry in M2
 # (ADR-001 rule 3 explicitly allows platform crates to depend on `protocol`).
 protocol = { path = "../protocol" }
-windows = { version = "=0.62.2", features = [
+windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",
@@ -30,8 +30,8 @@ windows = { version = "=0.62.2", features = [
 # (ADR-001 rule 3 — composition happens in binaries, not library deps).
 codec-windows = { path = "../codec-windows" }
 render-windows = { path = "../render-windows" }
-serde_json = "1"
-windows = { version = "=0.62.2", features = [
+serde_json = { workspace = true }
+windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",

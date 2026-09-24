@@ -211,10 +211,10 @@ impl ControllerSession {
         event: ControllerEvent,
         now_ms: u64,
     ) -> Result<Vec<Action>, IllegalTransition> {
-        if let Some(id) = event.message_id() {
-            if !self.seen.observe(id) {
-                return Ok(Vec::new());
-            }
+        if let Some(id) = event.message_id()
+            && !self.seen.observe(id)
+        {
+            return Ok(Vec::new());
         }
         let state_name = self.state.name();
         let event_name = event.name();
