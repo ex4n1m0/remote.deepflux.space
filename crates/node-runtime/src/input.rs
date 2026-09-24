@@ -37,6 +37,14 @@ pub struct InputCounters {
     pub moves_applied: u64,
     pub moves_stale_suppressed: u64,
     pub reliable_applied: u64,
+    /// Exact-duplicate reliable seqs suppressed (F28: a re-delivered
+    /// `Wheel`/`Text` must not double-fire; keys/buttons would be
+    /// neutralized by the sink anyway, this closes the class).
+    pub reliable_duplicates_suppressed: u64,
+    /// Reliable events below the watermark dropped (reorder artifacts on
+    /// an ordered channel — defensive only, counted separately from fast
+    /// stales).
+    pub reliable_stale_suppressed: u64,
     pub sequence_gaps: u64,
     pub all_keys_up: u64,
     pub inject_errors: u64,
@@ -86,22 +94,24 @@ impl<S: InputSink> InputPump<S> {
             | InputEvent::MouseButton { seq, .. }
             | InputEvent::Wheel { seq, .. }
             | InputEvent::Text { seq, .. } => {
+                // Order: gap check (may force-release) → apply only a
+                // strictly-newer seq. An exact duplicate of the watermark
+                // is suppressed (F28); older reliable events are stale
+                // reorder artifacts, suppressed separately.
+                let pre_watermark = self.last_reliable_seq;
                 let post_gap = self.gap_check(*seq);
-                if post_gap || self.last_reliable_seq.is_none_or(|last| *seq == last) {
-                    // Post-gap event (state was just force-released) or the
-                    // in-sequence event: apply.
-                    self.inject(event);
-                    self.counters.reliable_applied += 1;
-                } else if self.last_reliable_seq.is_none_or(|last| *seq > last) {
-                    self.last_reliable_seq = Some(*seq);
-                    self.inject(event);
-                    self.counters.reliable_applied += 1;
-                }
-                // Re-delivered/reordered stale reliable events are dropped
-                // (counted as stale) — the reliable channel does not
-                // redeliver, so this is defensive only.
-                else {
-                    self.counters.moves_stale_suppressed += 1;
+                match pre_watermark {
+                    Some(last) if *seq == last => {
+                        self.counters.reliable_duplicates_suppressed += 1;
+                    }
+                    Some(last) if *seq < last => {
+                        self.counters.reliable_stale_suppressed += 1;
+                    }
+                    _ => {
+                        let _ = post_gap;
+                        self.inject(event);
+                        self.counters.reliable_applied += 1;
+                    }
                 }
             }
             InputEvent::AllKeysUp { trigger } => {
@@ -311,6 +321,36 @@ mod tests {
         assert_eq!(pump.held_count(), 0);
         assert_eq!(pump.counters().all_keys_up, 2);
         assert_eq!(pump.last_trigger(), Some(AllKeysUpTrigger::Disconnect));
+    }
+
+    /// F28: an exact-duplicate reliable seq is suppressed, not re-applied
+    /// (a re-delivered `Wheel` must not scroll twice, `Text` not type
+    /// twice); older reliable arrivals are counted as stale reorders.
+    #[test]
+    fn duplicate_reliable_seq_is_suppressed_not_reapplied() {
+        let mut pump = InputPump::new(RecordingSink::new());
+        let wheel = |seq: u64| InputEvent::Wheel {
+            seq,
+            delta_v: -120,
+            delta_h: 0,
+        };
+        pump.on_input(&wheel(5));
+        pump.on_input(&wheel(5)); // exact duplicate
+        pump.on_input(&wheel(3)); // stale reorder artifact
+        pump.on_input(&wheel(6)); // next in sequence
+        let counters = pump.counters();
+        assert_eq!(counters.reliable_applied, 2, "only seq 5 and 6 applied");
+        assert_eq!(counters.reliable_duplicates_suppressed, 1);
+        assert_eq!(counters.reliable_stale_suppressed, 1);
+        // The sink saw exactly two injections (duplicate and stale dropped
+        // before inject, not neutralized inside the sink).
+        let sink = pump.sink_mut();
+        assert_eq!(sink.injected, 2);
+        // A duplicate after a gap is still a duplicate (watermark moved).
+        pump.on_input(&wheel(9)); // gap 6→9 fires release, then applies 9
+        pump.on_input(&wheel(9));
+        assert_eq!(pump.counters().reliable_duplicates_suppressed, 2);
+        assert_eq!(pump.counters().reliable_applied, 3);
     }
 
     #[test]

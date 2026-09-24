@@ -103,23 +103,40 @@ impl JsonlReport {
             .spawn(move || {
                 let file = std::fs::File::create(&writer_path).expect("create report file");
                 let mut out = std::io::BufWriter::with_capacity(1 << 20, file);
+                // F6 rotation: split at 128 MiB into `.jsonl.1`, `.jsonl.2`,
+                // ... (tooling safety; all parts retained by the caller).
+                const ROTATE_BYTES: usize = 128 * 1024 * 1024;
+                let mut written: usize = 0;
+                let mut part: u32 = 0;
                 loop {
-                    match rx.recv_timeout(Duration::from_millis(200)) {
-                        Ok(record) => {
-                            let _ = serde_json::to_writer(&mut out, &record);
-                            let _ = out.write_all(b"\n");
-                            records_w.fetch_add(1, Ordering::Relaxed);
-                        }
+                    let record = match rx.recv_timeout(Duration::from_millis(200)) {
+                        Ok(record) => record,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                             if stop_w.load(Ordering::Acquire) {
                                 break;
                             }
+                            continue;
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    };
+                    let line = serde_json::to_string(&record).unwrap_or_default();
+                    let _ = out.write_all(line.as_bytes());
+                    let _ = out.write_all(b"\n");
+                    written += line.len() + 1;
+                    records_w.fetch_add(1, Ordering::Relaxed);
+                    if written >= ROTATE_BYTES
+                        && let Ok(next) =
+                            std::fs::File::create(format!("{}.{}", writer_path.display(), part + 1))
+                    {
+                        let _ = out.flush();
+                        part += 1;
+                        written = 0;
+                        out = std::io::BufWriter::with_capacity(1 << 20, next);
                     }
                 }
                 while let Ok(record) = rx.try_recv() {
-                    let _ = serde_json::to_writer(&mut out, &record);
+                    let line = serde_json::to_string(&record).unwrap_or_default();
+                    let _ = out.write_all(line.as_bytes());
                     let _ = out.write_all(b"\n");
                     records_w.fetch_add(1, Ordering::Relaxed);
                 }

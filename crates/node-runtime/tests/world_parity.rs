@@ -8,13 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use node_runtime::clock::ManualClock;
-use node_runtime::node::{Node, NodeObserver};
+use node_runtime::node::{NoObserver, Node, NodeObserver};
 use node_runtime::signaling::{InboundEnvelope, SignalingHub};
 use node_runtime::timers::MachineKind;
 use protocol::capabilities::{
     Capabilities, EncoderCapabilities, EncoderKind, FeatureFlags, MonitorInfo,
 };
 use protocol::signaling::SessionSecret;
+use protocol::signaling::SignalingEnvelope;
 use session::{ControllerState, DisconnectCause, HostState, SessionConfig};
 use transport_webrtc::{Channel, Transport, TransportError, TransportEvent, TransportStats};
 
@@ -223,6 +224,13 @@ impl TestNode {
             Box::new(hub.clone().attach(device)),
         );
         node.attach_transport(ScriptedTransport::new());
+        // A device playing the controller role owns a controller transport;
+        // device names ending in -b play host here (mirror of the rig).
+        node.set_transport_owner(if device.ends_with("-b") {
+            MachineKind::Host
+        } else {
+            MachineKind::Controller
+        });
         Self {
             node,
             clock,
@@ -496,6 +504,135 @@ fn simultaneous_calls_resolve_deterministically_by_device_id() {
     assert_eq!(a.node.host_state().name(), "Online");
     assert_eq!(a.node.counters().illegal_transitions, 0);
     assert_eq!(b.node.counters().illegal_transitions, 0);
+}
+
+/// QA F36b: error strings carrying SDP material are redacted before they
+/// reach an observer (invariant-6 choke point); clean reasons pass through.
+#[test]
+fn transport_failure_reasons_never_carry_sdp_material() {
+    #[derive(Default, Clone)]
+    struct ReasonCatcher {
+        reasons: Arc<Mutex<Vec<String>>>,
+    }
+    impl NodeObserver for ReasonCatcher {
+        fn transport_failure(&mut self, reason: &str) {
+            self.reasons
+                .lock()
+                .expect("catcher")
+                .push(reason.to_owned());
+        }
+    }
+    let clock = Arc::new(ManualClock::new());
+    let catcher = ReasonCatcher::default();
+    let mut node = Node::new(
+        "device-x",
+        SessionConfig::default(),
+        clock,
+        Box::new(FailingServiceIo {
+            fail_service: false,
+            received: Vec::new(),
+        }),
+    );
+    node.attach_transport(ScriptedTransport::new());
+    let mut observer = catcher.clone();
+    // A malicious/corrupt upstream error embedding SDP lines.
+    node.transport_event(
+        TransportEvent::Failed {
+            reason: "set_remote_description failed: invalid offer: o=- 4611 2 IN IP4 127.0.0.1 a=ice-pwd:1P2abcDEFdefGHIghiJKLjklMNOpqr345".to_owned(),
+        },
+        &mut observer,
+    );
+    // A clean error passes verbatim.
+    node.transport_event(
+        TransportEvent::Failed {
+            reason: "data channel error on input-fast".to_owned(),
+        },
+        &mut observer,
+    );
+    let reasons = catcher.reasons.lock().expect("catcher").clone();
+    assert_eq!(reasons.len(), 2);
+    assert!(
+        reasons[0].contains("<redacted"),
+        "SDP-bearing reason leaked: {}",
+        reasons[0]
+    );
+    assert!(!reasons[0].contains("ice-pwd"));
+    assert_eq!(reasons[1], "data channel error on input-fast");
+}
+
+/// F27: the Register self-ack is queued only after the adapter write
+/// succeeded — a failing service-directed Register leaves the machine in
+/// `Registering`, never a phantom `Online`.
+struct FailingServiceIo {
+    fail_service: bool,
+    received: Vec<SignalingEnvelope>,
+}
+
+impl node_runtime::signaling::SignalingIo for FailingServiceIo {
+    fn send(
+        &mut self,
+        _from_machine: MachineKind,
+        envelope: SignalingEnvelope,
+    ) -> Result<(), String> {
+        if envelope.to_device_id == protocol::signaling::SIGNALING_SERVICE_ID {
+            if self.fail_service {
+                return Err("service unreachable (test)".to_owned());
+            }
+            return Ok(());
+        }
+        self.received.push(envelope);
+        Ok(())
+    }
+
+    fn poll_incoming(&mut self) -> Vec<node_runtime::signaling::InboundEnvelope> {
+        Vec::new()
+    }
+
+    fn service_swallowed(&self) -> u64 {
+        0
+    }
+
+    fn describe(&self) -> String {
+        "failing-service(test)".to_owned()
+    }
+}
+
+#[test]
+fn failed_register_write_does_not_self_ack_online() {
+    let clock = Arc::new(ManualClock::new());
+    let mut node = Node::new(
+        "device-x",
+        SessionConfig::default(),
+        clock.clone(),
+        Box::new(FailingServiceIo {
+            fail_service: true,
+            received: Vec::new(),
+        }),
+    );
+    let mut observer = NoObserver;
+    node.host_start(caps(), &mut observer);
+    node.pump(&mut observer);
+    node.pump(&mut observer);
+    assert_eq!(
+        node.host_state().name(),
+        "Registering",
+        "a failed Register write must not ack Registered"
+    );
+
+    // The same node with a healthy adapter reaches Online (control).
+    let mut node = Node::new(
+        "device-x",
+        SessionConfig::default(),
+        clock.clone(),
+        Box::new(FailingServiceIo {
+            fail_service: false,
+            received: Vec::new(),
+        }),
+    );
+    node.host_start(caps(), &mut observer);
+    node.pump(&mut observer);
+    node.pump(&mut observer);
+    assert_eq!(node.host_state().name(), "Online");
 }
 
 /// QA F2 window: the peer's request arrives after our own was already
@@ -815,6 +952,40 @@ fn ice_candidates_route_to_the_peer_transport_owner() {
         "host candidate must be signaled to device-a"
     );
     assert!(a.node.counters().ice_forwarded >= 1);
+
+    // Mirror direction (F34): the CONTROLLER-owned transport on device-a
+    // gathers a candidate; the minted envelope is tagged Controller and
+    // reaches the peer's HOST machine, whose ForwardIce feeds the host
+    // transport.
+    let mut observer_a = a.recorder.clone();
+    a.node.transport_event(
+        TransportEvent::IceCandidate {
+            candidate: "candidate:3 1 UDP 1 10.0.0.3 5002 typ host".to_owned(),
+            sdp_mid: Some("0".to_owned()),
+            sdp_mline_index: Some(0),
+        },
+        &mut observer_a,
+    );
+    settle(&mut a, &mut b);
+    let tagged_controller = hub.sent_log().into_iter().any(|(from, machine, env)| {
+        from == "device-a"
+            && machine == MachineKind::Controller
+            && matches!(
+                env.body,
+                protocol::signaling::SignalingBody::IceCandidate { .. }
+            )
+            && env.to_device_id == "device-b"
+    });
+    assert!(
+        tagged_controller,
+        "controller-owned transport's candidate must be tagged Controller"
+    );
+    assert!(
+        b.node.counters().ice_forwarded >= 1,
+        "device-b's host machine forwards the controller candidate (got {})",
+        b.node.counters().ice_forwarded
+    );
+    assert_eq!(b.node.counters().illegal_transitions, 0);
 }
 
 /// Heartbeat cadence is runtime-owned: HeartbeatDue fires on period while

@@ -1,0 +1,115 @@
+{
+ "files": [
+  "C:/Users/igorc/AppData/Local/Temp/rd-m2-metrics/m2-rig-20260924-rig-host-42.jsonl"
+ ],
+ "origin": "host",
+ "sessions": [
+  "rig-controller-ctrl-2"
+ ],
+ "joined_frames_post_warmup": 29207,
+ "warmup_secs": 60,
+ "stages": {
+  "capture_to_encode_submit": {
+   "p50_ms": 0.11,
+   "p95_ms": 3.324,
+   "p99_ms": 4.109,
+   "max_ms": 6.47,
+   "count": 29207
+  },
+  "encode_submit_to_done": {
+   "p50_ms": 3.907,
+   "p95_ms": 13.126,
+   "p99_ms": 22.57,
+   "max_ms": 33.888,
+   "count": 29207
+  },
+  "encode_done_to_send": {
+   "p50_ms": 1.829,
+   "p95_ms": 3.512,
+   "p99_ms": 13.323,
+   "max_ms": 37.882,
+   "count": 29207
+  },
+  "host_half_total": {
+   "p50_ms": 6.192,
+   "p95_ms": 16.347,
+   "p99_ms": 25.131,
+   "max_ms": 41.591,
+   "count": 29207
+  }
+ },
+ "queues": {
+  "capture_to_encode": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 1055,
+   "samples": 68512,
+   "at_capacity": 34784,
+   "drained": 33728
+  },
+  "channel_control": {
+   "high_water": 1,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 608,
+   "at_capacity": 0,
+   "drained": 607
+  },
+  "channel_cursor": {
+   "high_water": 1,
+   "capacity": 8,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 608,
+   "at_capacity": 0,
+   "drained": 606
+  },
+  "channel_input_fast": {
+   "high_water": 0,
+   "capacity": 32,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 608,
+   "at_capacity": 0,
+   "drained": 608
+  },
+  "channel_input_reliable": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 608,
+   "at_capacity": 0,
+   "drained": 608
+  },
+  "encode_to_send": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 1480,
+   "samples": 65976,
+   "at_capacity": 33728,
+   "drained": 32248
+  }
+ },
+ "link": {
+  "samples": 601,
+  "rtt_ms_min_max": [
+   0.056,
+   0.4811
+  ],
+  "loss_max": 0
+ },
+ "resource": {
+  "cpu_min_max": [
+   17.187502,
+   68.75001
+  ],
+  "ws_mib_min_max": [
+   50.9,
+   118.0
+  ]
+ }
+}

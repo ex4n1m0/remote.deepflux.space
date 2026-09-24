@@ -135,6 +135,29 @@ accept that raced the cross-delivery):
 The host's `CancelReceived` is tolerated in `Online` (no-op) because the
 loser's cancel can race the delivery of its own request through the mailbox.
 
+## ICE-candidate routing (role-complementary; M2 QA F34)
+
+The offer/answer split gives each machine ownership of its own role's
+transport: the controller machine composes the offer and owns the
+controller-side peer connection, the host machine composes the answer and
+owns the host-side one. A candidate gathered by the peer's **host-role
+transport must therefore be delivered to this node's *controller* machine**
+(its `ForwardIce` action feeds the controller transport), and a candidate
+gathered by the peer's controller-role transport reaches the *host* machine
+— role-complementary routing, not role-preserving.
+
+The runtime that mints a candidate envelope tags it with the
+**transport-owning role** (the node knows which role owns the attached
+transport; this is not derivable from session states, since e.g. the host
+process gathers candidates while its own host machine is `Connecting` and
+its controller machine is idle). The M0 harness `World::route` implements
+the same complementary mapping (`crates/session/tests/two_peers.rs`; the
+arm was dead code in the original scripted scenarios and encoded the
+opposite routing until QA F34 fixed it — `trickled_candidates_route_to_the_
+transport_owner_both_directions` now pins both directions), and
+`node-runtime`'s `ice_candidates_route_to_the_peer_transport_owner` mirrors
+it against the real `Node`.
+
 ## Disconnect causes (`DisconnectCause`)
 
 `User`, `Peer`, `Timeout`, `Rejected(reason)`, `Canceled`, `Collision`,

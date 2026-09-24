@@ -138,7 +138,11 @@ Soak and WAN-matrix evidence beyond frame timing (all fields `Option`;
   `gpu_memory_bytes`, `origin`, `at_ns`. Cadence ≥1 Hz per device.
 - `LinkSample`: `send_bitrate_kbps` / `recv_bitrate_kbps` (M2 RTP counters),
   `rtt_ms`, `loss_percent` (M5 transport statistics). Cadence ≥1 Hz while
-  connected.
+  connected. **2026-09-25 (M2 QA F30, explicit change):** `rtt_ms` changed
+  `u32` → `f32` — loopback/LAN round trips are sub-millisecond and the
+  integer field serialized every committed M2 loopback sample as `0`
+  (measured RTT 0.18–0.2 ms). `f32` matches `loss_percent`'s numeric
+  policy; JSON consumers reading the field as a number are unaffected.
 
 ## CounterRecord
 
@@ -146,7 +150,7 @@ Soak and WAN-matrix evidence beyond frame timing (all fields `Option`;
 { "kind": "frame_timing", "session_id": "device-a-ctrl-2", "origin": "host", "frame_id": 42, "capture_ns": 1000, ... }
 { "kind": "queue_sample", "session_id": "device-a-ctrl-2", "queue": "capture_to_encode", "depth": 1, "capacity": 3, "high_water": 2, "dropped": 4, "replaced": 5, "at_ns": 99 }
 { "kind": "resource_sample", "session_id": "device-a-ctrl-2", "origin": "host", "cpu_percent": 31.5, ... }
-{ "kind": "link_sample", "session_id": "device-a-ctrl-2", "send_bitrate_kbps": 9500, "rtt_ms": 12, ... }
+{ "kind": "link_sample", "session_id": "device-a-ctrl-2", "send_bitrate_kbps": 9500, "rtt_ms": 12.25, ... }
 ```
 
 Additive variants/fields only within a milestone review; removing or renaming

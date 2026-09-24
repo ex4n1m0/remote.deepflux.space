@@ -16,6 +16,12 @@
   this machine (two processes, real display).
 - Evidence: `docs/reports/data/m2-rig-20260924-*` (gzipped JSONL metrics per
   process, per-run summaries, latency summaries, final-run logs).
+- **Post-audit fix package:** `docs/reports/m2-qa-fixes.md` (F26–F36 +
+  `--real-input`) — F26 root-caused (per-session teardown leaks incl. a
+  +128 MiB/session private-commit growth invisible in working set) and
+  fixed; the authoritative cycles/soak evidence and headline numbers are
+  `docs/reports/data/m2-rig-20260925-*` (the 20260924 numbers below are
+  the original audited runs).
 
 ## What was built
 

@@ -393,7 +393,7 @@ fn main() {
                             session_id: SESSION_ID.to_string(),
                             send_bitrate_kbps: Some(kbps as u32),
                             recv_bitrate_kbps: Some(kbps as u32),
-                            rtt_ms: Some(0), // in-process wire stand-in
+                            rtt_ms: Some(0.0), // in-process wire stand-in
                             loss_percent: Some(0.0),
                             at_ns: clock.ns(),
                         }));

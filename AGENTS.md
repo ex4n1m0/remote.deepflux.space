@@ -155,6 +155,14 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
 - Windows API surface stays inside the `*-windows` crates behind the
   invariant-7 traits; unsafe code is confined to those crates and always
   reviewed with its failure handling (device loss, display change, UIPI).
+  **Sanctioned exception (M2 QA F33, 2026-09-25): `node-runtime`** — the
+  composition crate — may contain reviewed unsafe for exactly three
+  process-level concerns the invariant-7 traits deliberately do not cover:
+  high-resolution waitable-timer pacing (`pacing.rs`), process
+  introspection for the resource sampler (`GetProcessTimes`/
+  `GetProcessMemoryInfo`, `metrics.rs`), and diagnostic windows in its
+  example binaries (stimulus/viewer). Anything beyond that list still
+  belongs in a `*-windows` crate.
 
 ## Workflow for agents
 

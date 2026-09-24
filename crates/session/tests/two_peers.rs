@@ -13,7 +13,8 @@ use protocol::capabilities::{
     Capabilities, EncoderCapabilities, EncoderKind, FeatureFlags, MonitorInfo,
 };
 use protocol::signaling::{
-    DeviceId, DisconnectReason, RejectReason, SessionSecret, SignalingBody, SignalingEnvelope,
+    DeviceId, DisconnectReason, RejectReason, SIGNALING_PROTOCOL_VERSION, SessionSecret,
+    SignalingBody, SignalingEnvelope,
 };
 use session::{
     Action, ControllerEvent, ControllerState, DisconnectCause, HostEvent, HostState, SessionConfig,
@@ -328,23 +329,31 @@ impl World {
                     },
                 ),
             },
+            // Candidates route ROLE-COMPLEMENTARILY (M2 QA F34): the
+            // offer/answer split gives each machine ownership of its own
+            // role's transport, so a candidate gathered by the peer's
+            // host-role transport must reach this node's *controller*
+            // machine (whose `ForwardIce` feeds the controller transport),
+            // and vice versa. Every scripted scenario below also injects
+            // candidates directly in this shape — this arm was dead code
+            // encoding the opposite (role-preserving) mapping.
             SignalingBody::IceCandidate {
                 candidate,
                 sdp_mid,
                 sdp_mline_index,
             } => match from_machine {
-                MachineRef::Host => self.step_host(
+                MachineRef::Host => self.step_controller(
                     target,
-                    HostEvent::IceCandidateReceived {
+                    ControllerEvent::IceCandidateReceived {
                         message_id: env.message_id,
                         candidate,
                         sdp_mid,
                         sdp_mline_index,
                     },
                 ),
-                MachineRef::Controller => self.step_controller(
+                MachineRef::Controller => self.step_host(
                     target,
-                    ControllerEvent::IceCandidateReceived {
+                    HostEvent::IceCandidateReceived {
                         message_id: env.message_id,
                         candidate,
                         sdp_mid,
@@ -454,26 +463,40 @@ fn happy_path() -> (World, SessionSecret) {
         },
     );
 
-    // One trickle candidate each way, then the channel opens.
+    // One trickle candidate each way, then the channel opens. Routed
+    // through `route` (F34): the peer's host-role candidate reaches the
+    // controller machine, the peer's controller-role candidate reaches the
+    // host machine — the same role-complementary shape the direct
+    // injections below the F34 fix encoded.
     w.now = 330;
-    w.step_controller(
-        0,
-        ControllerEvent::IceCandidateReceived {
-            message_id: "ice-a-1".to_owned(),
+    let ice_a = SignalingEnvelope {
+        protocol_version: SIGNALING_PROTOCOL_VERSION,
+        message_id: "ice-a-1".to_owned(),
+        session_id: Some("device-a-ctrl-1".to_owned()),
+        from_device_id: "device-a".to_owned(),
+        to_device_id: "device-b".to_owned(),
+        timestamp_ms: w.now,
+        body: SignalingBody::IceCandidate {
             candidate: "candidate:1 1 UDP 1 10.0.0.1 5000 typ host".to_owned(),
             sdp_mid: Some("0".to_owned()),
             sdp_mline_index: Some(0),
         },
-    );
-    w.step_host(
-        1,
-        HostEvent::IceCandidateReceived {
-            message_id: "ice-b-1".to_owned(),
+    };
+    let ice_b = SignalingEnvelope {
+        protocol_version: SIGNALING_PROTOCOL_VERSION,
+        message_id: "ice-b-1".to_owned(),
+        session_id: Some("device-a-ctrl-1".to_owned()),
+        from_device_id: "device-b".to_owned(),
+        to_device_id: "device-a".to_owned(),
+        timestamp_ms: w.now,
+        body: SignalingBody::IceCandidate {
             candidate: "candidate:2 1 UDP 1 10.0.0.2 5001 typ host".to_owned(),
             sdp_mid: Some("0".to_owned()),
             sdp_mline_index: Some(0),
         },
-    );
+    };
+    w.route(ice_a, MachineRef::Controller);
+    w.route(ice_b, MachineRef::Host);
     w.now = 340;
     w.step_controller(0, ControllerEvent::DataChannelOpen);
     w.step_host(1, HostEvent::DataChannelOpen);
@@ -641,6 +664,86 @@ fn controller_cancel_returns_host_to_online() {
     ));
     assert_eq!(w.peers[1].host.state().name(), "Online");
     assert!(w.timers.is_empty());
+}
+
+/// F34: trickled candidates route role-complementarily through the
+/// harness's own `route` — the peer's host-gathered candidate reaches this
+/// node's controller machine and vice versa, and BOTH `ForwardIce` actions
+/// fire on the transport-owning machines (the routing the node runtime
+/// implements and the real offer/answer split requires).
+#[test]
+fn trickled_candidates_route_to_the_transport_owner_both_directions() {
+    let scenario = || {
+        let mut w = World::new(&["device-a", "device-b"]);
+        w.register_all();
+        w.now = 200;
+        w.controller_connect(0, "device-b");
+        w.now = 300;
+        w.step_host(
+            1,
+            HostEvent::ConsentAccepted {
+                secret: SessionSecret("ice-secret".to_owned()),
+            },
+        );
+        // Controller A's transport gathers a candidate -> host B's machine.
+        // Host B's transport gathers a candidate -> controller A's machine.
+        w.now = 330;
+        let a_to_b = SignalingEnvelope {
+            protocol_version: SIGNALING_PROTOCOL_VERSION,
+            message_id: "ice-a-1".to_owned(),
+            session_id: Some("device-a-ctrl-1".to_owned()),
+            from_device_id: "device-a".to_owned(),
+            to_device_id: "device-b".to_owned(),
+            timestamp_ms: w.now,
+            body: SignalingBody::IceCandidate {
+                candidate: "candidate:1 1 UDP 1 10.0.0.1 5000 typ host".to_owned(),
+                sdp_mid: Some("0".to_owned()),
+                sdp_mline_index: Some(0),
+            },
+        };
+        let b_to_a = SignalingEnvelope {
+            protocol_version: SIGNALING_PROTOCOL_VERSION,
+            message_id: "ice-b-1".to_owned(),
+            session_id: Some("device-a-ctrl-1".to_owned()),
+            from_device_id: "device-b".to_owned(),
+            to_device_id: "device-a".to_owned(),
+            timestamp_ms: w.now,
+            body: SignalingBody::IceCandidate {
+                candidate: "candidate:2 1 UDP 1 10.0.0.2 5001 typ host".to_owned(),
+                sdp_mid: Some("0".to_owned()),
+                sdp_mline_index: Some(0),
+            },
+        };
+        w.route(a_to_b.clone(), MachineRef::Controller);
+        w.route(b_to_a.clone(), MachineRef::Host);
+        w
+    };
+    let w = scenario();
+    // Both machines are in candidate-legal states and each forwarded the
+    // peer-transport's candidate to its OWN transport (ForwardIce on the
+    // controller machine of A and on the host machine of B).
+    let joined = w.transcript.join("\n");
+    let ctrl_forwards = joined
+        .lines()
+        .filter(|l| l.contains("local peer0:controller ForwardIce"))
+        .count();
+    let host_forwards = joined
+        .lines()
+        .filter(|l| l.contains("local peer1:host ForwardIce"))
+        .count();
+    assert_eq!(
+        ctrl_forwards, 1,
+        "A's controller forwards B's host candidate"
+    );
+    assert_eq!(
+        host_forwards, 1,
+        "B's host forwards A's controller candidate"
+    );
+    // Neither wrong-side machine saw a candidate (no illegal transition,
+    // no swallowed error in the transcript).
+    assert!(w.transcript.iter().all(|line| !line.contains("illegal")));
+    // Deterministic across runs.
+    assert_eq!(w.transcript, scenario().transcript);
 }
 
 #[test]

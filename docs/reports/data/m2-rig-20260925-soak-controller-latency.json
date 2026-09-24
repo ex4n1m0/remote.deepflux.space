@@ -1,0 +1,108 @@
+{
+ "files": [
+  "C:/Users/igorc/AppData/Local/Temp/rd-m2-metrics/m2-rig-20260924-rig-controller-42.jsonl"
+ ],
+ "origin": "controller",
+ "sessions": [
+  "rig-controller-ctrl-2"
+ ],
+ "joined_frames_post_warmup": 21290,
+ "warmup_secs": 60,
+ "stages": {
+  "recv_to_decode": {
+   "p50_ms": 1.768,
+   "p95_ms": 3.837,
+   "p99_ms": 26.611,
+   "max_ms": 36.862,
+   "count": 21290
+  },
+  "decode_to_present": {
+   "p50_ms": 0.069,
+   "p95_ms": 0.106,
+   "p99_ms": 0.134,
+   "max_ms": 0.943,
+   "count": 21290
+  },
+  "controller_half_total": {
+   "p50_ms": 1.845,
+   "p95_ms": 3.913,
+   "p99_ms": 26.714,
+   "max_ms": 36.932,
+   "count": 21290
+  }
+ },
+ "queues": {
+  "channel_control": {
+   "high_water": 1,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 3831,
+   "at_capacity": 0,
+   "drained": 2019
+  },
+  "channel_cursor": {
+   "high_water": 0,
+   "capacity": 8,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 3831,
+   "at_capacity": 0,
+   "drained": 3831
+  },
+  "channel_input_fast": {
+   "high_water": 0,
+   "capacity": 32,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 3831,
+   "at_capacity": 0,
+   "drained": 3831
+  },
+  "channel_input_reliable": {
+   "high_water": 0,
+   "capacity": 256,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 3831,
+   "at_capacity": 0,
+   "drained": 3831
+  },
+  "decode_to_present": {
+   "high_water": 1,
+   "capacity": 1,
+   "dropped": 0,
+   "replaced": 0,
+   "samples": 46832,
+   "at_capacity": 23416,
+   "drained": 23416
+  },
+  "recv_to_decode": {
+   "high_water": 2,
+   "capacity": 2,
+   "dropped": 0,
+   "replaced": 291,
+   "samples": 64195,
+   "at_capacity": 990,
+   "drained": 31253
+  }
+ },
+ "link": {
+  "samples": 600,
+  "rtt_ms_min_max": [
+   0.05,
+   0.5043
+  ],
+  "loss_max": 0
+ },
+ "resource": {
+  "cpu_min_max": [
+   15.625,
+   64.0625
+  ],
+  "ws_mib_min_max": [
+   49.4,
+   98.9
+  ]
+ }
+}

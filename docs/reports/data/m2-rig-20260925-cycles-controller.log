@@ -1,0 +1,1226 @@
+[rig-controller] m2_rig role=controller scenario=cycles dir=C:\Users\igorc\AppData\Local\Temp\rd-m2-sig-IRaT stream=20s seed=2026 drop-fast=10 reorder-fast=5 drop-reliable-every=40
+[rig-controller] metrics: C:\Users\igorc\AppData\Local\Temp\rd-m2-metrics\m2-rig-20260924-rig-controller-41.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:\Users\igorc\AppData\Local\Temp\rd-m2-sig-IRaT out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1161 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=30 reordered=18
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-8
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1178 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-14
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1167 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-20
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1156 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-26
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1182 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-32
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1180 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-38
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1168 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-44
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1158 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-50
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1164 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-56
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1165 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-62
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1155 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-68
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1177 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-74
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1171 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-80
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1180 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-86
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1174 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-92
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1152 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-98
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1177 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-104
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1152 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-110
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1181 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-116
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1188 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-122
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1154 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-128
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1166 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-134
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1169 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-140
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1161 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-146
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1155 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-152
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1206 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-158
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1148 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-164
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1158 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-170
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1159 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-176
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1173 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control"
+  ],
+  "chaos": {
+    "dropped": 30,
+    "final_position_sent": [
+      9300,
+      11100
+    ],
+    "moves_sent": 300,
+    "reliable_send_errors": 0,
+    "reliable_sent": 10,
+    "reordered": 18,
+    "seed": 2026
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 35.172509011336466,
+    "frame_id_gaps": 2320,
+    "frames_decoded": 21155,
+    "frames_missing_packets": 0,
+    "frames_presented": 21155,
+    "frames_received": 32560,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 10462,
+    "keyframe_requests_sent": 1996,
+    "render_secs": 601.464058
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 669.2116915,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:\\Users\\igorc\\AppData\\Local\\Temp\\rd-m2-metrics\\m2-rig-20260924-rig-controller-41.jsonl",
+    "records": 145298
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 90,
+    "envelopes_sent": 150,
+    "heartbeats_raised": 30,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 30,
+    "ice_minted": 30,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 30,
+    "wire_sent": 2336
+  },
+  "proc": {
+    "final": {
+      "handles": 629,
+      "private_mib": 121.83203125,
+      "threads": 38,
+      "ws_mib": 94.1640625
+    },
+    "per_session": [
+      {
+        "handles": 643,
+        "private_mib": 119.984375,
+        "session": "rig-controller-ctrl-2",
+        "threads": 48,
+        "ws_mib": 91.609375
+      },
+      {
+        "handles": 639,
+        "private_mib": 121.32421875,
+        "session": "rig-controller-ctrl-8",
+        "threads": 47,
+        "ws_mib": 93.2109375
+      },
+      {
+        "handles": 640,
+        "private_mib": 119.11328125,
+        "session": "rig-controller-ctrl-14",
+        "threads": 44,
+        "ws_mib": 91.1875
+      },
+      {
+        "handles": 643,
+        "private_mib": 123.23046875,
+        "session": "rig-controller-ctrl-20",
+        "threads": 45,
+        "ws_mib": 95.1953125
+      },
+      {
+        "handles": 644,
+        "private_mib": 124.01171875,
+        "session": "rig-controller-ctrl-26",
+        "threads": 45,
+        "ws_mib": 96.08984375
+      },
+      {
+        "handles": 645,
+        "private_mib": 124.7265625,
+        "session": "rig-controller-ctrl-32",
+        "threads": 45,
+        "ws_mib": 96.84375
+      },
+      {
+        "handles": 638,
+        "private_mib": 125.00390625,
+        "session": "rig-controller-ctrl-38",
+        "threads": 43,
+        "ws_mib": 97.125
+      },
+      {
+        "handles": 646,
+        "private_mib": 125.55859375,
+        "session": "rig-controller-ctrl-44",
+        "threads": 45,
+        "ws_mib": 97.6796875
+      },
+      {
+        "handles": 647,
+        "private_mib": 125.8828125,
+        "session": "rig-controller-ctrl-50",
+        "threads": 45,
+        "ws_mib": 98.0078125
+      },
+      {
+        "handles": 648,
+        "private_mib": 126.35546875,
+        "session": "rig-controller-ctrl-56",
+        "threads": 45,
+        "ws_mib": 98.421875
+      },
+      {
+        "handles": 649,
+        "private_mib": 127.125,
+        "session": "rig-controller-ctrl-62",
+        "threads": 45,
+        "ws_mib": 99.15234375
+      },
+      {
+        "handles": 644,
+        "private_mib": 124.515625,
+        "session": "rig-controller-ctrl-68",
+        "threads": 44,
+        "ws_mib": 96.6328125
+      },
+      {
+        "handles": 639,
+        "private_mib": 124.83984375,
+        "session": "rig-controller-ctrl-74",
+        "threads": 42,
+        "ws_mib": 97.0703125
+      },
+      {
+        "handles": 644,
+        "private_mib": 128.65234375,
+        "session": "rig-controller-ctrl-80",
+        "threads": 44,
+        "ws_mib": 100.921875
+      },
+      {
+        "handles": 645,
+        "private_mib": 129.05078125,
+        "session": "rig-controller-ctrl-86",
+        "threads": 44,
+        "ws_mib": 101.3359375
+      },
+      {
+        "handles": 646,
+        "private_mib": 129.53515625,
+        "session": "rig-controller-ctrl-92",
+        "threads": 44,
+        "ws_mib": 101.80859375
+      },
+      {
+        "handles": 653,
+        "private_mib": 130.078125,
+        "session": "rig-controller-ctrl-98",
+        "threads": 46,
+        "ws_mib": 102.40234375
+      },
+      {
+        "handles": 654,
+        "private_mib": 130.86328125,
+        "session": "rig-controller-ctrl-104",
+        "threads": 46,
+        "ws_mib": 103.203125
+      },
+      {
+        "handles": 649,
+        "private_mib": 131.08203125,
+        "session": "rig-controller-ctrl-110",
+        "threads": 44,
+        "ws_mib": 103.46484375
+      },
+      {
+        "handles": 650,
+        "private_mib": 131.47265625,
+        "session": "rig-controller-ctrl-116",
+        "threads": 44,
+        "ws_mib": 103.87890625
+      },
+      {
+        "handles": 651,
+        "private_mib": 132.12890625,
+        "session": "rig-controller-ctrl-122",
+        "threads": 44,
+        "ws_mib": 104.33203125
+      },
+      {
+        "handles": 646,
+        "private_mib": 132.703125,
+        "session": "rig-controller-ctrl-128",
+        "threads": 42,
+        "ws_mib": 104.84765625
+      },
+      {
+        "handles": 647,
+        "private_mib": 133.09765625,
+        "session": "rig-controller-ctrl-134",
+        "threads": 42,
+        "ws_mib": 105.2265625
+      },
+      {
+        "handles": 650,
+        "private_mib": 133.43359375,
+        "session": "rig-controller-ctrl-140",
+        "threads": 43,
+        "ws_mib": 105.65234375
+      },
+      {
+        "handles": 651,
+        "private_mib": 133.52734375,
+        "session": "rig-controller-ctrl-146",
+        "threads": 43,
+        "ws_mib": 105.89453125
+      },
+      {
+        "handles": 652,
+        "private_mib": 133.796875,
+        "session": "rig-controller-ctrl-152",
+        "threads": 43,
+        "ws_mib": 106.14453125
+      },
+      {
+        "handles": 655,
+        "private_mib": 134.71484375,
+        "session": "rig-controller-ctrl-158",
+        "threads": 44,
+        "ws_mib": 107.01953125
+      },
+      {
+        "handles": 656,
+        "private_mib": 134.95703125,
+        "session": "rig-controller-ctrl-164",
+        "threads": 44,
+        "ws_mib": 107.37109375
+      },
+      {
+        "handles": 657,
+        "private_mib": 135.5390625,
+        "session": "rig-controller-ctrl-170",
+        "threads": 44,
+        "ws_mib": 107.79296875
+      },
+      {
+        "handles": 658,
+        "private_mib": 136.25390625,
+        "session": "rig-controller-ctrl-176",
+        "threads": 44,
+        "ws_mib": 108.39453125
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 627,
+        "private_mib": 119.84765625,
+        "threads": 46,
+        "ws_mib": 91.7734375
+      },
+      {
+        "handles": 627,
+        "private_mib": 121.17578125,
+        "threads": 45,
+        "ws_mib": 93.1171875
+      },
+      {
+        "handles": 628,
+        "private_mib": 118.96875,
+        "threads": 42,
+        "ws_mib": 91.09375
+      },
+      {
+        "handles": 631,
+        "private_mib": 123.08203125,
+        "threads": 43,
+        "ws_mib": 95.1015625
+      },
+      {
+        "handles": 632,
+        "private_mib": 123.8671875,
+        "threads": 43,
+        "ws_mib": 96.0
+      },
+      {
+        "handles": 633,
+        "private_mib": 124.578125,
+        "threads": 43,
+        "ws_mib": 96.75
+      },
+      {
+        "handles": 626,
+        "private_mib": 124.85546875,
+        "threads": 41,
+        "ws_mib": 97.03125
+      },
+      {
+        "handles": 634,
+        "private_mib": 125.41015625,
+        "threads": 43,
+        "ws_mib": 97.5859375
+      },
+      {
+        "handles": 635,
+        "private_mib": 125.73828125,
+        "threads": 43,
+        "ws_mib": 97.9140625
+      },
+      {
+        "handles": 636,
+        "private_mib": 126.20703125,
+        "threads": 43,
+        "ws_mib": 98.328125
+      },
+      {
+        "handles": 637,
+        "private_mib": 126.98046875,
+        "threads": 43,
+        "ws_mib": 99.05859375
+      },
+      {
+        "handles": 632,
+        "private_mib": 124.3671875,
+        "threads": 42,
+        "ws_mib": 96.5390625
+      },
+      {
+        "handles": 627,
+        "private_mib": 124.69140625,
+        "threads": 40,
+        "ws_mib": 96.9765625
+      },
+      {
+        "handles": 632,
+        "private_mib": 128.50390625,
+        "threads": 42,
+        "ws_mib": 100.828125
+      },
+      {
+        "handles": 633,
+        "private_mib": 128.90625,
+        "threads": 42,
+        "ws_mib": 101.2421875
+      },
+      {
+        "handles": 634,
+        "private_mib": 129.38671875,
+        "threads": 42,
+        "ws_mib": 101.71484375
+      },
+      {
+        "handles": 641,
+        "private_mib": 129.93359375,
+        "threads": 44,
+        "ws_mib": 102.30859375
+      },
+      {
+        "handles": 642,
+        "private_mib": 130.71484375,
+        "threads": 44,
+        "ws_mib": 103.109375
+      },
+      {
+        "handles": 637,
+        "private_mib": 130.9375,
+        "threads": 42,
+        "ws_mib": 103.375
+      },
+      {
+        "handles": 638,
+        "private_mib": 131.328125,
+        "threads": 42,
+        "ws_mib": 103.7890625
+      },
+      {
+        "handles": 639,
+        "private_mib": 131.98046875,
+        "threads": 42,
+        "ws_mib": 104.23828125
+      },
+      {
+        "handles": 634,
+        "private_mib": 132.5546875,
+        "threads": 40,
+        "ws_mib": 104.75390625
+      },
+      {
+        "handles": 635,
+        "private_mib": 132.94921875,
+        "threads": 40,
+        "ws_mib": 105.1328125
+      },
+      {
+        "handles": 638,
+        "private_mib": 133.2890625,
+        "threads": 41,
+        "ws_mib": 105.5625
+      },
+      {
+        "handles": 639,
+        "private_mib": 133.37890625,
+        "threads": 41,
+        "ws_mib": 105.80078125
+      },
+      {
+        "handles": 640,
+        "private_mib": 133.6484375,
+        "threads": 41,
+        "ws_mib": 106.05078125
+      },
+      {
+        "handles": 643,
+        "private_mib": 134.5703125,
+        "threads": 42,
+        "ws_mib": 106.92578125
+      },
+      {
+        "handles": 644,
+        "private_mib": 134.80859375,
+        "threads": 42,
+        "ws_mib": 107.27734375
+      },
+      {
+        "handles": 645,
+        "private_mib": 135.39453125,
+        "threads": 42,
+        "ws_mib": 107.69921875
+      },
+      {
+        "handles": 646,
+        "private_mib": 136.10546875,
+        "threads": 42,
+        "ws_mib": 108.30078125
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "cycles",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1161
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1178
+      ],
+      [
+        "rig-controller-ctrl-14",
+        1167
+      ],
+      [
+        "rig-controller-ctrl-20",
+        1156
+      ],
+      [
+        "rig-controller-ctrl-26",
+        1182
+      ],
+      [
+        "rig-controller-ctrl-32",
+        1180
+      ],
+      [
+        "rig-controller-ctrl-38",
+        1168
+      ],
+      [
+        "rig-controller-ctrl-44",
+        1158
+      ],
+      [
+        "rig-controller-ctrl-50",
+        1164
+      ],
+      [
+        "rig-controller-ctrl-56",
+        1165
+      ],
+      [
+        "rig-controller-ctrl-62",
+        1155
+      ],
+      [
+        "rig-controller-ctrl-68",
+        1177
+      ],
+      [
+        "rig-controller-ctrl-74",
+        1171
+      ],
+      [
+        "rig-controller-ctrl-80",
+        1180
+      ],
+      [
+        "rig-controller-ctrl-86",
+        1174
+      ],
+      [
+        "rig-controller-ctrl-92",
+        1152
+      ],
+      [
+        "rig-controller-ctrl-98",
+        1177
+      ],
+      [
+        "rig-controller-ctrl-104",
+        1152
+      ],
+      [
+        "rig-controller-ctrl-110",
+        1181
+      ],
+      [
+        "rig-controller-ctrl-116",
+        1188
+      ],
+      [
+        "rig-controller-ctrl-122",
+        1154
+      ],
+      [
+        "rig-controller-ctrl-128",
+        1166
+      ],
+      [
+        "rig-controller-ctrl-134",
+        1169
+      ],
+      [
+        "rig-controller-ctrl-140",
+        1161
+      ],
+      [
+        "rig-controller-ctrl-146",
+        1155
+      ],
+      [
+        "rig-controller-ctrl-152",
+        1206
+      ],
+      [
+        "rig-controller-ctrl-158",
+        1148
+      ],
+      [
+        "rig-controller-ctrl-164",
+        1158
+      ],
+      [
+        "rig-controller-ctrl-170",
+        1159
+      ],
+      [
+        "rig-controller-ctrl-176",
+        1173
+      ]
+    ],
+    "ends": [
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8",
+      "rig-controller-ctrl-14",
+      "rig-controller-ctrl-20",
+      "rig-controller-ctrl-26",
+      "rig-controller-ctrl-32",
+      "rig-controller-ctrl-38",
+      "rig-controller-ctrl-44",
+      "rig-controller-ctrl-50",
+      "rig-controller-ctrl-56",
+      "rig-controller-ctrl-62",
+      "rig-controller-ctrl-68",
+      "rig-controller-ctrl-74",
+      "rig-controller-ctrl-80",
+      "rig-controller-ctrl-86",
+      "rig-controller-ctrl-92",
+      "rig-controller-ctrl-98",
+      "rig-controller-ctrl-104",
+      "rig-controller-ctrl-110",
+      "rig-controller-ctrl-116",
+      "rig-controller-ctrl-122",
+      "rig-controller-ctrl-128",
+      "rig-controller-ctrl-134",
+      "rig-controller-ctrl-140",
+      "rig-controller-ctrl-146",
+      "rig-controller-ctrl-152",
+      "rig-controller-ctrl-158",
+      "rig-controller-ctrl-164",
+      "rig-controller-ctrl-170",
+      "rig-controller-ctrl-176"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 1079,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 12426,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 5720.076663764424,
+    "relay_in_use": false,
+    "rtt_ms": 0.2556,
+    "selected_pair": {
+      "local": "127.0.0.1:53005",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:53004",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

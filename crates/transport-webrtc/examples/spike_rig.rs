@@ -1182,7 +1182,7 @@ fn main() {
                     session_id: SESSION_ID.to_owned(),
                     send_bitrate_kbps: stats.send_bitrate_kbps.map(|v| v as u32),
                     recv_bitrate_kbps: stats.recv_bitrate_kbps.map(|v| v as u32),
-                    rtt_ms: stats.rtt_ms.map(|v| v as u32),
+                    rtt_ms: stats.rtt_ms.map(|v| v as f32),
                     loss_percent: stats.loss_percent.map(|v| v as f32),
                     at_ns: at,
                 }));

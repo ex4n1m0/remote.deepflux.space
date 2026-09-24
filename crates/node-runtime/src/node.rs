@@ -19,22 +19,34 @@
 //!   is legal; in states where it is not (`Offering`), the machine's own
 //!   connect timeout is the recovery path (documented mapping).
 //!
-//! Two documented deviations from the `World` harness, both because the
-//! real system has an asymmetric offer/answer split the scripted tests
-//! never routed:
+//! Three documented deviations from the `World` harness, all because the
+//! real system has an asymmetric offer/answer split and a stand-in
+//! signaling service the scripted tests never exercised:
 //!
 //! 1. **ICE-candidate routing is role-complementary**: candidates
-//!    gathered by this node's host-role transport are delivered to the
-//!    peer's *controller* machine and vice versa. `World::route`'s
-//!    candidate branch (role-preserving) is dead code in the scripted
-//!    scenarios — candidates are always injected directly there, and the
-//!    direct injections (`happy_path`) are exactly role-complementary:
-//!    each machine's `ForwardIce` action must reach *its own* transport.
+//!    gathered by a host-role transport are delivered to the peer's
+//!    *controller* machine and vice versa — each machine's `ForwardIce`
+//!    action must reach its own transport. `World::route` encodes the same
+//!    complementary mapping since QA F34 (its earlier arm was dead code
+//!    encoding the opposite); minted envelopes carry the
+//!    transport-owning role ([`Node::set_transport_owner`]).
 //! 2. **`Registered` self-ack**: the manual signaling adapter *is* the
 //!    service stand-in, so after a successful `Register` write the node
 //!    injects `Registered` on the next pump (the World injects it at
-//!    t+50 ms). `Heartbeat` cadence likewise lives here (`HeartbeatDue`
-//!    raised on `heartbeat_period_ms` while in a heartbeat-legal state).
+//!    t+50 ms). The ack is queued only after the write succeeds (QA F27).
+//!    `Heartbeat` cadence likewise lives here (`HeartbeatDue` raised on
+//!    `heartbeat_period_ms` while in a heartbeat-legal state).
+//! 3. **Compose/apply failure mapping**: a `compose_answer` failure in
+//!    `Exchanging` maps to `TransportFailed` (legal there); a
+//!    `compose_offer`/`apply_answer` failure in `Offering` has no legal
+//!    `TransportFailed` event — the machine's own connect timer owns
+//!    recovery (the machines' design, faithfully mapped).
+//!
+//! Defensive-only differences from the World harness (counted, never
+//! fatal; the World uses test-only `unreachable!`/panic): inbound
+//! `Register`/`Heartbeat` envelopes counted as illegal, machine/timer
+//! pairing mismatches, late `ChannelsOpen` after teardown, illegal
+//! user-level transitions.
 //!
 //! Illegal transitions are counted and surfaced through
 //! [`NodeObserver::illegal_transition`], never propagated as panics: real
@@ -132,6 +144,12 @@ pub struct Node {
     timers: TimerQueue,
     signaling: Box<dyn SignalingIo>,
     transport: Option<Box<dyn Transport>>,
+    /// Which role's machine owns the attached transport — the role tag on
+    /// runtime-minted ICE-candidate envelopes (F34: the receiving node
+    /// routes candidates role-complementarily, so a host-owned transport's
+    /// candidate must be tagged Host even when this node's host machine is
+    /// not in a session state).
+    transport_owner: MachineKind,
     pending_register_acks: VecDeque<MachineKind>,
     next_host_heartbeat_ms: Option<u64>,
     next_controller_heartbeat_ms: Option<u64>,
@@ -161,6 +179,7 @@ impl Node {
             timers: TimerQueue::new(),
             signaling,
             transport: None,
+            transport_owner: MachineKind::Controller,
             pending_register_acks: VecDeque::new(),
             next_host_heartbeat_ms: None,
             next_controller_heartbeat_ms: None,
@@ -469,7 +488,7 @@ impl Node {
                     Some(transport) => {
                         if let Err(err) = transport.apply_answer(&sdp) {
                             self.counters.apply_answer_errors += 1;
-                            observer.transport_failure(&err.0);
+                            observer.transport_failure(&sanitize_reason(&err.0));
                         } else {
                             self.step_controller(
                                 ControllerEvent::AnswerReceived { message_id, sdp },
@@ -623,16 +642,7 @@ impl Node {
                 };
                 self.ice_counter += 1;
                 self.counters.ice_minted += 1;
-                let machine = if matches!(
-                    self.host.state(),
-                    HostState::Exchanging { .. }
-                        | HostState::Connecting { .. }
-                        | HostState::Connected { .. }
-                ) {
-                    MachineKind::Host
-                } else {
-                    MachineKind::Controller
-                };
+                let machine = self.transport_owner;
                 let envelope = SignalingEnvelope {
                     protocol_version: SIGNALING_PROTOCOL_VERSION,
                     message_id: format!("{}-rt-{}", self.device_id, self.ice_counter),
@@ -647,11 +657,11 @@ impl Node {
                     },
                 };
                 if let Err(err) = self.signaling.send(machine, envelope) {
-                    observer.transport_failure(&format!("signaling: {err}"));
+                    observer.transport_failure(&sanitize_reason(&format!("signaling: {err}")));
                 }
             }
             TransportEvent::Failed { reason } => {
-                observer.transport_failure(&reason);
+                observer.transport_failure(&sanitize_reason(&reason));
                 self.inject_transport_failed(&reason, observer);
             }
             TransportEvent::LocalAnswer { .. } => {
@@ -742,16 +752,26 @@ impl Node {
         for action in actions {
             match action {
                 Action::Send(envelope) => {
-                    self.counters.envelopes_sent += 1;
-                    if envelope.to_device_id == SIGNALING_SERVICE_ID
-                        && matches!(envelope.body, SignalingBody::Register { .. })
-                    {
-                        // The adapter stands in for the service: a
-                        // successful write acks on the next pump.
-                        self.pending_register_acks.push_back(machine);
-                    }
-                    if let Err(err) = self.signaling.send(machine, envelope) {
-                        observer.transport_failure(&format!("signaling: {err}"));
+                    let is_register = envelope.to_device_id == SIGNALING_SERVICE_ID
+                        && matches!(envelope.body, SignalingBody::Register { .. });
+                    // F27: the self-ack is queued only after the adapter
+                    // write succeeded — a failed Register write leaves the
+                    // machine in `Registering` (the UI can retry), never a
+                    // phantom `Online`.
+                    match self.signaling.send(machine, envelope) {
+                        Ok(()) => {
+                            self.counters.envelopes_sent += 1;
+                            if is_register {
+                                // The adapter stands in for the service: a
+                                // successful write acks on the next pump.
+                                self.pending_register_acks.push_back(machine);
+                            }
+                        }
+                        Err(err) => {
+                            self.counters.send_errors += 1;
+                            observer
+                                .transport_failure(&sanitize_reason(&format!("signaling: {err}")));
+                        }
                     }
                 }
                 Action::ScheduleTimer { id, fire_at_ms } => {
@@ -776,7 +796,7 @@ impl Node {
                             }
                             Err(err) => {
                                 self.counters.compose_errors += 1;
-                                observer.transport_failure(&err.0);
+                                observer.transport_failure(&sanitize_reason(&err.0));
                                 // `TransportFailed` is legal in
                                 // `Exchanging`: map the failure directly.
                                 self.step_host(
@@ -799,7 +819,7 @@ impl Node {
                             }
                             Err(err) => {
                                 self.counters.compose_errors += 1;
-                                observer.transport_failure(&err.0);
+                                observer.transport_failure(&sanitize_reason(&err.0));
                                 // No legal TransportFailed in Offering: the
                                 // connect timer owns recovery (documented).
                             }
@@ -821,7 +841,7 @@ impl Node {
                                 sdp_mline_index,
                             ) {
                                 self.counters.ice_forward_errors += 1;
-                                observer.transport_failure(&err.0);
+                                observer.transport_failure(&sanitize_reason(&err.0));
                             }
                         }
                         None => self.counters.transport_missing += 1,
@@ -891,6 +911,13 @@ impl Node {
 
     pub fn attach_transport(&mut self, transport: Box<dyn Transport>) {
         self.transport = Some(transport);
+    }
+
+    /// Declare which role's machine owns the attached transport (the tag
+    /// on runtime-minted ICE envelopes; see `transport_owner`). Call right
+    /// after `attach_transport`.
+    pub fn set_transport_owner(&mut self, owner: MachineKind) {
+        self.transport_owner = owner;
     }
 
     pub fn take_transport(&mut self) -> Option<Box<dyn Transport>> {
@@ -978,6 +1005,14 @@ impl Node {
         }
     }
 
+    /// Cheap channel-queue gauges for per-change sampling (M2 QA F32);
+    /// see `Transport::channel_queue_gauges`.
+    pub fn channel_queue_gauges(&mut self) -> Option<transport_webrtc::ChannelQueues> {
+        self.transport
+            .as_mut()
+            .and_then(|transport| transport.channel_queue_gauges())
+    }
+
     /// Close the transport without touching the machines (clean end of
     /// run; the machines should already be `Disconnected`).
     pub fn close_transport(&mut self) {
@@ -989,6 +1024,26 @@ impl Node {
     /// Signaling adapter description (diagnostics; no secrets).
     pub fn signaling_description(&self) -> String {
         self.signaling.describe()
+    }
+}
+
+/// Invariant-6 choke point (QA F36b): transport/signaling error strings
+/// embed upstream `Display` text; if an upstream error ever includes SDP
+/// content, the marker lines are replaced wholesale before the reason
+/// reaches an observer (and through it, logs).
+fn sanitize_reason(reason: &str) -> String {
+    const MARKERS: [&str; 5] = [
+        "a=ice-pwd",
+        "a=ice-ufrag",
+        "a=fingerprint",
+        "o=-",
+        "ice-pwd:",
+    ];
+    let tainted = MARKERS.iter().any(|m| reason.contains(m));
+    if tainted {
+        "<redacted: error text contained SDP material>".to_owned()
+    } else {
+        reason.to_owned()
     }
 }
 

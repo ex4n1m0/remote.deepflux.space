@@ -99,6 +99,12 @@ pub struct ReceivedFrame {
     /// Packets of this frame the depacketizer detected as missing (sequence
     /// gap between consecutive packets of the same frame).
     pub missing_packets: u32,
+    /// M2 QA F31: when the engine received this frame's FIRST packet — the
+    /// true arrival point the perf schema's `recv_ns` wants, instead of the
+    /// runtime's poll-drain time. Same `Instant` domain as
+    /// `TransportStats`'s bitrate window. `None` only for hand-built test
+    /// frames that never crossed the engine.
+    pub recv_instant: Option<std::time::Instant>,
 }
 
 /// The selected ICE candidate pair, described without SDP secrets
@@ -161,6 +167,13 @@ pub struct ChannelQueues {
     pub dropped: [u64; 4],
     /// Newest-wins overwrites (`input-fast`, `cursor`).
     pub replaced: [u64; 4],
+    /// Cumulative enqueues per channel since transport creation (M2 QA
+    /// F32): a poller comparing consecutive snapshots detects activity
+    /// between polls and can sample on change per the perf schema's
+    /// channel-queue cadence rule.
+    pub enqueued: [u64; 4],
+    /// Cumulative dequeues (handed to SCTP) per channel.
+    pub dequeued: [u64; 4],
 }
 
 /// Channel labels in the fixed order used by [`ChannelQueues`] arrays.
@@ -272,6 +285,16 @@ pub trait Transport: Send {
     /// interval apart; the first call returns `None` bitrates.
     fn stats(&mut self) -> Result<TransportStats, TransportError> {
         Err(TransportError("transport provides no stats".into()))
+    }
+
+    /// Cheap channel-queue gauge snapshot WITHOUT the full `stats()` work
+    /// (no stats-report walk, no async bridge in the webrtc-rs engine) so
+    /// a runtime loop can poll it every few milliseconds and satisfy the
+    /// perf schema's channel-queue rule: sample on every change plus at
+    /// ≥1 Hz (M2 QA F32). `None` when the transport tracks no such
+    /// queues.
+    fn channel_queue_gauges(&mut self) -> Option<ChannelQueues> {
+        None
     }
 
     /// Request an ICE restart on the next offer/answer round (network-change

@@ -182,6 +182,9 @@ struct ChannelSlot {
     high_water: AtomicU32,
     dropped: AtomicU64,
     replaced: AtomicU64,
+    /// Cumulative activity counters (F32 change detection).
+    enqueued: AtomicU64,
+    dequeued: AtomicU64,
     dc: tokio::sync::Mutex<Option<Arc<dyn DataChannel>>>,
     notify: Arc<tokio::sync::Notify>,
 }
@@ -201,6 +204,8 @@ impl ChannelSlot {
             high_water: AtomicU32::new(0),
             dropped: AtomicU64::new(0),
             replaced: AtomicU64::new(0),
+            enqueued: AtomicU64::new(0),
+            dequeued: AtomicU64::new(0),
             dc: tokio::sync::Mutex::new(None),
             notify: Arc::new(tokio::sync::Notify::new()),
         }
@@ -227,6 +232,7 @@ impl ChannelSlot {
         queue.push_back(bytes);
         let depth = queue.len() as u32;
         drop(queue);
+        self.enqueued.fetch_add(1, Ordering::Relaxed);
         self.high_water.fetch_max(depth, Ordering::Relaxed);
         self.notify.notify_one();
         Ok(())
@@ -241,6 +247,20 @@ impl ChannelSlot {
             self.dropped.load(Ordering::Relaxed),
             self.replaced.load(Ordering::Relaxed),
         )
+    }
+
+    /// Bridge-free snapshot for the F32 per-change polling path.
+    fn quick_gauges(&self) -> ChannelQueues {
+        let mut out = ChannelQueues::default();
+        out.depth[self.channel as usize] =
+            self.queue.lock().expect("channel queue poisoned").len() as u32;
+        out.capacity[self.channel as usize] = self.capacity as u32;
+        out.high_water[self.channel as usize] = self.high_water.load(Ordering::Relaxed);
+        out.dropped[self.channel as usize] = self.dropped.load(Ordering::Relaxed);
+        out.replaced[self.channel as usize] = self.replaced.load(Ordering::Relaxed);
+        out.enqueued[self.channel as usize] = self.enqueued.load(Ordering::Relaxed);
+        out.dequeued[self.channel as usize] = self.dequeued.load(Ordering::Relaxed);
+        out
     }
 }
 
@@ -588,6 +608,7 @@ async fn attach_data_channel(
                     guard.pop_front()
                 };
                 let Some(bytes) = next else { break };
+                slot_pump.dequeued.fetch_add(1, Ordering::Relaxed);
                 match dc_tx.try_send(BytesMut::from(&bytes[..])).await {
                     Ok(()) => {}
                     Err(WrError::ErrSendBufferFull) => {
@@ -696,6 +717,8 @@ async fn video_receive_loop(
     let mut frame_id: Option<u64> = None;
     let mut frame_ts: u32 = 0;
     let mut missing: u32 = 0;
+    // F31: first-packet arrival stamp for the in-flight frame.
+    let mut frame_recv: Option<Instant> = None;
     // Set after in-frame loss: discard the damaged frame's remainder.
     let mut skipping_to_marker = false;
 
@@ -722,6 +745,7 @@ async fn video_receive_loop(
                 shared.frames_dropped.fetch_add(1, Ordering::Relaxed);
                 skipping_to_marker = true;
                 frame_id = None;
+                frame_recv = None;
                 missing = 0;
             }
             // A gap with no partial assembly is a sender-side drop —
@@ -745,6 +769,9 @@ async fn video_receive_loop(
                     .and_then(|payload| parse_frame_id_ext(&payload));
             }
             frame_ts = pkt.header.timestamp;
+            if frame_recv.is_none() {
+                frame_recv = Some(Instant::now());
+            }
         }
 
         match assembler.push(&pkt.payload, pkt.header.marker) {
@@ -755,6 +782,7 @@ async fn video_receive_loop(
                     is_keyframe: is_keyframe_annexb(&access_unit),
                     bytes: access_unit,
                     missing_packets: missing,
+                    recv_instant: frame_recv,
                 };
                 let mut queue = shared.video_rx.lock().expect("video queue poisoned");
                 if queue.len() >= VIDEO_QUEUE_CAPACITY {
@@ -765,6 +793,7 @@ async fn video_receive_loop(
                 shared.frames_received.fetch_add(1, Ordering::Relaxed);
                 drop(queue);
                 frame_id = None;
+                frame_recv = None;
                 missing = 0;
             }
             Ok(None) => {}
@@ -774,6 +803,7 @@ async fn video_receive_loop(
                 shared.frames_dropped.fetch_add(1, Ordering::Relaxed);
                 skipping_to_marker = true;
                 frame_id = None;
+                frame_recv = None;
                 missing = 0;
             }
         }
@@ -1132,6 +1162,8 @@ impl Transport for WebrtcTransport {
             channel_queue.high_water[index] = high_water;
             channel_queue.dropped[index] = dropped;
             channel_queue.replaced[index] = replaced;
+            channel_queue.enqueued[index] = slot.enqueued.load(Ordering::Relaxed);
+            channel_queue.dequeued[index] = slot.dequeued.load(Ordering::Relaxed);
         }
 
         let loss_percent = inbound.map(|(_, received, lost, _)| {
@@ -1162,6 +1194,23 @@ impl Transport for WebrtcTransport {
             channel_queue,
             events_dropped: self.shared.events_overflow.load(Ordering::Relaxed),
         })
+    }
+
+    fn channel_queue_gauges(&mut self) -> Option<ChannelQueues> {
+        // No async bridge: locks only, safe at a few-ms polling cadence.
+        let mut merged = ChannelQueues::default();
+        for slot in self.channels.slots.iter() {
+            let quick = slot.quick_gauges();
+            let index = slot.channel as usize;
+            merged.depth[index] = quick.depth[index];
+            merged.capacity[index] = quick.capacity[index];
+            merged.high_water[index] = quick.high_water[index];
+            merged.dropped[index] = quick.dropped[index];
+            merged.replaced[index] = quick.replaced[index];
+            merged.enqueued[index] = quick.enqueued[index];
+            merged.dequeued[index] = quick.dequeued[index];
+        }
+        Some(merged)
     }
 
     fn restart_ice(&mut self) -> Result<(), TransportError> {

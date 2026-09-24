@@ -152,7 +152,11 @@ pub struct LinkSample {
     pub session_id: String,
     pub send_bitrate_kbps: Option<u32>,
     pub recv_bitrate_kbps: Option<u32>,
-    pub rtt_ms: Option<u32>,
+    /// Float milliseconds (M2 QA F30): loopback/LAN RTTs are sub-ms and
+    /// u32 quantized them all to 0. Same numeric policy as
+    /// `loss_percent`; an explicit, dated schema change — see
+    /// `docs/perf-counter-schema.md`.
+    pub rtt_ms: Option<f32>,
     pub loss_percent: Option<f32>,
     /// Same zero-based monotonic clock as `FrameTiming`.
     pub at_ns: u64,
@@ -295,7 +299,7 @@ mod tests {
             session_id: "s".to_owned(),
             send_bitrate_kbps: Some(9_500),
             recv_bitrate_kbps: None,
-            rtt_ms: Some(12),
+            rtt_ms: Some(12.5),
             loss_percent: Some(0.2),
             at_ns: 2_000,
         });
@@ -303,7 +307,7 @@ mod tests {
         assert_eq!(value["kind"], "link_sample");
         assert_eq!(value["send_bitrate_kbps"], 9_500);
         assert_eq!(value["recv_bitrate_kbps"], serde_json::Value::Null);
-        assert_eq!(value["rtt_ms"], 12);
+        assert_eq!(value["rtt_ms"], 12.5);
         // f32 -> JSON keeps the exact f32 value; compare numerically.
         let loss = value["loss_percent"].as_f64().unwrap();
         assert!((loss - 0.2).abs() < 1e-6, "loss_percent drifted: {loss}");
@@ -374,7 +378,7 @@ mod tests {
                 session_id: "s".to_owned(),
                 send_bitrate_kbps: Some(1),
                 recv_bitrate_kbps: Some(2),
-                rtt_ms: Some(3),
+                rtt_ms: Some(3.25),
                 loss_percent: Some(0.0),
                 at_ns: 17,
             }),

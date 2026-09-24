@@ -1,0 +1,131 @@
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast"
+  ],
+  "chaos": {
+    "dropped": 762,
+    "final_position_sent": [
+      54928,
+      25392
+    ],
+    "moves_sent": 6000,
+    "reliable_send_errors": 0,
+    "reliable_sent": 200,
+    "reordered": 293,
+    "seed": 2026
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 39.02416089927922,
+    "frame_id_gaps": 1995,
+    "frames_decoded": 23416,
+    "frames_missing_packets": 0,
+    "frames_presented": 23416,
+    "frames_received": 32243,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 8536,
+    "keyframe_requests_sent": 1819,
+    "render_secs": 600.0385264
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 602.3789458,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:\\Users\\igorc\\AppData\\Local\\Temp\\rd-m2-metrics\\m2-rig-20260924-rig-controller-42.jsonl",
+    "records": 150969
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 3,
+    "envelopes_sent": 44,
+    "heartbeats_raised": 40,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 7259
+  },
+  "proc": {
+    "final": {
+      "handles": 598,
+      "private_mib": 111.05078125,
+      "threads": 38,
+      "ws_mib": 82.19921875
+    },
+    "per_session": [
+      {
+        "handles": 631,
+        "private_mib": 125.44140625,
+        "session": "rig-controller-ctrl-2",
+        "threads": 43,
+        "ws_mib": 96.11328125
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 615,
+        "private_mib": 125.3359375,
+        "threads": 42,
+        "ws_mib": 96.2890625
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1184
+      ]
+    ],
+    "ends": [
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 1,
+    "frames_received": 32221,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 380257,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 5749.563645854668,
+    "relay_in_use": false,
+    "rtt_ms": 0.1739,
+    "selected_pair": {
+      "local": "127.0.0.1:59649",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:59648",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

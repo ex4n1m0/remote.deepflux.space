@@ -42,6 +42,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -103,6 +104,11 @@ struct Args {
     summary: PathBuf,
     report_stem: Option<String>,
     idle_timeout_secs: u64,
+    /// LAN-checkpoint mode (scope addendum to the M2 QA fix package): the
+    /// host injects scripted input through the REAL `SendInputSink`
+    /// instead of the recording sink. Default off — on a single machine
+    /// the scripted cursor would fight the operator.
+    real_input: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -130,6 +136,7 @@ fn parse_args() -> Result<Args, String> {
         summary: std::env::temp_dir().join("rd-m2-summary.json"),
         report_stem: None,
         idle_timeout_secs: 300,
+        real_input: false,
     };
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -241,6 +248,10 @@ fn parse_args() -> Result<Args, String> {
                     .map_err(|e| format!("mouse: {e}"))?;
                 i += 2;
             }
+            "--real-input" => {
+                args.real_input = true;
+                i += 1;
+            }
             "--no-stimulus" => {
                 args.stimulus = false;
                 i += 1;
@@ -270,7 +281,7 @@ fn parse_args() -> Result<Args, String> {
                      [--bitrate-kbps N] [--monitor primary] [--window-size WxH] [--no-stimulus]\n\
                      [--drop-fast-pct N] [--reorder-fast-pct N] [--drop-reliable-nth N] [--seed N]\n\
                      [--mouse-moves N] [--metrics-dir DIR] [--summary FILE] [--report-stem NAME]\
-                     [--idle-timeout-secs N]"
+                     [--idle-timeout-secs N] [--real-input]"
                 );
                 std::process::exit(0);
             }
@@ -331,6 +342,55 @@ fn write_json_atomic(path: &Path, json: &str) {
     }
 }
 
+/// Process diagnostics for the run summary (F26 evidence): thread and
+/// handle counts alongside working set. Not part of the counter schema.
+fn proc_diag() -> (u32, u32, u64, u64) {
+    unsafe {
+        use windows::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+        };
+        use windows::Win32::System::ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX,
+        };
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessHandleCount};
+        let mut threads = 0u32;
+        if let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) {
+            let mut entry = THREADENTRY32 {
+                dwSize: size_of::<THREADENTRY32>() as u32,
+                ..Default::default()
+            };
+            if Thread32First(snap, &mut entry).is_ok() {
+                loop {
+                    if entry.th32OwnerProcessID == std::process::id() {
+                        threads += 1;
+                    }
+                    if Thread32Next(snap, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+            let _ = windows::Win32::Foundation::CloseHandle(snap);
+        }
+        let mut handles = 0u32;
+        let _ = GetProcessHandleCount(GetCurrentProcess(), &mut handles);
+        let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
+        let cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+        let (ws, private) = if GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            &mut counters as *mut _
+                as *mut windows::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS,
+            cb,
+        )
+        .is_ok()
+        {
+            (counters.WorkingSetSize as u64, counters.PrivateUsage as u64)
+        } else {
+            (0, 0)
+        };
+        (threads, handles, ws, private)
+    }
+}
+
 fn date_string() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -354,6 +414,29 @@ fn date_string() -> String {
 // Recording input sink (real `InputSink` trait object slot; the rig never
 // injects into the real desktop — this machine is also the controller)
 // ---------------------------------------------------------------------------
+
+/// Local trait-object wrapper: `Box<dyn InputSink>` cannot blanket-implement
+/// the foreign trait (orphan rules), so the pump's type parameter is this
+/// forwarder. The slot is what the product's `SendInputSink` plugs into.
+struct SinkBox(Box<dyn InputSink>);
+
+impl InputSink for SinkBox {
+    fn inject(&mut self, event: &InputEvent) -> Result<(), InputError> {
+        self.0.inject(event)
+    }
+
+    fn all_keys_up(&mut self) -> Result<(), InputError> {
+        self.0.all_keys_up()
+    }
+
+    fn held_count(&self) -> usize {
+        self.0.held_count()
+    }
+
+    fn release_all(&mut self, trigger: AllKeysUpTrigger) -> input_windows::ReleaseOutcome {
+        self.0.release_all(trigger)
+    }
+}
 
 #[derive(Default)]
 struct RecordingSink {
@@ -429,6 +512,36 @@ struct HostPipeCounters {
     capture_reinit: AtomicU64,
 }
 
+/// Process-lifetime codec instances (F26): `MfEncoder`/`MfDecoder` drop
+/// paths retain committed memory, threads, and handles (~+14 MiB and
+/// ~+1.3 MiB + threads per create/drop respectively, measured by
+/// `examples/leak_probe.rs`), so per-session pipeline rebuilds must NOT
+/// recreate them. The pool hands the instance to each session's stage
+/// thread and takes it back when the thread exits; session boundaries are
+/// a `reset()` + forced IDR instead of a new MFT. (The drop-path leaks
+/// themselves are a codec-windows change request — see m2-rig.md.)
+struct CodecPool {
+    encoder: Arc<Mutex<Option<codec_windows::MfEncoder>>>,
+    decoder: Arc<Mutex<Option<codec_windows::MfDecoder>>>,
+    /// Process-lifetime duplication (F26b): each `DxgiCapture` instance
+    /// commits a full-resolution surface ring (~128 MiB private bytes at
+    /// 4K) that is NOT decommitted on drop — measured +128.2–128.7 MiB
+    /// per rebuild in the 30-cycle hammer (working set stays flat, so the
+    /// audit's WS numbers saw only a tenth of it). One duplication lives
+    /// for the process; sessions take/return it.
+    capture: Arc<Mutex<Option<DxgiCapture>>>,
+}
+
+impl CodecPool {
+    fn new() -> Self {
+        Self {
+            encoder: Arc::new(Mutex::new(None)),
+            decoder: Arc::new(Mutex::new(None)),
+            capture: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
 /// One live host capture→encode pipeline (rebuilt per session). The
 /// F20-fixed capture pacing lives here: absolute-deadline high-resolution
 /// waitable timer at `--fps`.
@@ -447,11 +560,17 @@ impl HostPipeline {
     fn start(
         device: GpuDevice,
         force_keyframe: Arc<AtomicBool>,
+        codec_pool: &CodecPool,
         args: &Args,
         report: &JsonlReport,
         session: Arc<SessionSlot>,
         clock: Arc<MonotonicClock>,
     ) -> Result<Self, String> {
+        let encoder_pool = Arc::clone(&codec_pool.encoder);
+        let capture_pool = Arc::clone(&codec_pool.capture);
+        // Session start under a reused encoder: force an IDR so the
+        // controller's post-reset IDR gate opens immediately.
+        force_keyframe.store(true, Ordering::Release);
         let q_cap_enc = Arc::new(FrameQueue::new(
             QueueKind::CaptureToEncode,
             1,
@@ -490,6 +609,7 @@ impl HostPipeline {
             let clock = clock.clone();
             let device = device.clone();
             let monitor = args.monitor.clone();
+            let capture_pool = Arc::clone(&capture_pool);
             let fps = args.fps;
             let ticks = Arc::clone(&pacer_ticks);
             let skipped = Arc::clone(&pacer_skipped);
@@ -498,8 +618,16 @@ impl HostPipeline {
                     .name("capture".into())
                     .spawn(move || {
                         attach_thread_to_input_desktop().expect("input desktop");
-                        let mut cap =
-                            DxgiCapture::new(device.clone(), &monitor).expect("duplicate output");
+                        // Process-lifetime duplication (F26b): take the
+                        // pooled instance or create it on first use.
+                        let mut cap = match capture_pool.lock().expect("capture pool").take() {
+                            Some(cap) => {
+                                eprintln!("[host] capture: reusing duplication");
+                                cap
+                            }
+                            None => DxgiCapture::new(device.clone(), &monitor)
+                                .expect("duplicate output"),
+                        };
                         let stamp_clock = clock.clone();
                         cap.set_clock(Box::new(move || stamp_clock.now_ns()));
                         eprintln!(
@@ -569,6 +697,7 @@ impl HostPipeline {
                                 }
                             }
                         }
+                        *capture_pool.lock().expect("capture pool") = Some(cap);
                         q.close();
                     })
                     .expect("spawn capture"),
@@ -582,6 +711,7 @@ impl HostPipeline {
             let counters = Arc::clone(&counters);
             let force = Arc::clone(&force_keyframe);
             let clock = clock.clone();
+            let encoder_pool = Arc::clone(&encoder_pool);
             let device = device.clone();
             let enc_cfg = codec_windows::MfEncoderConfig {
                 width: args.encode_w & !1,
@@ -595,15 +725,25 @@ impl HostPipeline {
                 std::thread::Builder::new()
                     .name("encode".into())
                     .spawn(move || {
-                        let mut encoder = match codec_windows::MfEncoder::new(device, enc_cfg) {
-                            Ok(encoder) => encoder,
-                            Err(e) => {
-                                eprintln!("[host] encoder init failed: {e}");
-                                q_out.close();
-                                return;
+                        // Reuse the process-lifetime encoder when the
+                        // pool holds one (F26); create it on first use.
+                        let mut encoder = match encoder_pool.lock().expect("encoder pool").take() {
+                            Some(encoder) => {
+                                eprintln!("[host] encoder (reused): {}", encoder.describe());
+                                encoder
                             }
+                            None => match codec_windows::MfEncoder::new(device, enc_cfg) {
+                                Ok(encoder) => {
+                                    eprintln!("[host] encoder: {}", encoder.describe());
+                                    encoder
+                                }
+                                Err(e) => {
+                                    eprintln!("[host] encoder init failed: {e}");
+                                    q_out.close();
+                                    return;
+                                }
+                            },
                         };
-                        eprintln!("[host] encoder: {}", encoder.describe());
                         loop {
                             let Some(item) = q_in.pop(Duration::from_millis(100)) else {
                                 if !q_in.is_open() {
@@ -647,6 +787,7 @@ impl HostPipeline {
                                 Err(e) => eprintln!("[host] encode error: {e}"),
                             }
                         }
+                        *encoder_pool.lock().expect("encoder pool") = Some(encoder);
                         q_out.close();
                     })
                     .expect("spawn encode"),
@@ -703,15 +844,20 @@ struct ControllerPipeline {
 impl ControllerPipeline {
     fn start(
         device: GpuDevice,
+        codec_pool: &CodecPool,
         args: &Args,
         report: &JsonlReport,
         session: Arc<SessionSlot>,
         clock: Arc<MonotonicClock>,
     ) -> Result<Self, String> {
+        let decoder_pool = Arc::clone(&codec_pool.decoder);
         let q_recv_dec = Arc::new(FrameQueue::new(
             QueueKind::RecvToDecode,
             2,
-            DropPolicy::Reject,
+            // Schema table says "bounded, drop-oldest" (F35): the oldest
+            // queued frame is the stale one; the drop surfaces as a
+            // frame-id gap -> keyframe request downstream.
+            DropPolicy::NewestWins,
             Box::new(report.sink_handle(session.clone())),
             session.clone(),
             Arc::new({
@@ -743,17 +889,31 @@ impl ControllerPipeline {
             let reset = Arc::clone(&reset_decoder);
             let keyframe_needed = Arc::clone(&keyframe_needed);
             let clock = clock.clone();
+            let decoder_pool = Arc::clone(&decoder_pool);
             let device = device.clone();
             joins.push(
                 std::thread::Builder::new()
                     .name("decode".into())
                     .spawn(move || {
-                        let mut decoder = codec_windows::MfDecoder::new(
-                            device,
-                            codec_windows::MfDecoderConfig { use_gpu: true },
-                        )
-                        .expect("decoder");
-                        eprintln!("[controller] decoder: {}", decoder.describe());
+                        // Reuse the process-lifetime decoder when the
+                        // pool holds one (F26); create on first use and
+                        // reset per session (IDR gate armed).
+                        let mut decoder = match decoder_pool.lock().expect("decoder pool").take() {
+                            Some(mut decoder) => {
+                                let _ = decoder.reset();
+                                eprintln!("[controller] decoder (reused): {}", decoder.describe());
+                                decoder
+                            }
+                            None => {
+                                let decoder = codec_windows::MfDecoder::new(
+                                    device,
+                                    codec_windows::MfDecoderConfig { use_gpu: true },
+                                )
+                                .expect("decoder");
+                                eprintln!("[controller] decoder: {}", decoder.describe());
+                                decoder
+                            }
+                        };
                         let mut last_frame_id: Option<u64> = None;
                         loop {
                             let Some(item) = q_in.pop(Duration::from_millis(100)) else {
@@ -820,6 +980,7 @@ impl ControllerPipeline {
                                 }
                             }
                         }
+                        *decoder_pool.lock().expect("decoder pool") = Some(decoder);
                         q_out.close();
                     })
                     .expect("spawn decode"),
@@ -1061,9 +1222,9 @@ struct RigObserver {
     session_slot: Arc<SessionSlot>,
     status_path: PathBuf,
     device: &'static str,
-    /// Host input consumption (real `InputSink` trait object slot; the
-    /// recording sink never touches SendInput).
-    input_pump: Option<InputPump<RecordingSink>>,
+    /// Host input consumption (real `InputSink` trait object slot: the
+    /// recording sink by default, `SendInputSink` with `--real-input`).
+    input_pump: Option<InputPump<SinkBox>>,
     accept_due: Option<Instant>,
     restart_host_due: Option<Instant>,
     restart_ctrl_due: Option<Instant>,
@@ -1096,9 +1257,51 @@ struct RigObserver {
     stream_secs_accum: f64,
     render_started_at: Option<Instant>,
     render_secs_accum: f64,
+    /// (threads, handles, ws, private) at each session end (F26 evidence).
+    per_session_diag: Vec<(u32, u32, u64, u64)>,
+    /// Inject-error watermark for the one-shot UIPI hint.
+    last_inject_errors: u64,
+    /// Cached process diagnostics: the toolhelp thread snapshot is far too
+    /// expensive for the 2 ms loop cadence (it enumerates every thread in
+    /// the system), so it refreshes at most every 500 ms and `write_status`
+    /// reads the cache.
+    cached_diag: (u32, u32, u64, u64),
+    diag_refreshed_at: Instant,
 }
 
 impl RigObserver {
+    /// `--real-input` UIPI hint: injection blocked — elevated foreground
+    /// window or locked session (operational mitigation, never retry).
+    fn real_input_hint(&mut self) {
+        eprintln!(
+            "[{}] --real-input: injection was BLOCKED (UIPI). The foreground window is elevated (UAC) or this session is locked. Run the host elevated for sessions that must control elevated apps, or unlock the session.",
+            self.device
+        );
+    }
+
+    /// Refresh `cached_diag` at most every 500 ms (see field docs).
+    fn refresh_diag_if_due(&mut self) {
+        let now = Instant::now();
+        if now.duration_since(self.diag_refreshed_at) >= Duration::from_millis(500) {
+            self.diag_refreshed_at = now;
+            self.cached_diag = proc_diag();
+        }
+    }
+
+    /// True when the input pump saw injection failures since the last
+    /// status write (drives the one-shot `--real-input` UIPI hint).
+    fn note_input_errors(&mut self) -> bool {
+        self.input_pump
+            .as_mut()
+            .map(|pump| {
+                let counters = pump.counters();
+                let failed = counters.inject_errors > self.last_inject_errors;
+                self.last_inject_errors = counters.inject_errors;
+                failed
+            })
+            .unwrap_or(false)
+    }
+
     fn write_status(&self, node: &Node) {
         let (host_state, controller_state) = if self.is_host {
             (Some(node.host_state_name()), None)
@@ -1116,6 +1319,7 @@ impl RigObserver {
                 "all_keys_up": counters.all_keys_up,
             })
         });
+        let (threads, handles, ws, private) = self.cached_diag;
         let doc = serde_json::json!({
             "device": self.device,
             "host_state": host_state,
@@ -1123,6 +1327,12 @@ impl RigObserver {
             "session_id": node.current_session_id(),
             "prompts": self.prompts,
             "input": input,
+            "proc": {
+                "threads": threads,
+                "handles": handles,
+                "ws_bytes": ws,
+                "private_bytes": private,
+            },
         });
         write_json_atomic(
             &self.status_path,
@@ -1177,6 +1387,8 @@ impl NodeObserver for RigObserver {
     fn session_ended(&mut self, cause: &DisconnectCause) {
         self.last_activity = Instant::now();
         self.session_ends.push(format!("{cause:?}"));
+        let (threads, handles, ws, private) = proc_diag();
+        self.per_session_diag.push((threads, handles, ws, private));
         eprintln!("[{}] session ended: {cause:?}", self.device);
         if let Some(pump) = self.input_pump.as_mut() {
             // Stuck-key safety on every teardown path.
@@ -1406,16 +1618,53 @@ fn run(args: Args) -> i32 {
 
     // ---- observer ----
     let status_path = args.dir.join(format!("{}-status.json", args.role));
+    // Host input consumption. Default: the recording sink (scripted input
+    // must not fight the operator on a single machine). `--real-input`
+    // (LAN checkpoint): the real SendInput adapter — same `InputSink`
+    // slot, pointer mapped onto the captured monitor's rectangle.
+    let input_pump = if is_host {
+        if args.real_input {
+            // Geometry from the same monitor the capture duplicates (a
+            // throwaway duplication, dropped before the pipeline's own).
+            let (left, top, width, height) =
+                match capture_windows::DxgiCapture::new(gpu.clone(), &args.monitor) {
+                    Ok(cap) => {
+                        let (w, h) = cap.dimensions();
+                        (0, 0, w as i32, h as i32)
+                    }
+                    Err(_) => (0, 0, 1920, 1080),
+                };
+            let rect =
+                input_windows::MonitorRect::new(left, top, width, height).expect("monitor rect");
+            match input_windows::SendInputSink::new(rect) {
+                Ok(sink) => {
+                    eprintln!(
+                        "[{device}] --real-input: SendInputSink active on the primary \
+                         monitor ({width}x{height}); the scripted input will MOVE THE \
+                         REAL CURSOR. If the controller runs on this same machine it \
+                         will fight the operator — this flag is for the two-PC LAN \
+                         checkpoint."
+                    );
+                    Some(InputPump::new(SinkBox(Box::new(sink))))
+                }
+                Err(err) => {
+                    eprintln!("[{device}] --real-input: SendInputSink init failed: {err}");
+                    eprintln!("[{device}] falling back to the recording sink");
+                    Some(InputPump::new(SinkBox(Box::new(RecordingSink::default()))))
+                }
+            }
+        } else {
+            Some(InputPump::new(SinkBox(Box::new(RecordingSink::default()))))
+        }
+    } else {
+        None
+    };
     let mut observer = RigObserver {
         is_host,
         session_slot: Arc::clone(&session_slot),
         status_path: status_path.clone(),
         device,
-        input_pump: if is_host {
-            Some(InputPump::new(RecordingSink::default()))
-        } else {
-            None
-        },
+        input_pump,
         accept_due: None,
         restart_host_due: None,
         restart_ctrl_due: None,
@@ -1441,10 +1690,15 @@ fn run(args: Args) -> i32 {
         stream_secs_accum: 0.0,
         render_started_at: None,
         render_secs_accum: 0.0,
+        per_session_diag: Vec::new(),
+        last_inject_errors: 0,
+        cached_diag: (0, 0, 0, 0),
+        diag_refreshed_at: Instant::now() - Duration::from_secs(10),
     };
     let host_pipe_device = if is_host { Some(gpu.clone()) } else { None };
     let ctrl_pipe_device = if is_host { None } else { Some(gpu.clone()) };
     let host_force_flag = Arc::clone(&observer.host_force_flag);
+    let codec_pool = CodecPool::new();
 
     // ---- role start ----
     let caps = rig_capabilities(!is_host);
@@ -1479,15 +1733,24 @@ fn run(args: Args) -> i32 {
     let mut final_position_sent: Option<(u16, u16)> = None;
     let mut last_stats_tick = Instant::now();
     let mut last_keyframe_request = Instant::now() - Duration::from_secs(10);
+    let mut last_channel_gauges: Option<transport_webrtc::ChannelQueues> = None;
+    let mut last_channel_tick = Instant::now() - Duration::from_secs(10);
     let mut final_transport_stats: Option<transport_webrtc::TransportStats> = None;
     let mut cycle: u64 = 0;
     let mut netchange_at_elapsed = Duration::ZERO;
     let mut netchange_self_restarted = false;
+    // F26 evidence: per-session process diagnostics at session end.
+    let mut per_session_diag: Vec<(String, u32, u32, u64, u64)> = Vec::new();
     let mut failure_reason = String::new();
     let host_out_file = args.dir.join("c2h.jsonl");
 
     // Controller start delay: give the host a moment to register.
     let script_start = Instant::now() + Duration::from_millis(700);
+    // F31: calibrate the engine's `Instant` domain onto the session clock
+    // (both are QPC-based; the offset is constant for the process), so
+    // `recv_ns` reflects the engine's first-packet arrival time rather
+    // than this loop's poll time.
+    let clock_origin = (Instant::now(), clock.now_ns());
 
     let mut alive_tick = Instant::now();
     loop {
@@ -1563,6 +1826,7 @@ fn run(args: Args) -> i32 {
             let pipeline = HostPipeline::start(
                 pipe_device,
                 Arc::clone(&host_force_flag),
+                &codec_pool,
                 &args,
                 &report,
                 Arc::clone(&session_slot),
@@ -1581,6 +1845,7 @@ fn run(args: Args) -> i32 {
         {
             let pipeline = ControllerPipeline::start(
                 pipe_device,
+                &codec_pool,
                 &args,
                 &report,
                 Arc::clone(&session_slot),
@@ -1649,7 +1914,15 @@ fn run(args: Args) -> i32 {
         if let Some(pipeline) = observer.controller_pipeline.as_ref() {
             while let Some(frame) = node.poll_video() {
                 pipeline.counters.received.fetch_add(1, Ordering::Relaxed);
-                let recv_ns = clock.now_ns();
+                // F31: engine-side first-packet arrival, mapped onto the
+                // session clock; poll time is only the fallback.
+                let recv_ns = match frame.recv_instant {
+                    Some(arrival) => {
+                        clock_origin.1
+                            + arrival.saturating_duration_since(clock_origin.0).as_nanos() as u64
+                    }
+                    None => clock.now_ns(),
+                };
                 let missing = frame.missing_packets;
                 let frame_id = frame.frame_id;
                 if pipeline
@@ -1675,19 +1948,23 @@ fn run(args: Args) -> i32 {
             }
         }
 
-        // ---- stats at 1 Hz ----
-        if node.has_transport() && now.duration_since(last_stats_tick) >= Duration::from_secs(1) {
-            last_stats_tick = now;
-            if let Ok(stats) = node.stats() {
+        // ---- channel-queue per-change sampling (F32: on every change
+        // plus ≥1 Hz; the gauges call is lock-only, no async bridge) ----
+        if let Some(gauges) = node.channel_queue_gauges() {
+            let changed = last_channel_gauges.as_ref().is_none_or(|last| {
+                (0..4).any(|i| {
+                    gauges.depth[i] != last.depth[i]
+                        || gauges.enqueued[i] != last.enqueued[i]
+                        || gauges.dequeued[i] != last.dequeued[i]
+                        || gauges.dropped[i] != last.dropped[i]
+                        || gauges.replaced[i] != last.replaced[i]
+                })
+            });
+            let tick_due = now.duration_since(last_channel_tick) >= Duration::from_secs(1);
+            if changed || tick_due {
+                last_channel_tick = now;
+                last_channel_gauges = Some(gauges);
                 let mut sink = report.sink_handle(Arc::clone(&session_slot));
-                sink.record(CounterRecord::LinkSample(LinkSample {
-                    session_id: session_slot.get(),
-                    send_bitrate_kbps: stats.send_bitrate_kbps.map(|v| v as u32),
-                    recv_bitrate_kbps: stats.recv_bitrate_kbps.map(|v| v as u32),
-                    rtt_ms: stats.rtt_ms.map(|v| v as u32),
-                    loss_percent: stats.loss_percent.map(|v| v as f32),
-                    at_ns: clock.now_ns(),
-                }));
                 for (index, kind) in [
                     QueueKind::ChannelControl,
                     QueueKind::ChannelInputFast,
@@ -1700,14 +1977,32 @@ fn run(args: Args) -> i32 {
                     sink.record(CounterRecord::QueueSample(diagnostics::QueueSample {
                         session_id: session_slot.get(),
                         queue: kind,
-                        depth: stats.channel_queue.depth[index],
-                        capacity: stats.channel_queue.capacity[index],
-                        high_water: stats.channel_queue.high_water[index],
-                        dropped: stats.channel_queue.dropped[index],
-                        replaced: stats.channel_queue.replaced[index],
+                        depth: gauges.depth[index],
+                        capacity: gauges.capacity[index],
+                        high_water: gauges.high_water[index],
+                        dropped: gauges.dropped[index],
+                        replaced: gauges.replaced[index],
                         at_ns: clock.now_ns(),
                     }));
                 }
+            }
+        }
+
+        // ---- stats at 1 Hz ----
+        if node.has_transport() && now.duration_since(last_stats_tick) >= Duration::from_secs(1) {
+            last_stats_tick = now;
+            if let Ok(stats) = node.stats() {
+                let mut sink = report.sink_handle(Arc::clone(&session_slot));
+                sink.record(CounterRecord::LinkSample(LinkSample {
+                    session_id: session_slot.get(),
+                    send_bitrate_kbps: stats.send_bitrate_kbps.map(|v| v as u32),
+                    recv_bitrate_kbps: stats.recv_bitrate_kbps.map(|v| v as u32),
+                    rtt_ms: stats.rtt_ms.map(|v| v as f32),
+                    loss_percent: stats.loss_percent.map(|v| v as f32),
+                    at_ns: clock.now_ns(),
+                }));
+                // Channel-queue samples live in the per-change block above
+                // (F32 cadence); this 1 Hz tick carries the LinkSample only.
                 if stats.relay_in_use {
                     eprintln!("[{device}] FATAL: relay in use (invariant 4)");
                     failure_reason = "relay_in_use".into();
@@ -1877,7 +2172,7 @@ fn run(args: Args) -> i32 {
                         // Generous window: the host may be inside one
                         // bounded (15 s) send_video bridge when the peer
                         // vanishes, and its own teardown close is bounded
-                        // at 7 s on top.
+                        // at 5 s (engine CLOSE_TIMEOUT; +2 s more on Drop).
                         failure_reason = "network-change teardown did not reach the host".into();
                         phase = CtrlPhase::Finished;
                     }
@@ -1937,6 +2232,10 @@ fn run(args: Args) -> i32 {
                     }
                 }
                 CtrlPhase::Goodbye => {
+                    if let Some(session) = node.current_session_id() {
+                        let (threads, handles, ws, private) = proc_diag();
+                        per_session_diag.push((session, threads, handles, ws, private));
+                    }
                     // Data-plane goodbye, then the signaling disconnect.
                     let _ = node.send_wire(
                         Channel::Control,
@@ -2046,6 +2345,10 @@ fn run(args: Args) -> i32 {
             break;
         }
 
+        if observer.note_input_errors() && args.real_input {
+            observer.real_input_hint();
+        }
+        observer.refresh_diag_if_due();
         observer.write_status(&node);
         std::thread::sleep(Duration::from_millis(2));
     }
@@ -2053,6 +2356,7 @@ fn run(args: Args) -> i32 {
     // ---- teardown (keep the counter Arcs for the summary) ----
     stop_flag.store(true, Ordering::Release);
     node.close_transport();
+    let mut cursor_slot_counters = None;
     if let Some(pipeline) = observer.host_pipeline.take() {
         if let Some(started) = observer.stream_started_at.take() {
             observer.stream_secs_accum += started.elapsed().as_secs_f64();
@@ -2064,6 +2368,7 @@ fn run(args: Args) -> i32 {
             Arc::clone(&pipeline.pacer_ticks),
             Arc::clone(&pipeline.pacer_skipped),
         ));
+        cursor_slot_counters = Some(pipeline.cursor_slot.counters());
         pipeline.stop();
     }
     if let Some(pipeline) = observer.controller_pipeline.take() {
@@ -2095,6 +2400,8 @@ fn run(args: Args) -> i32 {
             "moves_applied": counters.moves_applied,
             "moves_stale_suppressed": counters.moves_stale_suppressed,
             "reliable_applied": counters.reliable_applied,
+            "reliable_duplicates_suppressed": counters.reliable_duplicates_suppressed,
+            "reliable_stale_suppressed": counters.reliable_stale_suppressed,
             "sequence_gaps": counters.sequence_gaps,
             "all_keys_up": counters.all_keys_up,
             "inject_errors": counters.inject_errors,
@@ -2148,6 +2455,7 @@ fn run(args: Args) -> i32 {
     }
 
     let elapsed = started.elapsed().as_secs_f64();
+    let proc_diag_final = proc_diag();
     // Sum counters across every session's pipeline (rebuilt per session).
     let (mut captured, mut encoded, mut keyframes, mut device_lost_host) = (0u64, 0u64, 0u64, 0u64);
     let (mut cursor_only, mut encode_deferred, mut keyframe_forced, mut cursor_positions_tx) =
@@ -2198,6 +2506,7 @@ fn run(args: Args) -> i32 {
 
     let mut summary = serde_json::json!({
         "role": args.role,
+        "real_input": args.real_input && is_host,
         "device": device,
         "scenario": args.scenario,
         "elapsed_s": elapsed,
@@ -2233,9 +2542,41 @@ fn run(args: Args) -> i32 {
             "backpressure_events": backpressure,
         },
         "channel_open_order": node.channel_open_order(),
+        "proc": {
+            // (threads, handles, ws) at every session end, both roles.
+            "per_session_end": observer
+                .per_session_diag
+                .iter()
+                .map(|(t, h, ws, priv_b)| serde_json::json!({
+                    "threads": t,
+                    "handles": h,
+                    "ws_mib": *ws as f64 / (1 << 20) as f64,
+                    "private_mib": *priv_b as f64 / (1 << 20) as f64,
+                }))
+                .collect::<Vec<_>>(),
+            "final": {
+                "threads": proc_diag_final.0,
+                "handles": proc_diag_final.1,
+                "ws_mib": proc_diag_final.2 as f64 / (1 << 20) as f64,
+                "private_mib": proc_diag_final.3 as f64 / (1 << 20) as f64,
+            },
+            // Controller-side variant keyed by session id (scenario engine).
+            "per_session": per_session_diag
+                .iter()
+                .map(|(sid, t, h, ws, priv_b)| serde_json::json!({
+                    "session": sid,
+                    "threads": t,
+                    "handles": h,
+                    "ws_mib": *ws as f64 / (1 << 20) as f64,
+                    "private_mib": *priv_b as f64 / (1 << 20) as f64,
+                }))
+                .collect::<Vec<_>>(),
+        },
         "cursor": {
             "overlays_received": observer.cursor_overlays,
             "shapes_received": observer.cursor_shapes_rx,
+            "slot_replaced": cursor_slot_counters.map(|(r, _)| r).unwrap_or(0),
+            "slot_taken": cursor_slot_counters.map(|(_, t)| t).unwrap_or(0),
         },
     });
     if is_host {
