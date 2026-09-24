@@ -1,6 +1,6 @@
 # ADR-002: `webrtc-rs` behind the `Transport` trait, with a libwebrtc fallback seam
 
-- Status: Accepted (M0, 2026-09-24)
+- Status: Accepted (M0, 2026-09-24); amended by the M2 transport spike (2026-09-24 — version pin, frame-id verdict, trait extension)
 - Deciders: rd-architecture-owner
 - Sources: source plan §Transport decision ("Recommended spike"), §Key decisions to freeze ("Fallback")
 
@@ -84,6 +84,78 @@ ADR:
   through the `Transport` trait as a per-frame marker — an additive trait
   change, reviewed with the first M2 transport patch. M1's in-process loop
   needs none of this (the handoff types carry `frame_id` directly).
+
+## M2 spike amendments (2026-09-24)
+
+### Version pin (decision 3 executed)
+
+`crates/transport-webrtc` pins, exact:
+
+| Crate | Version | Note |
+|---|---|---|
+| `webrtc` | **0.21.0** | thin async layer over the Sans-I/O `rtc` core; the rtc rearchitecture landed in 0.20.0 (2026-07-31) — the classic `RTCPeerConnection`/`webrtc::api` API is gone, replaced by `PeerConnectionBuilder` + the `PeerConnection`/`DataChannel` traits |
+| `rtc` | **0.21.0** | direct dependency: RTP packet/extension types, `H264Payloader`/`H264Packet`, and the `Marshal` trait are not re-exported by `webrtc` |
+| `tokio` | 1.53.1 | private runtime inside the crate (public trait stays runtime-agnostic) |
+| `bytes` | 1.12.1 | |
+| `async-trait` | 0.1.92 | required to implement `PeerConnectionEventHandler` |
+| `openh264` | 0.9.8 (dev-dep) | spike-only software codec for the rig example |
+
+**MSRV note:** `webrtc`/`rtc` declare no `rust-version`, but the `rtc` 0.21
+source uses let-chains (stable Rust 1.88), so the dependency tree's
+*effective* MSRV is 1.88 even though the workspace declares 1.85. The
+installed toolchain (1.98.1) builds everything green; CI must use ≥ 1.88 for
+this crate. No workspace MSRV change was forced by this spike.
+
+### Frame-id carriage verdict (open item resolved)
+
+**The webrtc-rs header-extension API is sufficient — no fallback needed.**
+Send side: `TrackLocalStaticRTP::write_rtp_with_extensions(packet,
+&[HeaderExtension::Custom { uri, .. }])` maps the URI onto the negotiated
+extmap id per packet; negotiation comes from
+`MediaEngine::register_header_extension`. Receive side: the parsed
+`rtp::Packet` exposes `header.get_extension(id)`. Two caveats, both handled
+in `crates/transport-webrtc/src/engine.rs`:
+
+1. The receive-side extmap id could not be resolved from
+   `RtpReceiver::get_parameters().header_extensions` (empty at
+   post-signaling time in 0.21.0); the engine scans the negotiated SDP
+   (`a=extmap:<id> urn:rd:frame-id`) instead.
+2. `RTCIceCandidate::to_json()` returns placeholder mids (`""`), which the
+   engine normalizes to `None` before raising
+   `TransportEvent::IceCandidate`.
+
+Spike evidence: 17,946 frames over 5 minutes with `frame_id` present on
+every received frame, zero gaps, zero frames without the extension.
+
+### Trait extension (additive, as pre-declared)
+
+`Transport` gained `send_video`/`poll_video`/`stats`/`restart_ice` plus
+`VideoFrame`/`ReceivedFrame`/`TransportStats`/`SelectedIcePair` types — all
+with default implementations, so no existing implementor breaks. Rationale:
+video is an RTP track, not messages (invariant 1), so it cannot ride
+`send(Channel, _)`; the stats snapshot feeds `diagnostics::LinkSample`.
+The M0 method set is unchanged.
+
+### Spike API-risk register (for M2 full integration)
+
+- **Rearchitected API surface (0.20+):** every webrtc-rs integration written
+  against ≤ 0.17 needs a rewrite; churn risk stays Medium. Our exposure is
+  confined to `crates/transport-webrtc/src/engine.rs` per decision 1.
+- **`RTCStatsReport` id prefixes:** candidate entries carry
+  `RTCLocalIceCandidate_<id>` while pair entries reference the bare `<id>`;
+  matching must be by suffix (implemented + unit-tested).
+- **Inbound `jitter` stat is implausible** in 0.21.0 (7–73 "s" on loopback);
+  `jitter_ms` in `TransportStats` maps it verbatim — treat as unreliable
+  until upstream clarifies units/semantics.
+- **Channel-open order is not deterministic** even though SCTP ids are:
+  correctness must rely on per-channel readiness + the all-four
+  `ChannelsOpen` event, never on cross-channel open ordering.
+- **`TokioRuntime::block_on` builds a fresh runtime per call** — never use
+  it as a bridge; own a real `tokio::runtime::Runtime` and spawn onto it
+  (what `WebrtcTransport::bridge` does, with a bounded wait).
+- **`DataChannel::poll()` is the only receive path** (no callbacks), so
+  channel reads live in spawned tasks; teardown relies on the `closing`
+  flag + `Notify`, plus `shutdown_timeout` on drop.
 
 ## Consequences
 

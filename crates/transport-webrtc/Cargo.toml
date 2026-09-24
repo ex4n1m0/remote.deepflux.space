@@ -9,3 +9,23 @@ workspace = true
 
 [dependencies]
 protocol = { path = "../protocol" }
+diagnostics = { path = "../diagnostics" }
+
+# Pinned transport stack (ADR-002 decision 3: exact versions, upgrades are
+# deliberate patches with the M2 rig re-run).
+#
+# `webrtc` 0.21.0 is the thin async layer over the Sans-I/O `rtc` 0.21.0 core
+# (the rtc rearchitecture landed in 0.20.0, 2026-07-31). The `rtc` crate is a
+# direct dependency because RTP packet/extension types, the H.264 payloader,
+# and the `Marshal` trait live there and are NOT re-exported by `webrtc`.
+webrtc = { workspace = true }
+rtc = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+async-trait = { workspace = true }
+
+# Spike-only software H.264 codec for the rig example (dev-dependency keeps it
+# out of the library; replaced by codec-windows' VideoEncoder in M2 integration).
+[dev-dependencies]
+openh264 = { workspace = true }
+serde_json = { workspace = true }
