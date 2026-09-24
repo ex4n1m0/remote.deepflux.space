@@ -9,3 +9,11 @@ workspace = true
 
 [dependencies]
 protocol = { path = "../protocol" }
+# Win32_Foundation: GetLastError/WIN32_ERROR; KeyboardAndMouse: SendInput +
+# INPUT/KEYBDINPUT/MOUSEINPUT + event flags; WindowsAndMessaging:
+# GetSystemMetrics + SM_* + XBUTTON1/2.
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
