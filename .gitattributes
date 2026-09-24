@@ -1,0 +1,2 @@
+# Force LF in the working tree so shell scripts stay runnable under Git Bash on Windows.
+* text=auto eol=lf
