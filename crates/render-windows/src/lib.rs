@@ -40,7 +40,7 @@ mod rect;
 mod renderer;
 mod window;
 
-pub use rect::fit_rect;
+pub use rect::{destination_rect, fit_rect};
 pub use renderer::D3D11Renderer;
 pub use window::{PresenterWindow, WindowConfig};
 

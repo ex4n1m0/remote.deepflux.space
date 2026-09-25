@@ -236,6 +236,68 @@ fn reject_leaves_host_online_and_controller_disconnected() {
     ctrl.shutdown();
 }
 
+/// F55: quitting mid-session must not leave the peer waiting on
+/// transport-failure detection — the engine's graceful shutdown sends the
+/// wire goodbye (+ `AllKeysUp`) before closing the transport, so the host
+/// observes a prompt `Peer` disconnect, not a timeout.
+#[test]
+fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
+    let hub = SignalingHub::new();
+    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut host_log = Vec::new();
+    let mut ctrl_log = Vec::new();
+
+    host.send(EngineCmd::HostStart).expect("host start");
+    ctrl.send(EngineCmd::ControllerStart)
+        .expect("controller start");
+    wait_for("both Online", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Online" && ctrl.status().controller_state == "Online"
+    });
+    ctrl.send(EngineCmd::Connect {
+        code: HOST_DEVICE.to_owned(),
+    })
+    .expect("connect");
+    wait_for("consent prompt", deadline, || {
+        collect(&host_events, &mut host_log);
+        host.status().host_state == "ConsentPrompted"
+    });
+    host.send(EngineCmd::ConsentAccept).expect("accept");
+    wait_for("both Connected", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Connected" && ctrl.status().controller_state == "Connected"
+    });
+
+    // Quit the controller "app" mid-session (the shell-window close path:
+    // engine shutdown, not the Disconnect command).
+    let started = Instant::now();
+    ctrl.shutdown();
+    // The host must learn about it promptly via the goodbye — well before
+    // any ICE-failure or timeout path (connect timeout is 10 s).
+    wait_for("host Disconnected after controller quit", deadline, || {
+        collect(&host_events, &mut host_log);
+        host.status().host_state == "Disconnected"
+    });
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "peer goodbye must beat failure detection, took {elapsed:?}"
+    );
+    let host_cause = host_log.iter().find_map(|event| match event {
+        EngineEvent::SessionEnded { cause, .. } => Some(cause.clone()),
+        _ => None,
+    });
+    assert!(
+        host_cause.as_deref().is_some_and(|c| c.contains("Peer")),
+        "host ended via the peer goodbye, got {host_cause:?}"
+    );
+    host.shutdown();
+}
+
 #[test]
 fn connect_without_being_online_is_a_clear_error() {
     let hub = SignalingHub::new();

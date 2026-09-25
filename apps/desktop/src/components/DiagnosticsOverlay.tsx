@@ -101,6 +101,9 @@ export function DiagnosticsOverlay({ snapshot }: { snapshot: DiagSnapshot | null
             applied {snapshot.input.applied} · stale {snapshot.input.suppressed} · gaps{" "}
             {snapshot.input.gaps} · all-up {snapshot.input.all_keys_up} · held{" "}
             {snapshot.input.held}
+            {snapshot.input.inject_errors > 0
+              ? ` · blocked ${snapshot.input.inject_errors}`
+              : ""}
           </dd>
         </div>
       </dl>

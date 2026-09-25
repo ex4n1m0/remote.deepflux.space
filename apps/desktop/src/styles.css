@@ -283,6 +283,18 @@ input:focus {
   background: var(--good);
 }
 
+.dot-unknown {
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+}
+
 .rename-form {
   display: flex;
   gap: 6px;

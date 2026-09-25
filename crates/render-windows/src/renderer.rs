@@ -23,7 +23,7 @@ use windows::core::Interface;
 
 use frame_surface::{GpuDevice, SurfaceFormat};
 
-use crate::{CursorOverlay, FrameRenderer, RenderError, RenderFrame, ScaleMode, fit_rect};
+use crate::{CursorOverlay, FrameRenderer, RenderError, RenderFrame, ScaleMode};
 
 /// D3D11 flip-model swapchain presentation through `ID3D11VideoProcessor`
 /// (NV12 or BGRA input -> BGRA backbuffer).
@@ -191,6 +191,19 @@ impl D3D11Renderer {
     pub fn client_size(&self) -> (u32, u32) {
         self.target_size
     }
+
+    /// Read-only: where a `frame_w x frame_h` frame would be composited
+    /// under the current scale mode and target size (M4 QA F48 — the
+    /// presenter normalizes pointer input over exactly this rect).
+    pub fn destination_rect_for(&self, frame_w: u32, frame_h: u32) -> (i32, i32, u32, u32) {
+        crate::rect::destination_rect(
+            self.scale_mode,
+            frame_w,
+            frame_h,
+            self.target_size.0,
+            self.target_size.1,
+        )
+    }
 }
 
 impl FrameRenderer for D3D11Renderer {
@@ -246,21 +259,16 @@ impl FrameRenderer for D3D11Renderer {
                 right: frame.width_px.min(frame.surface.width()) as i32,
                 bottom: frame.height_px.min(frame.surface.height()) as i32,
             };
-            // Destination: fit or 1:1 into the backbuffer.
-            let (dx, dy, dw, dh) = match self.scale_mode {
-                ScaleMode::Fit => fit_rect(
-                    frame.width_px,
-                    frame.height_px,
-                    self.target_size.0,
-                    self.target_size.1,
-                ),
-                ScaleMode::OneToOne => (
-                    0,
-                    0,
-                    frame.width_px.min(self.target_size.0),
-                    frame.height_px.min(self.target_size.1),
-                ),
-            };
+            // Destination: fit or 1:1 into the backbuffer (single source
+            // of truth — `rect::destination_rect`, also exposed read-only
+            // for the presenter's input mapping; M4 QA F48).
+            let (dx, dy, dw, dh) = crate::rect::destination_rect(
+                self.scale_mode,
+                frame.width_px,
+                frame.height_px,
+                self.target_size.0,
+                self.target_size.1,
+            );
             let dst_rect = RECT {
                 left: dx,
                 top: dy,

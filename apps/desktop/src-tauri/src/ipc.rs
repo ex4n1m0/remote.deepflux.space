@@ -13,7 +13,7 @@ use crate::engine::{EngineCounters, EngineStatus};
 // Commands (frontend → Rust). Arguments are primitives/strings only.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SettingsPatch {
     pub device_name: String,
     pub signaling_base_url: String,
@@ -21,34 +21,34 @@ pub struct SettingsPatch {
     pub default_viewer_scale: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddFavoriteArgs {
     pub name: String,
     pub code: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RenameFavoriteArgs {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RemoveFavoriteArgs {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SelectMonitorArgs {
     pub monitor_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SetQualityArgs {
     pub preset: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectArgs {
     pub code: String,
 }

@@ -308,8 +308,9 @@ fn two_instances_full_session_over_local_signaling() {
             .is_some_and(|log| log.iter().any(|v| v.as_str() == Some("host->Disconnected")))
     );
 
-    // Controller: connected → presented frames → focus-loss safety →
-    // diagnostics.
+    // Controller: connected → presented frames → resize follow (F49) →
+    // focus-loss safety → viewer-close disconnect (F50) with asserted
+    // causes (F53) → diagnostics.
     assert_eq!(get_str(&ctrl, "/controller_state"), Some("Disconnected"));
     assert!(ctrl["verdict"]["state_log"].as_array().is_some_and(|log| {
         log.iter()
@@ -331,6 +332,35 @@ fn two_instances_full_session_over_local_signaling() {
     assert!(
         get_u64(&host, "/input/all_keys_up") >= 1,
         "host pump saw the AllKeysUp release"
+    );
+
+    // F49: the swapchain followed the scripted 1600x1000 client resize
+    // (same value as the client size — no stale-stretch).
+    assert!(
+        get_bool(&ctrl, "/verdict/resize_ok"),
+        "viewer resize followed by the swapchain"
+    );
+    // F50: the session ended through the viewer-close path.
+    assert!(
+        get_bool(&ctrl, "/verdict/closed_viewer"),
+        "disconnect came from closing the viewer window"
+    );
+    // F53: the disconnect causes are what the machines say they are —
+    // controller ended its own session (User), host learned from the peer
+    // (Peer) — not a timeout/transport fallback.
+    let ctrl_causes = ctrl["verdict"]["ended_causes"]
+        .as_array()
+        .expect("controller ended_causes");
+    assert!(
+        ctrl_causes.iter().any(|v| v.as_str() == Some("User")),
+        "controller cause must be User, got {ctrl_causes:?}"
+    );
+    let host_causes = host["verdict"]["ended_causes"]
+        .as_array()
+        .expect("host ended_causes");
+    assert!(
+        host_causes.iter().any(|v| v.as_str() == Some("Peer")),
+        "host cause must contain Peer, got {host_causes:?}"
     );
 
     let _ = std::fs::remove_dir_all(&work_dir);

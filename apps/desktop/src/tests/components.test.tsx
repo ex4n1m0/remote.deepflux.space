@@ -119,6 +119,13 @@ describe("Favorites", () => {
     const dot = screen.getByLabelText("online");
     expect(dot).toBeTruthy();
   });
+
+  it("F57: shows 'status unknown', never a definite Offline, without a session", () => {
+    render(<Favorites {...base} favorites={favs} peerOnline={{}} />);
+    const unknown = screen.getAllByLabelText("status unknown");
+    expect(unknown).toHaveLength(favs.length);
+    expect(screen.queryByLabelText("offline")).toBeNull();
+  });
 });
 
 describe("SessionControls", () => {
@@ -168,7 +175,7 @@ describe("DiagnosticsOverlay", () => {
     queues: {
       decode_to_present: { depth: 0, capacity: 1, high_water: 1, dropped: 2, replaced: 3 },
     },
-    input: { applied: 40, suppressed: 1, gaps: 0, all_keys_up: 2, held: 0, inject_errors: 0 },
+    input: { applied: 40, suppressed: 1, gaps: 0, all_keys_up: 2, held: 0, inject_errors: 3 },
     encoder: "enc (software)",
     encoder_kind: "software",
     encoder_rebuilds: 1,
@@ -186,6 +193,20 @@ describe("DiagnosticsOverlay", () => {
     expect(screen.getByText(/^software/)).toBeTruthy();
     expect(screen.getByText(/rebuilds 1/)).toBeTruthy();
     expect(screen.getByText(/all-up 2/)).toBeTruthy();
+    // F51: UIPI-blocked injections are visible in the overlay.
+    expect(screen.getByText(/blocked 3/)).toBeTruthy();
+  });
+
+  it("omits the blocked counter when no injections failed", () => {
+    render(
+      <DiagnosticsOverlay
+        snapshot={{
+          ...snapshot,
+          input: { ...snapshot.input, inject_errors: 0 },
+        }}
+      />,
+    );
+    expect(screen.queryByText(/blocked/)).toBeNull();
   });
 
   it("shows a waiting state without a snapshot", () => {

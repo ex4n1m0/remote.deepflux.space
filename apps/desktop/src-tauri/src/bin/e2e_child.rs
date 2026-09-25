@@ -115,6 +115,10 @@ struct Verdict {
     diag_events: u64,
     state_log: Vec<String>,
     final_note: String,
+    /// F49: the viewer swapchain followed a scripted window resize.
+    resize_ok: bool,
+    /// F50: the session ended via the viewer-close path (WM_CLOSE).
+    closed_viewer: bool,
 }
 
 fn main() {
@@ -304,6 +308,7 @@ fn run_controller(
     let mut quality_changed = false;
     let mut monitor_picked = false;
     let mut focus_probe_done = false;
+    let mut resize_probe_done = false;
     let mut disconnected = false;
     while Instant::now() < deadline {
         pump_events(&events, verdict, |_| {});
@@ -346,10 +351,38 @@ fn run_controller(
                 eprintln!("[e2e-ctrl] focus-loss probe posted to viewer {hwnd:#x}");
             }
         }
+        // Resize probe (F49): resize the viewer off-aspect to a 1600x1000
+        // client; the swapchain must follow (no stale-stretch).
+        if !resize_probe_done && elapsed >= 3 {
+            resize_probe_done = true;
+            let hwnd = handle.status().viewer_hwnd;
+            if hwnd != 0 && resize_viewer(hwnd, 1600, 1000) {
+                std::thread::sleep(Duration::from_millis(1_500));
+                let status = handle.status();
+                let followed = status.viewer_swapchain_w == status.viewer_client_w
+                    && status.viewer_swapchain_h == status.viewer_client_h
+                    && status.viewer_client_w >= 1_500;
+                verdict.resize_ok = followed;
+                eprintln!(
+                    "[e2e-ctrl] resize probe: client {}x{} swapchain {}x{} -> followed={followed}",
+                    status.viewer_client_w,
+                    status.viewer_client_h,
+                    status.viewer_swapchain_w,
+                    status.viewer_swapchain_h
+                );
+            }
+        }
         if elapsed >= args.stream_secs && !disconnected {
             disconnected = true;
-            handle.send(EngineCmd::Disconnect).expect("disconnect");
-            eprintln!("[e2e-ctrl] disconnect sent");
+            let hwnd = handle.status().viewer_hwnd;
+            if hwnd != 0 {
+                verdict.closed_viewer = true;
+                post_close(hwnd);
+                eprintln!("[e2e-ctrl] viewer window closed by script (F50 path)");
+            } else {
+                handle.send(EngineCmd::Disconnect).expect("disconnect");
+                eprintln!("[e2e-ctrl] disconnect sent (no viewer hwnd)");
+            }
         }
         if disconnected {
             let state = handle.status();
@@ -400,6 +433,8 @@ fn write_verdict(args: &Args, verdict: Verdict) {
         "diag_events": verdict.diag_events,
         "state_log": verdict.state_log,
         "final_note": verdict.final_note,
+        "resize_ok": verdict.resize_ok,
+        "closed_viewer": verdict.closed_viewer,
     });
     let tmp = args.status_file.with_extension("tmp");
     if std::fs::write(
@@ -414,14 +449,55 @@ fn write_verdict(args: &Args, verdict: Verdict) {
 
 /// Post `WM_KILLFOCUS` to the viewer window (8 = WM_KILLFOCUS).
 fn post_kill_focus(hwnd: u64) {
+    post_msg(hwnd, windows::Win32::UI::WindowsAndMessaging::WM_KILLFOCUS);
+}
+
+/// Post `WM_CLOSE` to the viewer window (the user closes the viewer).
+fn post_close(hwnd: u64) {
+    post_msg(hwnd, windows::Win32::UI::WindowsAndMessaging::WM_CLOSE);
+}
+
+fn post_msg(hwnd: u64, msg: u32) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_KILLFOCUS};
+    use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
     unsafe {
-        let _ = PostMessageW(
-            Some(HWND(hwnd as *mut _)),
-            WM_KILLFOCUS,
-            WPARAM(0),
-            LPARAM(0),
-        );
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), msg, WPARAM(0), LPARAM(0));
+    }
+}
+
+/// Resize the viewer so its CLIENT area is `w x h` (F49 probe). Returns
+/// false when the Win32 call failed.
+fn resize_viewer(hwnd: u64, w: i32, h: i32) -> bool {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AdjustWindowRect, GetWindowRect, SWP_NOZORDER, SetWindowPos, WS_OVERLAPPEDWINDOW,
+    };
+    let hwnd = HWND(hwnd as *mut _);
+    unsafe {
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return false;
+        }
+        let mut adj = RECT {
+            left: 0,
+            top: 0,
+            right: w,
+            bottom: h,
+        };
+        if AdjustWindowRect(&mut adj, WS_OVERLAPPEDWINDOW, false).is_err() {
+            return false;
+        }
+        let outer_w = adj.right - adj.left;
+        let outer_h = adj.bottom - adj.top;
+        SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            outer_w,
+            outer_h,
+            SWP_NOZORDER,
+        )
+        .is_ok()
     }
 }

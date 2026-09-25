@@ -105,11 +105,21 @@ export function Favorites({
                   </form>
                 ) : (
                   <>
-                    <span
-                      className={`dot ${online ? "dot-on" : ""}`}
-                      title={online ? "Online" : "Offline"}
-                      aria-label={online ? "online" : "offline"}
-                    />
+                    {online ? (
+                      <span
+                        className="dot dot-on"
+                        title="Online (in a session with this machine)"
+                        aria-label="online"
+                      />
+                    ) : (
+                      <span
+                        className="dot dot-unknown"
+                        title="Status unknown — this build has no live presence query; the dot appears only while a session with this machine is active."
+                        aria-label="status unknown"
+                      >
+                        ?
+                      </span>
+                    )}
                     <span className="favorite-name">{favorite.name || favorite.code}</span>
                     <code className="code favorite-code">{favorite.code}</code>
                     <button

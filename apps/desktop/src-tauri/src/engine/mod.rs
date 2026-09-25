@@ -274,6 +274,10 @@ pub struct EngineStatus {
     pub viewer_fullscreen: bool,
     pub viewer_focused: bool,
     pub viewer_scale: String,
+    pub viewer_client_w: u32,
+    pub viewer_client_h: u32,
+    pub viewer_swapchain_w: u32,
+    pub viewer_swapchain_h: u32,
     pub host_monitors: Vec<crate::ipc::MonitorDto>,
     pub peer_monitors: Vec<crate::ipc::MonitorDto>,
     pub active_monitor: Option<String>,
@@ -336,6 +340,10 @@ impl EngineShared {
             viewer_hwnd: viewer.hwnd,
             viewer_fullscreen: viewer.fullscreen,
             viewer_focused: viewer.focused,
+            viewer_client_w: viewer.client.0,
+            viewer_client_h: viewer.client.1,
+            viewer_swapchain_w: viewer.swapchain.0,
+            viewer_swapchain_h: viewer.swapchain.1,
             viewer_scale: inner.viewer_scale.clone(),
             host_monitors: inner.host_monitors.clone(),
             peer_monitors: inner.peer_monitors.clone(),
@@ -448,6 +456,10 @@ pub struct ViewerFacts {
     pub hwnd: u64,
     pub fullscreen: bool,
     pub focused: bool,
+    /// Viewer client size (resize follow is asserted in the E2E; F49).
+    pub client: (u32, u32),
+    /// Swapchain size — must track `client` after a resize (F49).
+    pub swapchain: (u32, u32),
 }
 
 pub struct EngineConfig {
@@ -602,6 +614,9 @@ struct Engine {
     last_diag_tick: Instant,
     last_status_tick: Instant,
     last_keyframe_request: Instant,
+    /// Inject-error watermark (UIPI surfacing, F51).
+    last_inject_errors: u64,
+    last_uipi_emit: Option<Instant>,
     clock_origin: (Instant, u64),
     caps_cache: Option<Capabilities>,
 }
@@ -737,6 +752,8 @@ fn run(
         last_diag_tick: Instant::now(),
         last_status_tick: Instant::now(),
         last_keyframe_request: Instant::now() - Duration::from_secs(10),
+        last_inject_errors: 0,
+        last_uipi_emit: None,
         clock_origin: (Instant::now(), 0),
         caps_cache: None,
     };
@@ -767,6 +784,9 @@ fn run(
         engine.node.poll_transport(&mut engine.observer);
         shared.set_session(engine.node.current_session_id());
 
+        // ---- viewer window closed (F50): pipeline counter → flag ----
+        engine.propagate_viewer_closed();
+
         // ---- flags → pipelines / lifecycle ----
         engine.apply_flags();
 
@@ -784,7 +804,9 @@ fn run(
         if now.duration_since(engine.last_diag_tick) >= Duration::from_secs(1) {
             engine.last_diag_tick = now;
             engine.sync_encoder_describe();
-            engine.agg.set_input(engine.input_stat_now());
+            let stat = engine.input_stat_now();
+            engine.maybe_emit_uipi(stat.inject_errors, now);
+            engine.agg.set_input(stat);
             let snapshot = engine.agg.snapshot(engine.node.current_session_id());
             let _ = engine
                 .events
@@ -1086,9 +1108,14 @@ impl Engine {
         if peer_transport_gone {
             self.node
                 .teardown_transport("peer transport gone (control goodbye)", &mut self.observer);
+            // Same mid-call stop-action clobber hazard as above.
+            next.want_streaming = false;
+            next.want_rendering = false;
         }
 
-        // Viewer window closed by the user: treat as disconnect intent.
+        // Viewer window closed by the user: treat as disconnect intent —
+        // data-plane goodbye first (the host's key safety fires on it),
+        // then the machine transition (F50 wiring completed).
         if viewer_closed
             && matches!(
                 self.node.controller_state(),
@@ -1096,7 +1123,19 @@ impl Engine {
             )
         {
             self.info("viewer window closed; disconnecting");
+            let _ = self.node.send_wire(
+                Channel::Control,
+                &WireMessage::Disconnect {
+                    reason: protocol::wire::ControlDisconnectReason::User,
+                },
+            );
             self.node.controller_disconnect(&mut self.observer);
+            // The machine fires StopRendering DURING this call; the flag
+            // snapshot taken above is stale-true and would respawn the
+            // (user-closed) viewer window on the next iteration if the
+            // snapshot restore clobbered it.
+            next.want_rendering = false;
+            next.want_streaming = false;
         }
 
         // Session-end edges: retire the dead session's transport and
@@ -1634,6 +1673,34 @@ impl Engine {
     }
 
     fn teardown(&mut self) {
+        // F55: quitting mid-session must not leave the peer's key safety
+        // waiting on transport-failure detection — best-effort wire
+        // goodbye (+ AllKeysUp) first, then the machine transitions.
+        if matches!(
+            self.node.controller_state(),
+            ControllerState::Connected { .. }
+        ) {
+            let _ = self.node.send_wire(
+                Channel::InputReliable,
+                &WireMessage::Input(InputEvent::AllKeysUp {
+                    trigger: AllKeysUpTrigger::Disconnect,
+                }),
+            );
+            let _ = self.node.send_wire(
+                Channel::Control,
+                &WireMessage::Disconnect {
+                    reason: protocol::wire::ControlDisconnectReason::User,
+                },
+            );
+            // Let the reliable control channel flush before the close.
+            std::thread::sleep(Duration::from_millis(150));
+            self.node.controller_disconnect(&mut self.observer);
+        }
+        if host_in_session(self.node.host_state()) {
+            // Connected → Disconnected; the machine sends the signaling
+            // Disconnect itself.
+            self.node.host_stop(&mut self.observer);
+        }
         if let Some(stop) = self.resource_stop.take() {
             stop.store(true, std::sync::atomic::Ordering::Release);
         }
@@ -1701,6 +1768,42 @@ impl Engine {
         self.observer.set_encoder(Some(describe));
     }
 
+    /// F50: the present thread counts window closure; surface it as the
+    /// observer flag `apply_flags` acts on.
+    fn propagate_viewer_closed(&mut self) {
+        if let Some(pipeline) = self.controller_pipeline.as_ref()
+            && pipeline
+                .counters
+                .window_closed
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            self.flags_mut().viewer_closed = true;
+        }
+    }
+
+    /// F51: surface UIPI injection blocks to the user (rate-limited).
+    fn maybe_emit_uipi(&mut self, inject_errors: u64, now: Instant) {
+        let host_connected = matches!(self.node.host_state(), HostState::Connected { .. });
+        if should_emit_uipi(
+            self.last_inject_errors,
+            inject_errors,
+            host_connected,
+            self.last_uipi_emit,
+            now,
+        ) {
+            self.last_uipi_emit = Some(now);
+            self.error(
+                "uipi_blocked",
+                "The host machine is blocking remote input (an elevated foreground window or a locked session).",
+                Some(
+                    "Elevate the host app (run it as administrator) for sessions that must                      control elevated windows, or unlock the host session. Input resumes                      automatically once the block is gone."
+                        .to_owned(),
+                ),
+            );
+        }
+        self.last_inject_errors = inject_errors;
+    }
+
     fn input_stat_now(&self) -> diag::InputStat {
         self.input_pump
             .as_ref()
@@ -1710,14 +1813,21 @@ impl Engine {
 
     fn viewer_facts(&self) -> ViewerFacts {
         match self.controller_pipeline.as_ref() {
-            Some(pipeline) => ViewerFacts {
-                created: true,
-                hwnd: pipeline
-                    .viewer_hwnd
-                    .load(std::sync::atomic::Ordering::Relaxed),
-                fullscreen: pipeline.viewer_ctl.is_fullscreen(),
-                focused: pipeline.viewer_ctl.is_focused(),
-            },
+            Some(pipeline) => {
+                let ctl = &pipeline.viewer_ctl;
+                let (cw, ch) = ctl.client();
+                let (sw, sh) = ctl.swapchain();
+                ViewerFacts {
+                    created: true,
+                    hwnd: pipeline
+                        .viewer_hwnd
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                    fullscreen: ctl.is_fullscreen(),
+                    focused: ctl.is_focused(),
+                    client: (cw.max(0) as u32, ch.max(0) as u32),
+                    swapchain: (sw, sh),
+                }
+            }
             None => ViewerFacts::default(),
         }
     }
@@ -1802,6 +1912,23 @@ fn host_caps_stub() -> Capabilities {
     }
 }
 
+/// UIPI error-event policy (F51): emit on the first new injection error
+/// while the host session is live, then at most once per
+/// [`UIPI_EMIT_RATE`] (a permanently elevated foreground must not spam).
+pub const UIPI_EMIT_RATE: Duration = Duration::from_secs(5);
+
+pub fn should_emit_uipi(
+    prev_errors: u64,
+    now_errors: u64,
+    host_connected: bool,
+    last_emit: Option<Instant>,
+    now: Instant,
+) -> bool {
+    host_connected
+        && now_errors > prev_errors
+        && last_emit.is_none_or(|at| now.duration_since(at) >= UIPI_EMIT_RATE)
+}
+
 pub fn controller_in_session(state: &ControllerState) -> bool {
     matches!(
         state,
@@ -1820,4 +1947,26 @@ pub fn host_in_session(state: &HostState) -> bool {
             | HostState::Connecting { .. }
             | HostState::Connected { .. }
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uipi_policy_fires_on_new_errors_and_rate_limits() {
+        let t0 = Instant::now();
+        let t1 = t0 + Duration::from_secs(1);
+        let t6 = t0 + Duration::from_secs(6);
+        // No new errors → silent.
+        assert!(!should_emit_uipi(5, 5, true, None, t0));
+        // New errors while connected → emit.
+        assert!(should_emit_uipi(5, 6, true, None, t0));
+        // Not connected → silent (recording sinks never block anyway).
+        assert!(!should_emit_uipi(5, 6, false, None, t0));
+        // Rate-limited after a recent emit…
+        assert!(!should_emit_uipi(6, 7, true, Some(t0), t1));
+        // …and re-arms after the window.
+        assert!(should_emit_uipi(6, 7, true, Some(t0), t6));
+    }
 }

@@ -113,6 +113,10 @@ export interface EngineStatus {
   controller_state: ControllerStateName;
   session_id: string | null;
   viewer: ViewerInfo;
+  viewer_client_w: number;
+  viewer_client_h: number;
+  viewer_swapchain_w: number;
+  viewer_swapchain_h: number;
   host_monitors: MonitorInfo[];
   peer_monitors: MonitorInfo[];
   active_monitor: string | null;

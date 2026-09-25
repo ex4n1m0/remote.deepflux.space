@@ -199,9 +199,11 @@ diagnostics event received; disconnect→both Disconnected with
 `user_disconnect` copy; auto re-online→host Online again. Plus the reject
 path and the not-Online connect error.
 
-### 4.3 E2E (reduced-but-real form) — `tests/e2e.rs`, PASSED twice
+### 4.3 E2E (reduced-but-real form) — `tests/e2e.rs`; passed 3× pre-fix-package and 2× with the QA fix package
 
-Full log: `docs/reports/data/m4-e2e-20260925-run.log`.
+Logs: `docs/reports/data/m4-e2e-20260925-run.log` (pre-fix) and
+`docs/reports/data/m4-e2e-20260925-fixpkg.log` (fix package — adds the
+resize and viewer-close probes and the asserted causes).
 
 Topology: the test spawns the local signaling stack itself —
 `node tools/upstash-emulator.mjs --port 38091` +
@@ -220,8 +222,9 @@ Scenario and assertions (all passed, ~21 s):
 | quality preset change | `SetQuality(high)` on the wire; host encoder rebuilt 1920x1080@6 Mbps → **2560x1440@12 Mbps** (`encoder_rebuilds = 1`; describe string asserted) |
 | monitor pick | `SelectMonitor(primary)` round-tripped; host `active_monitor` set |
 | focus-loss safety | `WM_KILLFOCUS` posted to the real viewer HWND → controller sent **1** `AllKeysUp{FocusLost}`, host pump counted the release |
+| viewer resize | scripted 1600x1000 off-aspect client → swapchain follows (asserted equal to client size; F49 fix) |
 | diagnostics events | controller received **16** 1 Hz aggregate events |
-| disconnect | both `Disconnected`, host cause `Peer`; controller copy `user_disconnect` |
+| disconnect (via closing the viewer window) | both `Disconnected`; **causes asserted**: controller `User`, host `Peer` (F53 fix; previously log-described only) |
 | host returns Online | `back Online after session end`; final `host_state = Online` |
 
 **What remains manual** (tauri-driver multi-window automation was judged
@@ -249,7 +252,56 @@ the "no accounts, local-only" MVP posture (MSI would add WiX/toolchain
 weight for enterprise deployment features the MVP does not have). Release
 binary smoke-launched: window "Remote Desktop" opens and idles cleanly.
 
-## 6. Known gaps for M5/M6
+## 6. QA fix package (F48–F53, F55, F57 — `docs/reports/m4-qa-audit.md`)
+
+Landed after the audit, before the UX checkpoint:
+
+- **F48 (blocking-UX)**: pointer input now normalizes over the renderer's
+  **destination rect**, not the window client. `render-windows` gained the
+  sanctioned additive pure helper `rect::destination_rect` (+ a read-only
+  `D3D11Renderer::destination_rect_for`); `present` delegates to it, so
+  drawn and mapped rects cannot drift. Clicks in letterbox bars / beyond a
+  smaller-than-window 1:1 frame are dropped, not clamped. Tested across
+  fit-letterbox, fit-pillarbox, matching-aspect, 1:1 crop (window smaller),
+  1:1 window-larger, 21:9-in-8:5, degenerate rects, and the audit's two
+  repro geometries (6 new unit tests + 1 in render-windows).
+- **F49 (blocking-UX)**: `take_resized()` → `renderer.resize()` wired in
+  `pump_and_present` (m2_rig parity); the dest rect recomputes on resize
+  before the next frame; client and swapchain sizes are observable in
+  `EngineStatus` and the E2E asserts the swapchain follows a scripted
+  1600x1000 off-aspect resize.
+- **F50 (blocking-UX)**: viewer-close is wired end-to-end — the present
+  thread's `window_closed` counter propagates to the observer flag, the
+  engine sends the data-plane goodbye and `controller_disconnect`
+  (controller cause `User`, host `Peer`), and a stale-flag clobber that
+  would have respawned the closed window is closed. E2E ends the session
+  by closing the viewer and asserts the causes.
+- **F51**: `BlockedByUipi` surfaces as a rate-limited (5 s)
+  `engine://error` (`uipi_blocked`, with the elevate/unlock hint) on new
+  inject errors while hosting, and the overlay's input line shows
+  `blocked N`. Policy unit-tested; overlay rendering component-tested.
+- **F52**: `tests/ipc_surface.rs` now walks **every** `EngineEvent`
+  variant (worst-case payloads, incl. a 40-monitor list that must NOT
+  trip), every command-argument DTO, and keeps the snapshot walks; the
+  >32 bound applies to number arrays only (byte-blob shape). New variants
+  must be added to `all_events()` — noted in the test.
+- **F53**: E2E asserts the controller disconnect cause `User` and the
+  host cause `Peer`; this report's evidence table corrected (the old row
+  described the log, not an assertion).
+- **F55**: engine teardown (app quit / window close mid-session) sends
+  wire `AllKeysUp{Disconnect}` + `Disconnect{User}`, drains 150 ms, then
+  transitions the machines before closing the transport. Pinned by
+  `state_flow::graceful_shutdown_mid_session_sends_the_peer_goodbye`
+  (host sees the `Peer` end in < 5 s, not the failure-detection path).
+- **F57**: favorites show a green dot only while known-online (session
+  with that machine); otherwise a neutral "?" labeled "status unknown"
+  with the no-presence-query explanation. Never a definite "Offline".
+
+Not in this package (tracked by the audit): F54 (dead controller Stop
+affordance — mapping-table note), F56 (CR-1 leak re-quantification,
+blocking-for-M5), F58 notes.
+
+## 7. Known gaps for M5/M6
 
 - **Quality changes rebuild the encode stage** (~1 s gap, one leaked MFT
   drop-path allocation per change, counted). CR-1 requests live
@@ -271,7 +323,7 @@ binary smoke-launched: window "Remote Desktop" opens and idles cleanly.
   the run; repeated runs must not reuse device ids against a warm mailbox
   (the service dedupes by `message_id`) — handled with per-run ids.
 
-## 7. Change requests (for the architecture owner)
+## 8. Change requests (for the architecture owner)
 
 - **CR-1 (codec-windows)**: expose live encoder reconfiguration
   (ICodecAPI bitrate/fps) so quality presets stop rebuilding the MFT.
@@ -290,7 +342,7 @@ binary smoke-launched: window "Remote Desktop" opens and idles cleanly.
   inference for disconnect routing (nice-to-have; current learning table
   is proven by M3 tests and M4 E2E).
 
-## 8. Risks for M5/M6
+## 9. Risks for M5/M6
 
 - The tauri tree (~4.5 k lock lines) enters the workspace; version drift
   between tauri/tauri-build/wry should be watched on upgrades (pinned by

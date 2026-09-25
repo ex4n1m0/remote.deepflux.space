@@ -72,11 +72,13 @@ M4_E2E=1 cargo test -p remote-desktop-app --test e2e -- --nocapture
 
 The scenario: host start → Online; controller connect → host consent → accept
 → session live (real capture/encode/decode/present) → quality preset change
-(asserted by the rebuilt encoder's bitrate) → monitor pick → focus-loss
-`AllKeysUp{FocusLost}` → disconnect → host back Online; asserts state
-transitions, presented-frame counts, and diagnostics events. Without
-`M4_E2E=1` the test skips with a reason (no display/GPU on CI). Evidence log:
-`docs/reports/data/m4-e2e-20260925-run.log`.
+(asserted by the rebuilt encoder's bitrate) → monitor pick → off-aspect
+viewer resize (swapchain must follow, F49) → focus-loss `AllKeysUp`
+→ **disconnect by closing the viewer window** (F50; causes asserted: F53)
+→ host back Online; asserts state transitions, presented-frame counts, and
+diagnostics events. Without `M4_E2E=1` the test skips with a reason (no
+display/GPU on CI). Evidence logs: `docs/reports/data/m4-e2e-20260925-run.log`
+and `docs/reports/data/m4-e2e-20260925-fixpkg.log`.
 
 ## Settings & favorites
 

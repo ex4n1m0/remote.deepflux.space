@@ -90,6 +90,12 @@ pub struct ViewerCtl {
     dropped: AtomicU64,
     /// Last known client size (present thread refreshes every pump).
     client: Mutex<(i32, i32)>,
+    /// Destination rect of the last presented frame — the rect input is
+    /// normalized over (M4 QA F48; `(x, y, w, h)`, `None` until the first
+    /// present).
+    dest_rect: Mutex<Option<(i32, i32, u32, u32)>>,
+    /// Current swapchain size (after F49 resize handling).
+    swapchain: Mutex<(u32, u32)>,
 }
 
 impl ViewerCtl {
@@ -102,6 +108,8 @@ impl ViewerCtl {
             queue: Mutex::new(VecDeque::with_capacity(INPUT_QUEUE_CAP)),
             dropped: AtomicU64::new(0),
             client: Mutex::new((1, 1)),
+            dest_rect: Mutex::new(None),
+            swapchain: Mutex::new((1, 1)),
         }
     }
 
@@ -131,6 +139,29 @@ impl ViewerCtl {
         q.drain(..).collect()
     }
 
+    /// Destination rect input is normalized over (F48); set by the present
+    /// thread after each present and after each resize.
+    pub fn set_dest_rect(&self, rect: Option<(i32, i32, u32, u32)>) {
+        *self.dest_rect.lock().expect("viewer dest rect") = rect;
+    }
+
+    pub fn dest_rect(&self) -> Option<(i32, i32, u32, u32)> {
+        *self.dest_rect.lock().expect("viewer dest rect")
+    }
+
+    /// Current swapchain size (F49: observable resize follow).
+    pub fn set_swapchain(&self, size: (u32, u32)) {
+        *self.swapchain.lock().expect("viewer swapchain") = size;
+    }
+
+    pub fn swapchain(&self) -> (u32, u32) {
+        *self.swapchain.lock().expect("viewer swapchain")
+    }
+
+    pub fn client(&self) -> (i32, i32) {
+        *self.client.lock().expect("viewer client")
+    }
+
     fn push(&self, event: ViewerInput) {
         let mut q = self.queue.lock().expect("viewer queue");
         if q.len() >= INPUT_QUEUE_CAP {
@@ -151,6 +182,9 @@ pub struct ViewerWindow {
     orig_proc: isize,
     ctl: Arc<ViewerCtl>,
     saved_placement: Option<WINDOWPLACEMENT>,
+    /// Size of the last presented frame (dest-rect recomputation on
+    /// resize before the next frame arrives).
+    last_frame: Option<(u32, u32)>,
 }
 
 thread_local! {
@@ -196,8 +230,12 @@ impl ViewerWindow {
             orig_proc: orig,
             ctl,
             saved_placement: None,
+            last_frame: None,
         };
         viewer.sync_client();
+        viewer
+            .ctl
+            .set_swapchain((width.max(1) as u32, height.max(1) as u32));
         Ok(viewer)
     }
 
@@ -214,8 +252,9 @@ impl ViewerWindow {
         self.renderer.set_cursor(overlay);
     }
 
-    /// Pump messages, apply control (scale/fullscreen), present one frame.
-    /// Returns `false` when the window was closed — stop the pipeline.
+    /// Pump messages, apply control (scale/fullscreen/resize), present one
+    /// frame. Returns `false` when the window was closed — stop the
+    /// pipeline.
     pub fn pump_and_present(&mut self, frame: Option<&RenderFrame>) -> bool {
         if !self.window.pump() {
             return false;
@@ -230,12 +269,39 @@ impl ViewerWindow {
         if self.ctl.fullscreen_toggles.swap(0, Ordering::AcqRel) > 0 {
             self.toggle_fullscreen();
         }
-        if let Some(frame) = frame
-            && self.renderer.present(frame).is_err()
-        {
-            return false;
+        // Resize: the swapchain must follow the client or it goes stale
+        // (F18 wiring, m2_rig parity; M4 QA F49 re-added).
+        if self.window.take_resized() {
+            let (w, h) = self.window.client_size();
+            let (w, h) = (w.max(1) as u32, h.max(1) as u32);
+            if self.renderer.resize(w, h).is_ok() {
+                self.ctl.set_swapchain((w, h));
+            }
+            self.refresh_dest_rect();
+        }
+        if let Some(frame) = frame {
+            // Publish the destination rect BEFORE presenting so pointer
+            // input normalizes over exactly where the frame lands (F48);
+            // `present` computes the same rect via the shared helper.
+            let rect = self
+                .renderer
+                .destination_rect_for(frame.width_px, frame.height_px);
+            self.ctl.set_dest_rect(Some(rect));
+            self.last_frame = Some((frame.width_px, frame.height_px));
+            if self.renderer.present(frame).is_err() {
+                return false;
+            }
         }
         true
+    }
+
+    /// Recompute the destination rect after a resize (before the next
+    /// frame arrives the mapping must already use the new client size).
+    fn refresh_dest_rect(&self) {
+        if let Some((fw, fh)) = self.last_frame {
+            self.ctl
+                .set_dest_rect(Some(self.renderer.destination_rect_for(fw, fh)));
+        }
     }
 
     fn toggle_fullscreen(&mut self) {
@@ -389,45 +455,52 @@ unsafe extern "system" fn viewer_proc(
             WM_MOUSEMOVE => {
                 if ctl.is_focused() {
                     let (x, y) = mouse_of(lparam);
-                    let norm = normalize(x, y, *ctl.client.lock().expect("viewer client"));
-                    ctl.push(ViewerInput::Move {
-                        x: norm.0,
-                        y: norm.1,
-                    });
+                    // Normalize over the DESTINATION rect (where the frame
+                    // is actually composited), not the client rect; drops
+                    // moves inside letterbox bars (M4 QA F48).
+                    if let Some((nx, ny)) = map_into_dest(x, y, ctl.dest_rect()) {
+                        ctl.push(ViewerInput::Move { x: nx, y: ny });
+                    }
                 }
                 CallWindowProcW(orig, hwnd, msg, wparam, lparam)
             }
-            WM_LBUTTONDOWN => button(&ctl, MouseButton::Left, ButtonState::Pressed),
-            WM_LBUTTONUP => button(&ctl, MouseButton::Left, ButtonState::Released),
-            WM_RBUTTONDOWN => button(&ctl, MouseButton::Right, ButtonState::Pressed),
-            WM_RBUTTONUP => button(&ctl, MouseButton::Right, ButtonState::Released),
-            WM_MBUTTONDOWN => button(&ctl, MouseButton::Middle, ButtonState::Pressed),
-            WM_MBUTTONUP => button(&ctl, MouseButton::Middle, ButtonState::Released),
+            WM_LBUTTONDOWN => button(&ctl, MouseButton::Left, ButtonState::Pressed, lparam),
+            WM_LBUTTONUP => button(&ctl, MouseButton::Left, ButtonState::Released, lparam),
+            WM_RBUTTONDOWN => button(&ctl, MouseButton::Right, ButtonState::Pressed, lparam),
+            WM_RBUTTONUP => button(&ctl, MouseButton::Right, ButtonState::Released, lparam),
+            WM_MBUTTONDOWN => button(&ctl, MouseButton::Middle, ButtonState::Pressed, lparam),
+            WM_MBUTTONUP => button(&ctl, MouseButton::Middle, ButtonState::Released, lparam),
             WM_XBUTTONDOWN => {
                 if ctl.is_focused() {
                     let which = ((wparam.0 >> 16) & 0xFFFF) as u16;
-                    ctl.push(ViewerInput::Button {
-                        button: if which == 1 {
-                            MouseButton::X1
-                        } else {
-                            MouseButton::X2
-                        },
-                        state: ButtonState::Pressed,
-                    });
+                    let (x, y) = mouse_of(lparam);
+                    if map_into_dest(x, y, ctl.dest_rect()).is_some() {
+                        ctl.push(ViewerInput::Button {
+                            button: if which == 1 {
+                                MouseButton::X1
+                            } else {
+                                MouseButton::X2
+                            },
+                            state: ButtonState::Pressed,
+                        });
+                    }
                 }
                 LRESULT(1)
             }
             WM_XBUTTONUP => {
                 if ctl.is_focused() {
                     let which = ((wparam.0 >> 16) & 0xFFFF) as u16;
-                    ctl.push(ViewerInput::Button {
-                        button: if which == 1 {
-                            MouseButton::X1
-                        } else {
-                            MouseButton::X2
-                        },
-                        state: ButtonState::Released,
-                    });
+                    let (x, y) = mouse_of(lparam);
+                    if map_into_dest(x, y, ctl.dest_rect()).is_some() {
+                        ctl.push(ViewerInput::Button {
+                            button: if which == 1 {
+                                MouseButton::X1
+                            } else {
+                                MouseButton::X2
+                            },
+                            state: ButtonState::Released,
+                        });
+                    }
                 }
                 LRESULT(1)
             }
@@ -451,9 +524,15 @@ unsafe extern "system" fn viewer_proc(
     }
 }
 
-fn button(ctl: &ViewerCtl, button: MouseButton, state: ButtonState) -> LRESULT {
+fn button(ctl: &ViewerCtl, button: MouseButton, state: ButtonState, lparam: LPARAM) -> LRESULT {
     if ctl.is_focused() {
-        ctl.push(ViewerInput::Button { button, state });
+        // Clicks outside the presented frame (letterbox bars, the area
+        // beyond a smaller-than-window 1:1 frame) are dropped, not
+        // clamped to an edge (F48).
+        let (x, y) = mouse_of(lparam);
+        if map_into_dest(x, y, ctl.dest_rect()).is_some() {
+            ctl.push(ViewerInput::Button { button, state });
+        }
     }
     LRESULT(0)
 }
@@ -472,19 +551,30 @@ fn mouse_of(lparam: LPARAM) -> (i32, i32) {
     (x, y)
 }
 
-/// Normalize client pixels to the wire's 0..=65535 space over the window.
-fn normalize(x: i32, y: i32, (w, h): (i32, i32)) -> (u16, u16) {
-    let nx = if w <= 1 {
+/// Map client pixels onto the wire's 0..=65535 space **over the frame's
+/// destination rect** `(x, y, w, h)` (M4 QA F48). `None` when the point is
+/// outside the rect (letterbox bars / beyond a 1:1 frame) or no frame has
+/// been presented yet — callers drop the event rather than clamp to an
+/// edge.
+fn map_into_dest(x: i32, y: i32, rect: Option<(i32, i32, u32, u32)>) -> Option<(u16, u16)> {
+    let (dx, dy, dw, dh) = rect?;
+    if dw == 0 || dh == 0 {
+        return None;
+    }
+    if x < dx || y < dy || x >= dx + dw as i32 || y >= dy + dh as i32 {
+        return None;
+    }
+    let nx = if dw <= 1 {
         32_767
     } else {
-        (x.clamp(0, w - 1) * 65_535) / (w - 1)
+        ((x - dx) * 65_535) / (dw as i32 - 1)
     };
-    let ny = if h <= 1 {
+    let ny = if dh <= 1 {
         32_767
     } else {
-        (y.clamp(0, h - 1) * 65_535) / (h - 1)
+        ((y - dy) * 65_535) / (dh as i32 - 1)
     };
-    (nx.clamp(0, 65_535) as u16, ny.clamp(0, 65_535) as u16)
+    Some((nx.clamp(0, 65_535) as u16, ny.clamp(0, 65_535) as u16))
 }
 
 /// Convert drained viewer events into wire input events with monotonic seq
@@ -590,15 +680,114 @@ pub fn to_wire_events(
 mod tests {
     use super::*;
 
+    /// The rect under test always comes from the renderer's own pure
+    /// geometry helper, so mapping and compositing cannot drift apart.
+    fn dest(
+        scale: ScaleMode,
+        frame: (u32, u32),
+        client: (u32, u32),
+    ) -> Option<(i32, i32, u32, u32)> {
+        Some(render_windows::destination_rect(
+            scale, frame.0, frame.1, client.0, client.1,
+        ))
+    }
+
     #[test]
-    fn normalization_covers_the_full_range() {
-        assert_eq!(normalize(0, 0, (1920, 1080)), (0, 0));
-        assert_eq!(normalize(1919, 1079, (1920, 1080)), (65_535, 65_535));
-        assert_eq!(normalize(960, 540, (1921, 1081)), (32_767, 32_767));
-        // Degenerate sizes center instead of dividing by zero.
-        assert_eq!(normalize(0, 0, (1, 1)), (32_767, 32_767));
-        // Out-of-range (impossible for client coords) clamps.
-        assert_eq!(normalize(5_000, -5, (1920, 1080)), (65_535, 0));
+    fn f48_fit_letterbox_maps_over_the_video_rect_not_the_client() {
+        // The audit's repro: 16:9 4K frame, 1600x1000 client → video at
+        // (0, 50, 1600, 900), 50 px bars top/bottom.
+        let rect = dest(ScaleMode::Fit, (3840, 2160), (1600, 1000));
+        assert_eq!(rect, Some((0, 50, 1600, 900)));
+        // The video's top edge must be remote y=0 — the old client-rect
+        // mapping sent ~3279 (≈108 px into the remote) here.
+        assert_eq!(map_into_dest(0, 50, rect), Some((0, 0)));
+        assert_eq!(map_into_dest(1599, 949, rect), Some((65_535, 65_535)));
+        assert_eq!(
+            map_into_dest(800, 500, rect),
+            Some((
+                ((800i64 * 65_535) / 1599) as u16,
+                ((450i64 * 65_535) / 899) as u16,
+            ))
+        );
+        // Clicks in the letterbox bars are dropped, not clamped.
+        assert_eq!(map_into_dest(800, 10, rect), None);
+        assert_eq!(map_into_dest(800, 980, rect), None);
+    }
+
+    #[test]
+    fn f48_fit_pillarbox_maps_over_the_video_rect() {
+        // 4:3 frame in a 16:9 client → 240 px bars left/right.
+        let rect = dest(ScaleMode::Fit, (1024, 768), (1920, 1080));
+        assert_eq!(rect, Some((240, 0, 1440, 1080)));
+        assert_eq!(map_into_dest(240, 0, rect), Some((0, 0)));
+        assert_eq!(map_into_dest(1679, 1079, rect), Some((65_535, 65_535)));
+        assert_eq!(map_into_dest(100, 540, rect), None, "left bar");
+        assert_eq!(map_into_dest(1900, 540, rect), None, "right bar");
+    }
+
+    #[test]
+    fn f48_fit_matching_aspect_equals_client_mapping() {
+        // The only geometry where the old mapping was accidentally right.
+        let rect = dest(ScaleMode::Fit, (1280, 720), (1280, 720));
+        assert_eq!(rect, Some((0, 0, 1280, 720)));
+        assert_eq!(map_into_dest(0, 0, rect), Some((0, 0)));
+        assert_eq!(map_into_dest(1279, 719, rect), Some((65_535, 65_535)));
+    }
+
+    #[test]
+    fn f48_one_to_one_crops_top_left_not_centered_scaled() {
+        // 1:1 is top-left anchored (renderer semantics): a 1280x720 window
+        // over a 4K frame shows the top-left crop; the audit's 3× error
+        // came from normalizing center-clicks over the whole client.
+        let rect = dest(ScaleMode::OneToOne, (3840, 2160), (1280, 720));
+        assert_eq!(rect, Some((0, 0, 1280, 720)));
+        // Center click maps to the CENTER OF THE CROPPED VIEW, i.e. remote
+        // (1920, 1080) in absolute pixels — exactly what is displayed
+        // there. The old mapping sent the same 32767/32767 against the
+        // client rect; identical here, but see the larger-client case.
+        assert_eq!(
+            map_into_dest(640, 360, rect),
+            Some((
+                ((640i64 * 65_535) / 1279) as u16,
+                ((360i64 * 65_535) / 719) as u16,
+            ))
+        );
+        // 1:1 with the window larger than the frame: the frame sits
+        // top-left; clicks beyond it are dropped (nothing is displayed
+        // there), and in-frame clicks map 1:1 to the full 0..=65535 range.
+        let rect = dest(ScaleMode::OneToOne, (1280, 720), (1920, 1080));
+        assert_eq!(rect, Some((0, 0, 1280, 720)));
+        assert_eq!(map_into_dest(1279, 719, rect), Some((65_535, 65_535)));
+        assert_eq!(map_into_dest(1500, 900, rect), None, "beyond the 1:1 frame");
+    }
+
+    #[test]
+    fn f48_non_widescreen_window_geometry() {
+        // 21:9 frame in an 8:5 client: bars top/bottom.
+        let rect = dest(ScaleMode::Fit, (2560, 1080), (1600, 1000));
+        assert_eq!(rect, Some((0, 162, 1600, 675)));
+        assert_eq!(
+            map_into_dest(800, 162, rect),
+            Some((((800i64 * 65_535) / 1599) as u16, 0))
+        );
+        assert_eq!(
+            map_into_dest(800, 836, rect),
+            Some((((800i64 * 65_535) / 1599) as u16, 65_535))
+        );
+        assert_eq!(map_into_dest(800, 100, rect), None);
+    }
+
+    #[test]
+    fn f48_no_frame_no_mapping_and_degenerate_rects() {
+        // Before the first present there is nothing on screen to click.
+        assert_eq!(map_into_dest(10, 10, None), None);
+        // Degenerate rect (zero-size destination) drops instead of
+        // dividing by zero.
+        assert_eq!(map_into_dest(10, 10, Some((0, 0, 0, 0))), None);
+        assert_eq!(
+            map_into_dest(5, 5, Some((5, 5, 1, 1))),
+            Some((32_767, 32_767))
+        );
     }
 
     #[test]
