@@ -34,3 +34,9 @@ windows = { workspace = true, features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# M3 remote signaling client (WS primary + HTTP fallback).
+tungstenite = { workspace = true }
+native-tls = { workspace = true }
+ureq = { workspace = true }
+getrandom = { workspace = true }

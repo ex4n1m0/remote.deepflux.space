@@ -40,6 +40,7 @@ pub mod metrics;
 pub mod node;
 pub mod pacing;
 pub mod signaling;
+pub mod signaling_remote;
 pub mod timers;
 
 pub use clock::{Clock, ManualClock, MonotonicClock};
@@ -47,4 +48,5 @@ pub use node::{NoObserver, Node, NodeCounters, NodeObserver};
 pub use signaling::{
     FileSignaling, HubEndpoint, InboundEnvelope, SignalingDirection, SignalingHub, SignalingIo,
 };
+pub use signaling_remote::{RemoteCounters, RemoteSignaling, RemoteSignalingConfig};
 pub use timers::{FiredTimer, MachineKind, TimerQueue};

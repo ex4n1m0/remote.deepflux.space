@@ -40,6 +40,16 @@ tokio = { version = "=1.53.1", features = ["rt-multi-thread", "time", "sync"] }
 bytes = "=1.12.1"
 async-trait = "=0.1.92"
 openh264 = "=0.9.8"
+# M3 remote signaling client (`node-runtime::signaling_remote`): WebSocket
+# primary + HTTP polling fallback against the Vercel service. native-tls =
+# schannel on Windows (no extra build tooling), matching the workspace's
+# exact-pin policy for the transport-adjacent tree.
+tungstenite = { version = "=0.26.2", features = ["native-tls"] }
+native-tls = "=0.2.14"
+ureq = { version = "=2.12.1", default-features = false, features = ["native-tls", "gzip", "json"] }
+# Device-token entropy for the signaling client (safe API; keeps the
+# node-runtime free of new `unsafe` beyond the AGENTS.md sanctioned list).
+getrandom = "=0.3.3"
 
 # Every crate in this workspace:
 #   [package] version/edition/rust-version from workspace.package,
