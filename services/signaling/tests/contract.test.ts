@@ -1,21 +1,21 @@
 /**
- * M3 contract tests (RD-009/RD-010) — run against the REAL service code:
+ * M3 contract tests (RD-009/RD-010 + QA F37–F45) — run against the REAL
+ * service code:
  *
- *   - `vercel dev --local` x2 (ports 38011, 38012): the Vercel pipeline;
- *     cross-instance routing spans the two independent dev servers.
- *   - standalone server (38013): the SAME `lib/server.ts` module with WS
- *     enabled (`vercel dev`'s local bridge does not forward WS upgrades —
- *     see tools/dev-server.mjs).
- *   - standalone short-TTL server (38014): device 1 s / mailbox 2 s /
- *     session 1 s / max-connection 3 s for the expiry + resume matrix.
- *   - Upstash REST emulator (38001): the shared external store.
+ *   - `pnpm test:contract` (default): emulator + 2× `vercel dev --local`
+ *     (cross-instance spans the two Vercel pipelines) + standalone WS
+ *     instance + short-TTL instance.
+ *   - `pnpm test:contract:headless` (CONTRACT_NO_VERCEL=1): emulator +
+ *     standalone instances only — no Vercel auth/toolchain needed; used by
+ *     scripts/test.sh so the merge gate covers the contract matrix.
  *
- * Matrix (source plan): stale presence, duplicate delivery, reconnect/
- * resume, timeout (TTL), cross-instance, mailbox TTL expiry, session-secret
- * single-use, unauthorized/bogus-target rejection, protocol v0 rejection,
- * WS/HTTP parity, maxDuration bye, no-secrets-in-logs.
- *
- * Run: pnpm test:contract   (spawns and tears down everything itself)
+ * Matrix: stale presence, duplicate delivery, reconnect/resume, timeout
+ * (TTL), cross-instance, mailbox TTL expiry, session-secret single-use,
+ * unauthorized/bogus-target rejection, protocol v0 rejection, WS/HTTP
+ * parity, maxDuration bye, no-secrets-in-logs — plus the QA fix-package
+ * cases: mailbox-era crossing (F37), ack purge (F38a), token-takeover
+ * refusal (F38b/F39), oversize-body typed 413 (F42c), WS header-only auth
+ * (F42b), and dedupe crash-window repair (F45).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { test, before, after } from 'node:test';
@@ -23,17 +23,22 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket from 'ws';
 
+const HEADLESS = process.env.CONTRACT_NO_VERCEL === '1';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const EMU = 38001;
-const VDEV_A = 'http://127.0.0.1:38011';
-const VDEV_B = 'http://127.0.0.1:38012';
 const STANDALONE = 'http://127.0.0.1:38013';
 const SHORT_TTL = 'http://127.0.0.1:38014';
+const STANDALONE2 = 'http://127.0.0.1:38015';
+const VDEV_A = HEADLESS ? STANDALONE : 'http://127.0.0.1:38011';
+const VDEV_B = HEADLESS ? STANDALONE2 : 'http://127.0.0.1:38012';
+const STORE = { url: `http://127.0.0.1:${EMU}`, token: 'local-contract-token' };
 
 const children: Array<{ pid?: number | undefined; proc?: ReturnType<typeof spawn> | undefined }> =
   [];
 
-function spawnNode(args: string[], env: Record<string, string>, label: string, log: string) {
+const logs = new Map<string, () => string>();
+
+function spawnNode(args: string[], env: Record<string, string>, label: string) {
   const proc = spawn(process.execPath, args, {
     cwd: ROOT,
     env: { ...process.env, ...env },
@@ -43,12 +48,9 @@ function spawnNode(args: string[], env: Record<string, string>, label: string, l
   proc.stdout?.on('data', (c) => (out += c));
   proc.stderr?.on('data', (c) => (out += c));
   children.push({ pid: proc.pid, proc });
-  (proc as unknown as { __log?: string }).__log = out;
   logs.set(label, () => out);
   return proc;
 }
-
-const logs = new Map<string, () => string>();
 
 function stopAll() {
   for (const c of children) {
@@ -91,15 +93,15 @@ async function waitUntil<T>(
 // --- tiny service client ----------------------------------------------------
 
 const tokenOf = (d: string) => `tok-${d}`;
-const hdr = (d: string) => ({
+const hdr = (d: string, token?: string) => ({
   'content-type': 'application/json',
-  authorization: `Bearer ${tokenOf(d)}`,
+  authorization: `Bearer ${token ?? tokenOf(d)}`,
 });
 
-async function send(base: string, device: string, envelope: object) {
+async function send(base: string, device: string, envelope: object, token?: string) {
   const r = await fetch(`${base}/api/signal?device_id=${device}`, {
     method: 'POST',
-    headers: hdr(device),
+    headers: hdr(device, token),
     body: JSON.stringify({ op: 'send', envelope }),
     signal: AbortSignal.timeout(8000),
   });
@@ -109,10 +111,7 @@ async function send(base: string, device: string, envelope: object) {
 async function poll(base: string, device: string, after = 0, max = 64, token?: string) {
   const r = await fetch(`${base}/api/signal?device_id=${device}`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token ?? tokenOf(device)}`,
-    },
+    headers: hdr(device, token),
     body: JSON.stringify({ op: 'poll', device_id: device, after_seq: after, max }),
     signal: AbortSignal.timeout(8000),
   });
@@ -127,6 +126,17 @@ async function ack(base: string, device: string, seq: number) {
     signal: AbortSignal.timeout(8000),
   });
   return r.status;
+}
+
+/** Raw store command through the emulator's REST pipeline (test tooling). */
+async function storeCommand(...command: string[]): Promise<void> {
+  const r = await fetch(`${STORE.url}/pipeline`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${STORE.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify([{ command }]),
+    signal: AbortSignal.timeout(4000),
+  });
+  assert.equal(r.status, 200, 'store command must reach the emulator');
 }
 
 const CAPS = { encoders: [], monitors: [], max_bitrate_kbps: 1000, features: 0 };
@@ -152,13 +162,13 @@ const registerEnvelope = (from: string) =>
 const heartbeatEnvelope = (from: string) =>
   envelope(from, 'signaling', MID(), { type: 'heartbeat' });
 
-async function register(base: string, device: string) {
-  const { status, json } = await send(base, device, registerEnvelope(device));
+async function register(base: string, device: string, token?: string) {
+  const { status, json } = await send(base, device, registerEnvelope(device), token);
   assert.equal(status, 200, `register ${device} on ${base}`);
   assert.equal(json.ok, true);
 }
 
-// --- WS client wrapper -------------------------------------------------------
+// --- WS client wrapper (header auth only — F42b) ------------------------------
 
 interface WsSession {
   frames: Array<Record<string, unknown>>;
@@ -169,9 +179,19 @@ interface WsSession {
   closed: Promise<void>;
 }
 
-function wsConnect(base: string, device: string, resume = 0, token?: string): Promise<WsSession> {
-  const url = `${base.replace('http', 'ws')}/api/signal?device_id=${device}&token=${token ?? tokenOf(device)}`;
-  const ws = new WebSocket(url);
+function wsConnect(
+  base: string,
+  device: string,
+  resume = 0,
+  opts: { token?: string; tokenInQuery?: boolean } = {},
+): Promise<WsSession> {
+  const token = opts.token ?? tokenOf(device);
+  const url = `${base.replace('http', 'ws')}/api/signal?device_id=${device}${
+    opts.tokenInQuery ? `&token=${token}` : ''
+  }`;
+  const ws = new WebSocket(url, {
+    headers: opts.tokenInQuery ? {} : { authorization: `Bearer ${token}` },
+  });
   const frames: Array<Record<string, unknown>> = [];
   const waiters: Array<{ op: string; resolve: (f: Record<string, unknown>) => void }> = [];
   let closedResolve: () => void;
@@ -186,7 +206,10 @@ function wsConnect(base: string, device: string, resume = 0, token?: string): Pr
           return resolve(existing);
         }
         const timer = setTimeout(
-          () => reject(new Error(`ws frame ${op} timeout; have ${frames.map((f) => f.op).join(',')}`)),
+          () =>
+            reject(
+              new Error(`ws frame ${op} timeout; have ${frames.map((f) => f.op).join(',')}`),
+            ),
           timeoutMs,
         );
         waiters.push({
@@ -229,13 +252,13 @@ function wsConnect(base: string, device: string, resume = 0, token?: string): Pr
 
 before(async () => {
   const storeEnv = {
-    UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${EMU}`,
-    UPSTASH_REDIS_REST_TOKEN: 'local-contract-token',
+    UPSTASH_REDIS_REST_URL: STORE.url,
+    UPSTASH_REDIS_REST_TOKEN: STORE.token,
   };
-  spawnNode([`${ROOT}tools/upstash-emulator.mjs`, '--port', String(EMU)], storeEnv, 'emulator', '');
+  spawnNode([`${ROOT}tools/upstash-emulator.mjs`, '--port', String(EMU)], storeEnv, 'emulator');
   await waitUntil(async () => {
     try {
-      const r = await fetch(`http://127.0.0.1:${EMU}/health`);
+      const r = await fetch(`${STORE.url}/health`);
       return r.ok;
     } catch {
       return false;
@@ -260,37 +283,44 @@ before(async () => {
     SIGNALING_MAX_CONNECTION_SECONDS: '3',
   };
 
-  // Two INDEPENDENT vercel dev servers -> cross-instance matrix.
-  spawnNode(
-    [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38011'],
-    normal,
-    'vdev-a',
-    '',
-  );
-  spawnNode(
-    [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38012'],
-    normal,
-    'vdev-b',
-    '',
-  );
+  const jobs: Array<Promise<void>> = [
+    waitReady(STANDALONE, 20_000),
+    waitReady(SHORT_TTL, 20_000),
+    waitReady(VDEV_A, 20_000),
+    waitReady(VDEV_B, 20_000),
+  ];
   spawnNode(
     ['--import', 'tsx', `${ROOT}tools/dev-server.mjs`, '--port', '38013'],
     normal,
     'standalone',
-    '',
   );
-  spawnNode(
-    ['--import', 'tsx', `${ROOT}tools/dev-server.mjs`, '--port', '38014'],
-    short,
-    'short',
-    '',
-  );
-
+  spawnNode(['--import', 'tsx', `${ROOT}tools/dev-server.mjs`, '--port', '38014'], short, 'short');
+  if (HEADLESS) {
+    // Cross-instance spans two independent standalone processes.
+    spawnNode(
+      ['--import', 'tsx', `${ROOT}tools/dev-server.mjs`, '--port', '38015'],
+      normal,
+      'standalone2',
+    );
+  } else {
+    // Two INDEPENDENT vercel dev servers -> cross-instance through the
+    // Vercel pipeline (project-local CLI; --local, no project link).
+    spawnNode(
+      [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38011'],
+      normal,
+      'vdev-a',
+    );
+    spawnNode(
+      [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38012'],
+      normal,
+      'vdev-b',
+    );
+  }
   await Promise.all([
-    waitReady(VDEV_A, 90_000),
-    waitReady(VDEV_B, 90_000),
     waitReady(STANDALONE, 20_000),
     waitReady(SHORT_TTL, 20_000),
+    waitReady(VDEV_A, HEADLESS ? 20_000 : 90_000),
+    waitReady(VDEV_B, HEADLESS ? 20_000 : 90_000),
   ]);
 });
 
@@ -309,18 +339,26 @@ test('health probes expose the versioned contract', async () => {
   }
 });
 
-test('register creates presence; wrong token is unauthorized', async () => {
+test('register creates presence; wrong token is unauthorized (poll and rebind)', async () => {
   await register(VDEV_A, 'ct-a');
   const bad = await poll(VDEV_A, 'ct-a', 0, 10, 'wrong-token');
   assert.equal(bad.status, 401);
-  // A different token cannot hijack the live presence via register either.
-  const hijack = await send(VDEV_A, 'ct-a', {
-    ...registerEnvelope('ct-a'),
-  });
-  assert.equal(hijack.json.ok, true); // same token: refresh ok
+  // Same token: refresh ok.
+  const again = await send(VDEV_A, 'ct-a', registerEnvelope('ct-a'));
+  assert.equal(again.json.ok, true);
+  // F39: DIFFERENT token against a live presence — register AND heartbeat
+  // refusal branches.
+  const regB = await send(VDEV_A, 'ct-a', registerEnvelope('ct-a'), 'attacker-token');
+  assert.equal(regB.status, 401, 'register with a different token must be refused');
+  assert.equal(regB.json.error, 'unauthorized');
+  const hbB = await send(VDEV_A, 'ct-a', heartbeatEnvelope('ct-a'), 'attacker-token');
+  assert.equal(hbB.status, 401, 'heartbeat with a different token must be refused');
+  // The refusal must not have disturbed the owner.
+  const owner = await send(VDEV_A, 'ct-a', heartbeatEnvelope('ct-a'));
+  assert.equal(owner.json.ok, true);
 });
 
-test('peer send + HTTP poll delivery (vercel dev)', async () => {
+test('peer send + HTTP poll delivery', async () => {
   await register(VDEV_A, 'ct-a');
   await register(VDEV_A, 'ct-b');
   const s = await send(VDEV_A, 'ct-a', envelope('ct-a', 'ct-b', MID(), { type: 'offer', sdp: 'v=0 ct' }, 'sess-1'));
@@ -333,7 +371,7 @@ test('peer send + HTTP poll delivery (vercel dev)', async () => {
   assert.equal(got.envelope.message_id !== undefined, true);
 });
 
-test('duplicate delivery: same message_id enqueued exactly once', async () => {
+test('duplicate delivery: one entry; ack purges it (F38a)', async () => {
   await register(VDEV_A, 'ct-dup-a');
   await register(VDEV_A, 'ct-dup-b');
   const env = envelope(
@@ -349,13 +387,20 @@ test('duplicate delivery: same message_id enqueued exactly once', async () => {
   assert.equal(second.status, 200);
   assert.equal(second.json.duplicate, true, 'service reports the dedupe hit');
   const p = await poll(VDEV_A, 'ct-dup-b', 0, 64);
-  const list = (p.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
-  const iceCount = list.filter((e) => e.envelope.type === 'ice_candidate').length;
-  assert.equal(iceCount, 1, 'exactly one mailbox entry for the duplicated message_id');
-  // At-least-once until acked: re-polling from 0 redelivers (machines dedupe).
-  const again = await poll(VDEV_A, 'ct-dup-b', 0, 64);
-  const againList = (again.json.envelopes ?? []) as unknown[];
-  assert.equal(againList.length, list.length);
+  const list = (p.json.envelopes ?? []) as Array<{ seq: number; envelope: Record<string, unknown> }>;
+  const ice = list.filter((e) => e.envelope.type === 'ice_candidate');
+  assert.equal(ice.length, 1, 'exactly one mailbox entry for the duplicated message_id');
+  const seq = ice[0]!.seq;
+  // F38a: acking purges — a later poll from 0 must NOT see the entry again
+  // (accepted SDP/secret material does not linger for the mailbox TTL).
+  assert.equal(await ack(VDEV_A, 'ct-dup-b', seq), 200);
+  const after = await poll(VDEV_A, 'ct-dup-b', 0, 64);
+  const afterList = (after.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
+  assert.equal(
+    afterList.filter((e) => e.envelope.type === 'ice_candidate').length,
+    0,
+    'acked entry must be purged from the mailbox',
+  );
 });
 
 test('protocol v0 is rejected with a typed error envelope', async () => {
@@ -373,7 +418,6 @@ test('protocol v0 is rejected with a typed error envelope', async () => {
   }, 5000, 'typed v0 error envelope');
   assert.equal(err.envelope.code, 400);
   assert.match(String(err.envelope.detail), /unsupported protocol_version 0/);
-  // The v0 payload itself was never delivered.
   const peer = await poll(VDEV_A, 'ct-v0-peer');
   assert.equal(((peer.json.envelopes ?? []) as unknown[]).length, 0);
 });
@@ -410,10 +454,9 @@ test('session-scoped types require session_id', async () => {
   assert.equal(r.json.error, 'missing_session_id');
 });
 
-test('cross-instance: two independent vercel dev servers route via the shared store', async () => {
+test('cross-instance: two independent servers route via the shared store', async () => {
   await register(VDEV_A, 'ct-x-a');
   await register(VDEV_B, 'ct-x-b');
-  // A (instance A) -> B (instance B).
   const toB = await send(VDEV_A, 'ct-x-a', envelope('ct-x-a', 'ct-x-b', MID(), { type: 'connect_request', capabilities: CAPS }, 'sess-x1'));
   assert.equal(toB.status, 200);
   const gotB = await waitUntil(async () => {
@@ -422,7 +465,6 @@ test('cross-instance: two independent vercel dev servers route via the shared st
     return list.find((e) => e.envelope.type === 'connect_request');
   }, 6000, 'cross-instance A->B');
   assert.equal(gotB.envelope.from_device_id, 'ct-x-a');
-  // B (instance B) -> A (instance A).
   const toA = await send(VDEV_B, 'ct-x-b', envelope('ct-x-b', 'ct-x-a', MID(), { type: 'accept', session_secret: 'cross-secret' }, 'sess-x1'));
   assert.equal(toA.status, 200);
   const gotA = await waitUntil(async () => {
@@ -438,11 +480,9 @@ test('WS: hello, register, live push, ack, resume-from-cursor', async () => {
   const ws = await wsConnect(STANDALONE, 'ct-ws-b');
   const hello = await ws.next('hello_ok');
   assert.equal(hello.authed, false, 'fresh device is not yet registered');
-  // Register through the socket.
   ws.send({ op: 'send', envelope: registerEnvelope('ct-ws-b') });
   const res = await ws.next('send_result');
   assert.equal(res.ok, true);
-  // A sends via HTTP; B must receive a live push.
   const s = await send(STANDALONE, 'ct-ws-a', envelope('ct-ws-a', 'ct-ws-b', MID(), { type: 'offer', sdp: 'v=0 ws' }, 'sess-ws'));
   assert.equal(s.status, 200);
   const deliver = await ws.next('deliver', 6000);
@@ -453,7 +493,6 @@ test('WS: hello, register, live push, ack, resume-from-cursor', async () => {
   await delay(300);
   ws.close();
   await ws.closed;
-  // Reconnect resuming 0: the STORE cursor (acked) prevents redelivery.
   const ws2 = await wsConnect(STANDALONE, 'ct-ws-b', 0);
   const hello2 = await ws2.next('hello_ok');
   assert.equal(hello2.resume_seq, seq, 'server resume point is the acked cursor');
@@ -498,7 +537,6 @@ test('WS: maxDuration bye forces a clean resume (short-TTL instance)', async () 
   const bye = await ws.next('bye', 8000);
   assert.equal(bye.reason, 'max_duration');
   await ws.closed;
-  // Reconnect immediately: presence may need a fresh register (short TTL).
   const ws2 = await wsConnect(SHORT_TTL, 'ct-bye');
   const h2 = await ws2.next('hello_ok');
   assert.equal(h2.authed, false, 'short device TTL expired during the bye window');
@@ -509,12 +547,11 @@ test('WS: maxDuration bye forces a clean resume (short-TTL instance)', async () 
 });
 
 test('stale presence: expired target is a typed unknown_target', async () => {
-  // Short-TTL instance: device presence lives 1 s.
   const a = 'ct-stale-a';
   const b = 'ct-stale-b';
   await register(SHORT_TTL, a);
   await register(SHORT_TTL, b);
-  await delay(1600); // b goes silent; a re-registers below.
+  await delay(1600);
   await register(SHORT_TTL, a);
   const r = await send(SHORT_TTL, a, envelope(a, b, MID(), { type: 'offer', sdp: 'v=0 stale' }, 'sess-stale'));
   assert.equal(r.status, 404);
@@ -527,15 +564,15 @@ test('stale presence: expired target is a typed unknown_target', async () => {
   assert.match(String(err.envelope.detail), /ct-stale-b/);
 });
 
-test('mailbox TTL expiry: undelivered envelopes vanish', async () => {
+test('mailbox TTL expiry: undelivered entries vanish', async () => {
   const a = 'ct-mbttl-a';
   const b = 'ct-mbttl-b';
   await register(SHORT_TTL, a);
   await register(SHORT_TTL, b);
   const s = await send(SHORT_TTL, a, envelope(a, b, MID(), { type: 'ice_candidate', candidate: 'x', sdp_mid: '0', sdp_mline_index: 0 }, 'sess-mbttl'));
   assert.equal(s.status, 200);
-  await delay(2600); // mailbox TTL on this instance is 2 s
-  await register(SHORT_TTL, b); // target comes back (presence rebind)
+  await delay(2600);
+  await register(SHORT_TTL, b);
   const p = await poll(SHORT_TTL, b, 0, 64);
   const list = (p.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
   assert.equal(
@@ -543,6 +580,68 @@ test('mailbox TTL expiry: undelivered envelopes vanish', async () => {
     0,
     'expired entries are not delivered',
   );
+});
+
+test('mailbox-era crossing: stale cursors must not hide new mail (F37)', async () => {
+  const a = 'ct-era-a';
+  const b = 'ct-era-b';
+  await register(SHORT_TTL, a);
+  await register(SHORT_TTL, b);
+  // Era 1: one entry, seen + acked by b.
+  const s1 = await send(SHORT_TTL, a, envelope(a, b, MID(), { type: 'offer', sdp: 'v=0 era1' }, 'sess-era'));
+  assert.equal(s1.status, 200);
+  const era1 = await waitUntil(async () => {
+    const p = await poll(SHORT_TTL, b);
+    const list = (p.json.envelopes ?? []) as Array<{ seq: number; envelope: Record<string, unknown> }>;
+    return list.find((e) => e.envelope.type === 'offer');
+  }, 4000, 'era-1 delivery');
+  assert.equal(await ack(SHORT_TTL, b, era1.seq), 200);
+  // Idle past the mailbox TTL: mb/mbseq/mbc expire together, seq restarts.
+  await delay(2600);
+  await register(SHORT_TTL, a);
+  await register(SHORT_TTL, b);
+  // Era 2: new mail lands at seq 1 again.
+  const s2 = await send(SHORT_TTL, a, envelope(a, b, MID(), { type: 'connect_request', capabilities: CAPS }, 'sess-era2'));
+  assert.equal(s2.status, 200);
+  // HTTP poll with a STALE cursor (from era 1): must be clamped to 0.
+  const stale = await poll(SHORT_TTL, b, 99, 64);
+  const staleList = (stale.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
+  assert.equal(
+    staleList.filter((e) => e.envelope.type === 'connect_request').length,
+    1,
+    'era-2 entry delivered despite the stale cursor (F37)',
+  );
+  // WS reconnect with a stale resume: hello_ok must reset to 0 and deliver.
+  const ws = await wsConnect(SHORT_TTL, b, 99);
+  const hello = await ws.next('hello_ok');
+  assert.equal(hello.resume_seq, 0, 'stale resume is reset to the current era');
+  const deliver = await ws.next('deliver', 6000);
+  assert.equal((deliver.envelope as Record<string, unknown>).type, 'connect_request');
+  ws.ack(deliver.seq as number);
+  ws.close();
+});
+
+test('token takeover after presence expiry is refused inside the tombstone window (F38b)', async () => {
+  const v = 'ct-take-v';
+  await register(SHORT_TTL, v, 'victim-token');
+  // Presence TTL on this instance is 1 s; the previous-owner tombstone
+  // lives for the mailbox TTL (2 s) after the last successful write.
+  await delay(1300);
+  // Attacker (different token) cannot rebind while the tombstone lives.
+  const attackReg = await send(SHORT_TTL, v, registerEnvelope(v), 'attacker-token');
+  assert.equal(attackReg.status, 401, 'attacker register after expiry must be refused');
+  const attackHb = await send(SHORT_TTL, v, heartbeatEnvelope(v), 'attacker-token');
+  assert.equal(attackHb.status, 401, 'attacker heartbeat after expiry must be refused');
+  const attackPoll = await poll(SHORT_TTL, v, 0, 10, 'attacker-token');
+  assert.equal(attackPoll.status, 401, 'attacker cannot read the mailbox');
+  // The legitimate owner rebinds immediately (same token).
+  const owner = await send(SHORT_TTL, v, heartbeatEnvelope(v), 'victim-token');
+  assert.equal(owner.json.ok, true, 'owner rebind must succeed');
+  // After the tombstone itself expires (2 s after the owner's last write
+  // above), a new token MAY claim the id — the documented bounded window.
+  await delay(2300);
+  const newcomer = await send(SHORT_TTL, v, registerEnvelope(v), 'new-token');
+  assert.equal(newcomer.json.ok, true, 'post-tombstone claim is allowed (documented window)');
 });
 
 test('session-secret single-use: one accept entry, duplicates suppressed', async () => {
@@ -556,7 +655,7 @@ test('session-secret single-use: one accept entry, duplicates suppressed', async
   const acceptEnv = envelope(h, c, 'ct-sec-h-accept-1', { type: 'accept', session_secret: secret }, 'sess-sec');
   const first = await send(VDEV_A, h, acceptEnv);
   assert.equal(first.json.duplicate, false);
-  const dup = await send(VDEV_A, h, acceptEnv); // exact re-send (same message_id)
+  const dup = await send(VDEV_A, h, acceptEnv);
   assert.equal(dup.json.duplicate, true);
   const got = await waitUntil(async () => {
     const p = await poll(VDEV_A, c);
@@ -568,7 +667,6 @@ test('session-secret single-use: one accept entry, duplicates suppressed', async
   const list = (p.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
   const accepts = list.filter((e) => e.envelope.type === 'accept');
   assert.equal(accepts.length, 1, 'exactly one accept entry ever (idempotency by messageId)');
-  // Disconnect propagates and clears the session record path.
   const d = await send(VDEV_A, c, envelope(c, h, MID(), { type: 'disconnect', reason: 'user' }, 'sess-sec'));
   assert.equal(d.status, 200);
   await waitUntil(async () => {
@@ -579,17 +677,14 @@ test('session-secret single-use: one accept entry, duplicates suppressed', async
 });
 
 test('WS/HTTP parity: same semantics over the fallback transport', async () => {
-  // HTTP-only device A, WS device B on the SAME standalone instance.
   await register(STANDALONE, 'ct-par-a');
   const ws = await wsConnect(STANDALONE, 'ct-par-b');
   await ws.next('hello_ok');
   ws.send({ op: 'send', envelope: registerEnvelope('ct-par-b') });
   await ws.next('send_result');
-  // HTTP -> WS.
   await send(STANDALONE, 'ct-par-a', envelope('ct-par-a', 'ct-par-b', MID(), { type: 'reject', reason: 'busy' }, 'sess-par'));
   const d = await ws.next('deliver', 6000);
   assert.equal((d.envelope as Record<string, unknown>).type, 'reject');
-  // WS -> HTTP.
   ws.send({
     op: 'send',
     envelope: envelope('ct-par-b', 'ct-par-a', MID(), { type: 'ice_complete' }, 'sess-par'),
@@ -603,6 +698,80 @@ test('WS/HTTP parity: same semantics over the fallback transport', async () => {
   }, 5000, 'ws->http delivery');
   assert.equal(got.envelope.from_device_id, 'ct-par-b');
   ws.close();
+});
+
+test('WS auth is header-only: token in the query string is rejected (F42b)', async () => {
+  await register(STANDALONE, 'ct-hdr');
+  const ws = await wsConnect(STANDALONE, 'ct-hdr', 0, { tokenInQuery: true }).catch(
+    () => null,
+  );
+  if (ws !== null) {
+    // If the upgrade slipped through, the session must never reach hello_ok:
+    // an error frame or close must arrive instead.
+    const outcome = await Promise.race([
+      ws.next('hello_ok').then((f) => f.op),
+      ws.next('error').then((f) => f.op),
+      ws.closed.then(() => 'closed'),
+    ]).catch(() => 'closed');
+    assert.notEqual(outcome, 'hello_ok', 'query-token session must be refused');
+    ws.close();
+  }
+  // Header auth still works on the same device.
+  const ok = await wsConnect(STANDALONE, 'ct-hdr');
+  await ok.next('hello_ok');
+  ok.close();
+});
+
+test('oversize HTTP body gets a typed 413 JSON reply, not a reset (F42c)', async () => {
+  // Targeted at the standalone instance: the vercel dev bridge reports a
+  // 500 when the function answers before consuming the request body (a dev
+  // proxy artifact; the function itself returns the typed 413 — verified
+  // directly against the same lib/server.ts here).
+  await register(STANDALONE, 'ct-big');
+  const big = JSON.stringify({
+    op: 'send',
+    envelope: envelope('ct-big', 'signaling', MID(), {
+      type: 'offer',
+      sdp: 'x'.repeat(2 * 1024 * 1024), // 2 MiB >> the 1 MiB body cap
+    }),
+  });
+  const r = await fetch(`${STANDALONE}/api/signal?device_id=ct-big`, {
+    method: 'POST',
+    headers: hdr('ct-big'),
+    body: big,
+  }).catch((e: Error) => {
+    // A socket reset would land here — the finding's old behavior.
+    assert.fail(`connection reset instead of a typed 413: ${e.message}`);
+  });
+  assert.equal(r.status, 413);
+  const j = (await r.json()) as Record<string, unknown>;
+  assert.equal(j.error, 'too_large');
+});
+
+test('dedupe crash window: vanished entry is repaired, not swallowed (F45)', async () => {
+  const a = 'ct-f45-a';
+  const b = 'ct-f45-b';
+  await register(STANDALONE, a);
+  await register(STANDALONE, b);
+  const mid = MID();
+  const env = envelope(a, b, mid, { type: 'offer', sdp: 'v=0 f45' }, 'sess-f45');
+  const first = await send(STANDALONE, a, env);
+  assert.equal(first.json.duplicate, false);
+  // Simulate the crash window: the tombstone exists (with the assigned seq)
+  // but the mailbox entry is gone (here: DEL via the emulator's REST API —
+  // the same primitive a crash between SETNX and ZADD would leave).
+  await storeCommand('DEL', 'sg1:mb:ct-f45-b');
+  // The client retries the SAME message_id: must be re-enqueued (repaired),
+  // not answered duplicate:true with the message lost.
+  const retry = await send(STANDALONE, a, env);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.json.duplicate, false, 'vanished entry must be re-enqueued (F45 repair)');
+  const got = await waitUntil(async () => {
+    const p = await poll(STANDALONE, b);
+    const list = (p.json.envelopes ?? []) as Array<{ envelope: Record<string, unknown> }>;
+    return list.find((e) => e.envelope.message_id === mid);
+  }, 5000, 'repaired delivery');
+  assert.equal(got.envelope.message_id, mid);
 });
 
 test('no secrets or SDP material in service logs', async () => {

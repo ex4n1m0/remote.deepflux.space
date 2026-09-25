@@ -15,7 +15,8 @@
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
     "test:contract": "node --import tsx --test tests/contract.test.ts",
     "test": "pnpm typecheck && pnpm validate:wires && pnpm test:unit",
-    "dev:vercel": "vercel dev --local --listen 127.0.0.1:38011"
+    "dev:vercel": "vercel dev --local --listen 127.0.0.1:38011",
+    "test:contract:headless": "node --import tsx scripts/contract-headless.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0",

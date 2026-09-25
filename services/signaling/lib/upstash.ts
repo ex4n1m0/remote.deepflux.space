@@ -79,6 +79,11 @@ export class UpstashRestStore implements Store {
     await this.pipeline([['SET', key, value, 'EX', String(ttlSec)]]);
   }
 
+  async setExMany(entries: ReadonlyArray<[string, string, number]>): Promise<void> {
+    if (entries.length === 0) return;
+    await this.pipeline(entries.map(([k, v, ttl]) => ['SET', k, v, 'EX', String(ttl)]));
+  }
+
   async expire(key: string, ttlSec: number): Promise<boolean> {
     const [v] = await this.pipeline([['EXPIRE', key, String(ttlSec)]]);
     return v === 1;
@@ -108,7 +113,7 @@ export class UpstashRestStore implements Store {
     await this.pipeline([['ZADD', key, String(score), member]]);
   }
 
-  async zrangebyscore(key: string, min: number, maxExclusive: number, limit: number): Promise<string[]> {
+  async zrangebyscore(key: string, min: number, limit: number): Promise<string[]> {
     const [v] = await this.pipeline([
       ['ZRANGEBYSCORE', key, `(${min}`, '+INF', 'LIMIT', '0', String(limit)],
     ]);

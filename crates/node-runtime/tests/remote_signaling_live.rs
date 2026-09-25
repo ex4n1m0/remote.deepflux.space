@@ -211,8 +211,15 @@ fn wait_for(what: &str, deadline: Instant, mut f: impl FnMut() -> bool) {
 #[test]
 #[ignore = "needs the local service rig; see module docs"]
 fn two_nodes_connect_through_the_real_service() {
-    let base = std::env::var("SIGNALING_TEST_BASE_URL")
-        .expect("SIGNALING_TEST_BASE_URL must point at the running service (see module docs)");
+    // F44: skip-with-reason when the rig is not running, so
+    // `cargo test --workspace -- --ignored` stays runnable bare (M2's
+    // convention for live-hardware sweeps).
+    let Ok(base) = std::env::var("SIGNALING_TEST_BASE_URL") else {
+        eprintln!(
+            "SKIP remote_signaling_live: SIGNALING_TEST_BASE_URL not set (start the rig per the module docs, then re-run with the env)"
+        );
+        return;
+    };
     let force_http = std::env::var("SIGNALING_TEST_HTTP_ONLY").ok().as_deref() == Some("1");
     let run = std::process::id();
     let host_device = format!("live-host-{run}");

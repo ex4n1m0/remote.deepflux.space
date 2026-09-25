@@ -117,9 +117,26 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
       sendJson(res, 401, { ok: false, error: 'unauthorized' });
       return;
     }
-    const body = await readBody(req);
+    const body = await readBody(req, res);
     if (body === null) {
-      sendJson(res, 413, { ok: false, error: 'too_large' });
+      // Oversize body: respond with the typed 413 so clients see JSON, not
+      // a connection reset (QA F42c). Destroying immediately races the
+      // client's unfinished upload (it may never read the reply), so the
+      // remaining body is drained — bounded — and the socket closed only
+      // past that bound.
+      sendJson(res, 413, {
+        ok: false,
+        error: 'too_large',
+        detail: `body exceeds ${HTTP_BODY_MAX} bytes`,
+      });
+      let drained = 0;
+      req.on('data', (chunk: Buffer) => {
+        drained += chunk.length;
+        if (drained > HTTP_BODY_MAX * 8) {
+          req.destroy();
+        }
+      });
+      req.resume();
       return;
     }
     let op: unknown;
@@ -204,21 +221,30 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
     }
   }
 
-  function readBody(req: http.IncomingMessage): Promise<string | null> {
+  function readBody(req: http.IncomingMessage, res: http.ServerResponse): Promise<string | null> {
     return new Promise((resolve) => {
       let size = 0;
+      let over = false;
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => {
+        if (over) return;
         size += chunk.length;
         if (size > HTTP_BODY_MAX) {
+          over = true;
+          // Stop consuming; the caller writes the 413 and destroys after.
+          req.pause();
           resolve(null);
-          req.destroy();
           return;
         }
         chunks.push(chunk);
       });
-      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      req.on('end', () => {
+        if (!over) resolve(Buffer.concat(chunks).toString('utf8'));
+      });
       req.on('error', () => resolve(null));
+      // If the socket dies mid-read, still unblock the caller.
+      req.on('close', () => resolve(null));
+      void res;
     });
   }
 
@@ -241,6 +267,10 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
 
   wss.on('connection', (ws, req) => {
     liveSockets += 1;
+    // F43a: every path out of a connection decrements exactly once.
+    ws.on('close', () => {
+      liveSockets -= 1;
+    });
     handleSocket(ws, req).catch((err) => {
       log.warn('ws_session_failed', { err: String(err).slice(0, 120) });
       const bye: ByeFrame = { op: 'bye', reason: 'shutdown' };
@@ -255,10 +285,17 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
 
   async function handleSocket(ws: WebSocket, req: http.IncomingMessage): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://local');
-    const token = bearerToken(req) ?? url.searchParams.get('token');
+    // QA F42b: header-only auth. `?token=` is REJECTED — query strings can
+    // leak into intermediary logs, and our only clients (Rust, scripts)
+    // can set headers.
+    const token = bearerToken(req);
     const device = url.searchParams.get('device_id') ?? '';
     if (!DEVICE_ID_RE.test(device) || token === null || token.length === 0) {
-      const frame: ErrorFrame = { op: 'error', error: 'unauthorized', detail: 'device_id and token required' };
+      const frame: ErrorFrame = {
+        op: 'error',
+        error: 'unauthorized',
+        detail: 'device_id required; token must be an Authorization: Bearer header',
+      };
       sendFrame(ws, frame);
       ws.close(4001, 'unauthorized');
       return;
@@ -291,7 +328,15 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
     // Token vs live presence: a mismatching token on a LIVE presence is a
     // hijack; an absent presence is fine — the client registers on-socket.
     const storedCursor = await service.cursor(device);
-    const resumeSeq = Math.max(hello.resume_seq, storedCursor);
+    let resumeSeq = Math.max(hello.resume_seq, storedCursor);
+    // Era safety (QA F37): a cursor above the CURRENT latest seq can only
+    // come from a previous mailbox era (counter restarted after idle
+    // expiry) — restart from 0 and let message_id dedupe absorb overlap.
+    const currentLatest = await service.latestSeq(device);
+    if (resumeSeq > currentLatest) {
+      log.info('mailbox_era_reset', { device, cursor: resumeSeq, latest: currentLatest });
+      resumeSeq = 0;
+    }
     let authed = await service.authenticate(device, token);
     const helloOk: HelloOkFrame = {
       op: 'hello_ok',
@@ -309,7 +354,6 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
     const onClosed: Array<() => void> = [];
     ws.on('close', () => {
       closed = true;
-      liveSockets -= 1;
       for (const fn of onClosed) fn();
     });
     ws.on('error', () => {
@@ -324,6 +368,11 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
       if (closed || ws.readyState !== ws.OPEN) return;
       if (!authed) return; // wait for Register/Heartbeat on this socket
       const drained = await service.drain(device, lastSentSeq, config.mailboxBatch);
+      // Era safety (QA F37): a live connection that spans a mailbox-era
+      // restart sees latestSeq regress below its own lastSentSeq.
+      if (drained.latestSeq < lastSentSeq) {
+        lastSentSeq = 0;
+      }
       for (const entry of drained.entries) {
         if (entry.seq <= lastSentSeq) continue; // benign cross-conn race
         const frame: DeliverFrame = { op: 'deliver', seq: entry.seq, envelope: entry.envelope };

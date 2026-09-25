@@ -16,6 +16,16 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Node + pnpm (signaling service gate)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Format check
         run: cargo fmt --all -- --check
 
@@ -24,3 +34,9 @@ jobs:
 
       - name: Tests
         run: cargo test --workspace
+
+      - name: Signaling service TS gate + headless contract matrix
+        run: |
+          pnpm --dir services/signaling install --frozen-lockfile
+          pnpm --dir services/signaling test
+          pnpm --dir services/signaling run test:contract:headless

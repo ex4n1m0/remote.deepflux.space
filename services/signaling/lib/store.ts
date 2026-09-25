@@ -27,6 +27,9 @@ export interface Store {
   /** SET key value EX ttl (unconditional write/refresh). */
   setEx(key: string, value: string, ttlSec: number): Promise<void>;
 
+  /** Batched SET key value EX ttl — one round trip where the store allows. */
+  setExMany(entries: ReadonlyArray<[string, string, number]>): Promise<void>;
+
   /** EXPIRE — refresh TTL; false when the key does not exist. */
   expire(key: string, ttlSec: number): Promise<boolean>;
 
@@ -42,8 +45,11 @@ export interface Store {
   /** ZADD key score member. */
   zadd(key: string, score: number, member: string): Promise<void>;
 
-  /** ZRANGEBYSCORE key min max LIMIT offset count — ascending by score. */
-  zrangebyscore(key: string, min: number, maxExclusive: number, limit: number): Promise<string[]>;
+  /**
+   * ZRANGEBYSCORE key (min +INF LIMIT 0 count — ascending, exclusive min.
+   * (The max bound was always +INF; removed — QA F43c.)
+   */
+  zrangebyscore(key: string, min: number, limit: number): Promise<string[]>;
 
   /** Read the oldest `limit` members by score (ascending). */
   zoldest(key: string, limit: number): Promise<string[]>;

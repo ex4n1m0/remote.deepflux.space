@@ -93,7 +93,10 @@ export class SignalingService {
     private readonly cfg: SignalingConfig,
   ) {}
 
-  private k(device: string, kind: 'p' | 'mbseq' | 'mb' | 'mbc' | 's' | 'dd'): string {
+  private k(
+    device: string,
+    kind: 'p' | 'po' | 'mbseq' | 'mb' | 'mbc' | 's' | 'dd',
+  ): string {
     return `${this.cfg.prefix}${kind}:${device}`;
   }
 
@@ -118,39 +121,48 @@ export class SignalingService {
   }
 
   /**
-   * Register (bind or rebind) presence. A live presence owned by a different
-   * token is a hijack attempt: refused until it expires.
+   * Bind/refresh presence (QA F38b): a LIVE presence owned by a different
+   * token is refused, and so is a rebind of an EXPIRED presence by a
+   * different token while the previous-owner tombstone (`po:{device}`,
+   * TTL = mailbox TTL, refreshed on every successful presence write) is
+   * still alive. Only after the owner has been silent for the mailbox TTL
+   * can a new token claim the id. The legitimate owner always rebinds
+   * immediately (same token matches the tombstone). Residual MVP risk
+   * (documented): once the tombstone expires, a device-id squatter can
+   * claim the id and DoS the real owner — inherent to the no-accounts
+   * model; acked mail is purged (F38a), so only future mail is exposed.
    */
-  async register(device: string, token: string): Promise<SendOutcome> {
+  private async bindPresence(device: string, th: string): Promise<SendOutcome> {
     const key = this.k(device, 'p');
+    const ownerKey = this.k(device, 'po');
     const existing = this.parsePresence(await this.store.get(key));
-    const th = sha256hex(token);
-    if (existing !== null && existing.th !== th) {
-      return { ok: false, error: 'unauthorized' };
-    }
-    const rec: PresenceRecord = { v: 1, th };
-    await this.store.setEx(key, JSON.stringify(rec), this.cfg.ttlDeviceSec);
-    return { ok: true, duplicate: false };
-  }
-
-  /**
-   * Heartbeat: refresh presence TTL. A heartbeat for an expired presence
-   * re-binds the same token (idempotent re-register after TTL lapse).
-   */
-  async heartbeat(device: string, token: string): Promise<SendOutcome> {
-    const key = this.k(device, 'p');
-    const existing = this.parsePresence(await this.store.get(key));
-    const th = sha256hex(token);
     if (existing !== null && existing.th !== th) {
       return { ok: false, error: 'unauthorized' };
     }
     if (existing === null) {
-      await this.store.setEx(key, JSON.stringify({ v: 1, th }), this.cfg.ttlDeviceSec);
-    } else if (!(await this.store.expire(key, this.cfg.ttlDeviceSec))) {
-      // Expired between GET and EXPIRE — re-bind.
-      await this.store.setEx(key, JSON.stringify({ v: 1, th }), this.cfg.ttlDeviceSec);
+      const previousOwner = await this.store.get(ownerKey);
+      if (previousOwner !== null && previousOwner !== th) {
+        // Takeover attempt inside the tombstone window.
+        log.warn('rebind_refused', { device });
+        return { ok: false, error: 'unauthorized' };
+      }
     }
+    const rec: PresenceRecord = { v: 1, th };
+    await this.store.setEx(key, JSON.stringify(rec), this.cfg.ttlDeviceSec);
+    await this.store.setEx(ownerKey, th, this.cfg.ttlMailboxSec);
     return { ok: true, duplicate: false };
+  }
+
+  async register(device: string, token: string): Promise<SendOutcome> {
+    return this.bindPresence(device, sha256hex(token));
+  }
+
+  /**
+   * Heartbeat: refresh presence TTL under the same takeover policy as
+   * register (a heartbeat used to be the free-rebind path — QA F38b).
+   */
+  async heartbeat(device: string, token: string): Promise<SendOutcome> {
+    return this.bindPresence(device, sha256hex(token));
   }
 
   // -------------------------------------------------------------------------
@@ -177,7 +189,17 @@ export class SignalingService {
   async drain(device: string, afterSeq: number, max: number): Promise<DrainResult> {
     const key = this.k(device, 'mb');
     await this.sweepExpired(device);
-    const raw = await this.store.zrangebyscore(key, afterSeq, Number.POSITIVE_INFINITY, max);
+    // Era safety (QA F37): when the mailbox key set expires together
+    // (idle >= mailbox TTL), the per-device seq counter restarts at 1
+    // while callers may still hold cursors from the previous era. A cursor
+    // above the current latestSeq can only come from an older era, so it
+    // is clamped to 0 here — the single choke point both transports use —
+    // and the machines' message_id dedupe absorbs any redelivery.
+    const latest = await this.latestSeq(device);
+    if (afterSeq > latest) {
+      afterSeq = 0;
+    }
+    const raw = await this.store.zrangebyscore(key, afterSeq, max);
     const entries: MailboxEntry[] = [];
     for (const line of raw) {
       try {
@@ -190,7 +212,7 @@ export class SignalingService {
         await this.store.zrem(key, line);
       }
     }
-    return { entries, latestSeq: await this.latestSeq(device) };
+    return { entries, latestSeq: latest };
   }
 
   /** Drop entries older than the mailbox TTL (lazy cleanup pass). */
@@ -223,13 +245,52 @@ export class SignalingService {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
-  /** Advance the device's acked-seq cursor (monotonic; benign races only lag). */
+  /**
+   * Advance the device's acked-seq cursor and PURGE everything at or below
+   * it (QA F38a): accepted envelopes — including SDP bodies and any
+   * one-time session secret inside an `accept` — must not linger in the
+   * store for the mailbox TTL after the consumer has taken them. The
+   * cursor write is compare-then-set; a concurrent-ack regression is
+   * benign (extra redelivery, machine-deduped) and the purge is
+   * monotonic-safe in every interleaving.
+   */
   async ack(device: string, seq: number): Promise<void> {
     const key = this.k(device, 'mbc');
     const raw = await this.store.get(key);
     const cur = raw === null ? 0 : Number(raw) || 0;
     if (seq > cur) {
       await this.store.setEx(key, String(seq), this.cfg.ttlMailboxSec);
+      const mbKey = this.k(device, 'mb');
+      // Before purging, mark each consumed entry's dedupe tombstone as
+      // ACKED (value 'A'): a later retry of that message_id is a true
+      // duplicate (the consumer took it), NOT the F45 crash window —
+      // the entry's absence from the mailbox is now expected.
+      const batch: Array<[string, string, number]> = [];
+      const doomed = await this.store.zrangebyscore(mbKey, -1, this.cfg.mailboxMax);
+      for (const line of doomed) {
+        try {
+          const m = JSON.parse(line) as MailboxMember;
+          if (m.s > seq) continue;
+          const env = m.e as
+            | { message_id?: unknown; from_device_id?: unknown }
+            | null;
+          if (
+            env &&
+            typeof env.message_id === 'string' &&
+            typeof env.from_device_id === 'string'
+          ) {
+            batch.push([
+              this.k(`${env.from_device_id}:${env.message_id}`, 'dd'),
+              'A',
+              this.cfg.ttlDedupeSec,
+            ]);
+          }
+        } catch {
+          /* skip unreadable member */
+        }
+      }
+      await this.store.setExMany(batch);
+      await this.store.zremrangebyscoreMax(mbKey, seq);
     }
   }
 
@@ -353,17 +414,42 @@ export class SignalingService {
       return { ok: false, error: 'unknown_target' };
     }
 
-    // Idempotency by messageId: suppress exact re-enqueue within the window.
-    const fresh = await this.store.setNxEx(
-      this.k(`${fromDevice}:${env.message_id}`, 'dd'),
-      '1',
-      this.cfg.ttlDedupeSec,
-    );
+    // Idempotency by messageId (QA F45): the tombstone is written BEFORE
+    // the enqueue with the value 'P' (pending) and updated to the assigned
+    // seq after. On a duplicate hit we VERIFY the recorded seq is still in
+    // the target mailbox — if the writer crashed between SETNX and ZADD
+    // (or the entry was trimmed/expired), the retry re-enqueues instead of
+    // silently swallowing the message.
+    const ddKey = this.k(`${fromDevice}:${env.message_id}`, 'dd');
+    const fresh = await this.store.setNxEx(ddKey, 'P', this.cfg.ttlDedupeSec);
     if (!fresh) {
-      return { ok: true, duplicate: true };
+      const prior = await this.store.get(ddKey);
+      if (prior === 'A') {
+        // Consumed by the recipient (ack-purged): a true duplicate.
+        return { ok: true, duplicate: true };
+      }
+      const priorSeq = prior === null ? Number.NaN : Number(prior);
+      if (prior !== 'P' && Number.isInteger(priorSeq) && priorSeq > 0) {
+        const stillThere = (
+          await this.store.zrangebyscore(this.k(env.to_device_id, 'mb'), priorSeq - 1, 2)
+        ).some((line) => {
+          try {
+            return (JSON.parse(line) as MailboxMember).s === priorSeq;
+          } catch {
+            return false;
+          }
+        });
+        if (stillThere) {
+          return { ok: true, duplicate: true };
+        }
+      }
+      // Crash window or vanished entry: repair by re-enqueueing under a
+      // fresh pending tombstone.
+      await this.store.setEx(ddKey, 'P', this.cfg.ttlDedupeSec);
     }
 
-    await this.enqueue(env.to_device_id, env);
+    const seq = await this.enqueue(env.to_device_id, env);
+    await this.store.setEx(ddKey, String(seq), this.cfg.ttlDedupeSec);
 
     if (env.session_id !== null) {
       if (env.type === 'disconnect') {

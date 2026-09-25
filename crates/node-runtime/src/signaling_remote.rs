@@ -85,6 +85,8 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const HTTP_POLL_MIN_INTERVAL: Duration = Duration::from_millis(150);
 /// WS keepalive ping period.
 const WS_PING_PERIOD: Duration = Duration::from_secs(20);
+/// Upper bound on unanswered `send` frames (F43e: hostile-server hygiene).
+const PENDING_CAP: usize = 128;
 /// Backoff bounds for reconnect.
 const RECONNECT_MIN_BACKOFF: Duration = Duration::from_millis(250);
 const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(8);
@@ -135,6 +137,9 @@ pub struct RemoteCounters {
     pub reconnects: u64,
     pub role_unknown: u64,
     pub http_polls: u64,
+    /// Inbound queue overflows (F40): each forced a socket drop so the
+    /// mailbox redelivers on resume.
+    pub inbound_overflow: u64,
 }
 
 enum Cmd {
@@ -153,6 +158,11 @@ struct ServerFrameWire {
     op: String,
     #[serde(default)]
     seq: Option<u64>,
+    /// `hello_ok.latest_seq`: the service's current per-device mailbox seq.
+    /// A value below our acked cursor means the mailbox era restarted
+    /// (QA F37) and the cursor must reset to 0.
+    #[serde(default, rename = "latest_seq")]
+    latest_seq: Option<u64>,
     #[serde(default)]
     envelope: Option<Value>,
     #[serde(default)]
@@ -327,6 +337,9 @@ impl RemoteSignaling {
             });
             let _ = http_json(&url, &self.cfg.token, &ack_body);
         }
+        // F43f: HTTP-mode receives count toward `received` like WS ones.
+        self.shared
+            .bump(|c| c.received = c.received.saturating_add(envelopes.len() as u64));
         envelopes
             .into_iter()
             .map(|envelope| InboundEnvelope {
@@ -547,6 +560,10 @@ impl Actor {
                 match connect(&cfg, resume) {
                     Ok(socket) => {
                         ws = Some(socket);
+                        // Fresh connection: redelivery filtering restarts
+                        // from the resume point (F40) — entries above the
+                        // ACKED cursor may legitimately arrive again.
+                        last_delivered_seq = resume;
                         connected_since = Some(Instant::now());
                         last_ping = Instant::now();
                         backoff = RECONNECT_MIN_BACKOFF;
@@ -602,6 +619,19 @@ impl Actor {
                                     shared.bump(|c| c.ws_sends += 1);
                                     match frame_envelope_message_id(&frame) {
                                         Some(mid) => {
+                                            // F43e: a hostile server that
+                                            // never answers send_result
+                                            // cannot grow this unboundedly;
+                                            // the evicted waiter gets an
+                                            // explicit error.
+                                            if pending.len() >= PENDING_CAP
+                                                && let Some(oldest) = pending.keys().next().cloned()
+                                                && let Some(evicted) = pending.remove(&oldest)
+                                            {
+                                                let _ = evicted.send(Err(
+                                                    "signaling pending overflow".to_owned(),
+                                                ));
+                                            }
                                             pending.insert(mid, done);
                                         }
                                         None => {
@@ -630,6 +660,9 @@ impl Actor {
             if ws.is_none() {
                 shared.ws_connected.store(0, Ordering::Relaxed);
                 fail_pending(&mut pending, "connection lost");
+                // F46: HTTP-only mode (and any socketless pass) idles at the
+                // read-timeout cadence instead of busy-spinning a core.
+                std::thread::sleep(READ_TIMEOUT);
                 continue;
             }
 
@@ -637,7 +670,15 @@ impl Actor {
             let mut socket = ws.take().expect("socket present");
             match socket.read() {
                 Ok(tungstenite::Message::Text(text)) => {
-                    handle_server_frame(&shared, &text, &mut pending, &mut last_delivered_seq);
+                    if !handle_server_frame(&shared, &text, &mut pending, &mut last_delivered_seq) {
+                        // Inbound overflow (F40): drop the socket so the
+                        // server's per-connection delivery state dies with
+                        // it; on reconnect we resume from the ACKED cursor
+                        // and the mailbox redelivers what was dropped.
+                        let _ = socket.close(None);
+                        note_disconnect(&shared, connected_since, &mut backoff);
+                        continue;
+                    }
                     ws = Some(socket);
                 }
                 Ok(tungstenite::Message::Binary(_))
@@ -718,27 +759,38 @@ fn service_commands_http(
     }
 }
 
+/// Handle one server frame. Returns `false` when the connection must be
+/// dropped (inbound overflow — F40).
 fn handle_server_frame(
     shared: &ActorShared,
     text: &str,
     pending: &mut HashMap<String, std::sync::mpsc::Sender<Result<bool, String>>>,
     last_delivered_seq: &mut u64,
-) {
+) -> bool {
     let Ok(frame) = serde_json::from_str::<ServerFrameWire>(text) else {
-        return;
+        return true;
     };
     match frame.op.as_str() {
         "deliver" => {
-            let Some(seq) = frame.seq else { return };
-            let Some(value) = frame.envelope else { return };
+            let Some(seq) = frame.seq else { return true };
+            let Some(value) = frame.envelope else {
+                return true;
+            };
             let Ok(envelope) = serde_json::from_value::<SignalingEnvelope>(value) else {
-                return;
+                return true;
             };
             if envelope.protocol_version != SIGNALING_PROTOCOL_VERSION {
-                return;
+                return true;
             }
-            if seq <= *last_delivered_seq {
-                return; // duplicate push (benign race)
+            if seq < *last_delivered_seq {
+                // Seq regression can only mean a mailbox-era restart (F37;
+                // per-device seq is monotonic within an era) — or a benign
+                // duplicate push. Either way at-least-once plus the
+                // machines' message_id dedupe absorbs it: reset and accept.
+                *last_delivered_seq = 0;
+            }
+            if seq == *last_delivered_seq {
+                return true; // duplicate push (benign race)
             }
             *last_delivered_seq = seq;
             let provisional = InboundEnvelope {
@@ -748,8 +800,11 @@ fn handle_server_frame(
             let queued = shared.push_inbound(seq, provisional);
             shared.bump(|c| c.received += 1);
             if !queued {
-                // Inbound overflow: drop the socket; resume redelivers.
-                shared.bump(|c| c.send_errors += 1);
+                // Inbound overflow (F40): signal the caller to drop the
+                // socket; the reconnect resumes from the ACKED cursor and
+                // the mailbox redelivers what was dropped.
+                shared.bump(|c| c.inbound_overflow += 1);
+                return false;
             }
         }
         "send_result" => {
@@ -772,9 +827,21 @@ fn handle_server_frame(
                 }
             }
         }
-        "bye" | "hello_ok" | "error" => { /* informational; read loop reacts to Close */ }
+        "hello_ok" => {
+            // Era detection (F37): the service's current latest seq below
+            // our acked cursor means its mailbox restarted — reset the
+            // resume point so era-2 entries are not filtered away.
+            if let Some(latest) = frame.latest_seq {
+                let acked = shared.acked_seq.load(Ordering::Relaxed);
+                if latest < acked {
+                    shared.acked_seq.store(0, Ordering::Relaxed);
+                }
+            }
+        }
+        "bye" | "error" => { /* informational; read loop reacts to Close */ }
         _ => {}
     }
+    true
 }
 
 /// One HTTP fallback send: `POST {op:send}`.
@@ -1166,6 +1233,272 @@ mod tests {
 
         drop(sig);
         server.join().expect("server thread");
+    }
+
+    /// The WS-double tests are heavyweight (threads + floods); serialize
+    /// them so they cannot starve each other's bounded waits on a busy
+    /// machine.
+    static DOUBLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// QA F37: a mailbox-era restart (latest_seq regresses below the acked
+    /// cursor) must reset the client's resume point so era-2 entries are
+    /// delivered instead of filtered away.
+    #[test]
+    fn era_restart_resets_cursor_and_delivers() {
+        let _serial = DOUBLE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+        use tungstenite::accept_hdr;
+        use tungstenite::handshake::server::NoCallback;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        // Era 1: hello_ok(latest 10) + deliver seq 7.
+        // Era 2 (after reconnect): hello_ok(latest 0) + deliver seq 1.
+        let (tx, rx) = mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let deliver =
+                |ws: &mut tungstenite::WebSocket<std::net::TcpStream>, seq: u64, mid: &str| {
+                    let frame = serde_json::json!({
+                        "op": "deliver",
+                        "seq": seq,
+                        "envelope": {
+                            "protocol_version": 1,
+                            "message_id": mid,
+                            "session_id": "s1",
+                            "from_device_id": "dev-b",
+                            "to_device_id": "dev-a",
+                            "timestamp_ms": 5,
+                            "type": "ice_complete",
+                        },
+                    });
+                    ws.send(tungstenite::Message::Text(frame.to_string().into()))
+                        .expect("push deliver");
+                };
+            {
+                let (stream, _) = listener.accept().expect("accept 1");
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(50)))
+                    .expect("server read timeout");
+                let mut ws = accept_hdr(stream, NoCallback).expect("ws accept 1");
+                let _hello = ws.read().expect("read hello");
+                ws.send(tungstenite::Message::Text(
+                    r#"{"op":"hello_ok","svc_version":1,"device_id":"dev-a","resume_seq":0,"latest_seq":10,"ttl_device_s":45,"authed":true}"#.into(),
+                ))
+                .expect("hello_ok 1");
+                deliver(&mut ws, 7, "dev-b-era1");
+                // Wait for the ack of 7 (handoff) with a bounded poll loop.
+                wait_for_text(&mut ws, "ack", 15);
+                // End era 1 with an explicit bye + close (no bare stream
+                // drop — the client reconnects cleanly).
+                ws.send(tungstenite::Message::Text(
+                    r#"{"op":"bye","reason":"max_duration"}"#.into(),
+                ))
+                .expect("bye");
+                let _ = ws.close(None);
+            }
+            tx.send(()).expect("era1 done");
+            {
+                let (stream, _) = listener.accept().expect("accept 2");
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(50)))
+                    .expect("server read timeout");
+                let mut ws = accept_hdr(stream, NoCallback).expect("ws accept 2");
+                let _hello = ws.read().expect("read hello 2");
+                ws.send(tungstenite::Message::Text(
+                    r#"{"op":"hello_ok","svc_version":1,"device_id":"dev-a","resume_seq":0,"latest_seq":0,"ttl_device_s":45,"authed":true}"#.into(),
+                ))
+                .expect("hello_ok 2 (era restart)");
+                deliver(&mut ws, 1, "dev-b-era2");
+                // Era-2 ack must arrive (seq 1, not filtered by the old
+                // era-1 cursor).
+                let ack = wait_for_text(&mut ws, "ack", 15);
+                assert!(ack.contains("\"seq\":1"), "era-2 ack missing: {ack}");
+            }
+        });
+
+        let mut sig = RemoteSignaling::new(RemoteSignalingConfig::new(
+            &format!("http://127.0.0.1:{port}"),
+            "dev-a",
+            "unit-token",
+        ));
+        // Era 1: receive + handoff (ack 7).
+        // The adapter legitimately answers HTTP-fallback polls before the
+        // WS is up; this double speaks WS only, so wait for the socket.
+        wait_ws_up(&sig);
+        let mut got7 = false;
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            let inbound = sig.poll_incoming();
+            if let Some(i) = inbound.first() {
+                assert_eq!(i.envelope.message_id, "dev-b-era1");
+                assert_eq!(sig.acked_seq(), 7);
+                got7 = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(got7, "era-1 delivery");
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("server era 1");
+
+        // Era 2: hello_ok.latest_seq (0) < acked (7) resets the cursor; the
+        // era-2 deliver at seq 1 must surface despite the regression.
+        let mut got1 = false;
+        while Instant::now() < deadline {
+            let inbound = sig.poll_incoming();
+            if let Some(i) = inbound.first() {
+                assert_eq!(i.envelope.message_id, "dev-b-era2");
+                got1 = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(got1, "era-2 delivery after cursor reset");
+        // Give the actor a moment to send the era-2 ack the double asserts.
+        let _ = sig.poll_incoming();
+        std::thread::sleep(Duration::from_millis(200));
+        drop(sig);
+        server.join().expect("server thread");
+    }
+
+    /// QA F40: inbound-queue overflow must drop the socket; the reconnect
+    /// resumes from the acked cursor and the dropped entries redeliver.
+    #[test]
+    fn inbound_overflow_drops_socket_and_redelivers() {
+        let _serial = DOUBLE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+        use tungstenite::accept_hdr;
+        use tungstenite::handshake::server::NoCallback;
+
+        const FLOOD: u64 = 540; // > INBOUND_QUEUE_CAP (512)
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let done_srv = std::sync::Arc::clone(&done);
+        listener.set_nonblocking(true).expect("listener nb");
+        let server = std::thread::spawn(move || {
+            while !done_srv.load(AtomicOrdering::Relaxed) {
+                let Ok((stream, _)) = listener.accept() else {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                };
+                stream.set_nonblocking(false).expect("stream blocking");
+                let Ok(mut ws) = accept_hdr(stream, NoCallback) else {
+                    continue; // stray non-WS probe; ignore
+                };
+                let Ok(hello) = ws.read() else { continue };
+                let hello = hello.into_text().unwrap().to_string();
+                assert!(hello.contains("\"hello\""));
+                if ws
+                    .send(tungstenite::Message::Text(
+                        r#"{"op":"hello_ok","svc_version":1,"device_id":"dev-a","resume_seq":0,"latest_seq":0,"ttl_device_s":45,"authed":true}"#
+                            .into(),
+                    ))
+                    .is_err()
+                {
+                    continue;
+                }
+                for seq in 1..=FLOOD {
+                    let frame = serde_json::json!({
+                        "op": "deliver",
+                        "seq": seq,
+                        "envelope": {
+                            "protocol_version": 1,
+                            "message_id": format!("m{seq}"),
+                            "session_id": "s1",
+                            "from_device_id": "dev-b",
+                            "to_device_id": "dev-a",
+                            "timestamp_ms": 5,
+                            "type": "ice_complete",
+                        },
+                    });
+                    if ws
+                        .send(tungstenite::Message::Text(frame.to_string().into()))
+                        .is_err()
+                    {
+                        break; // overflow drop by the client — expected
+                    }
+                }
+            }
+        });
+
+        let mut sig = RemoteSignaling::new(RemoteSignalingConfig::new(
+            &format!("http://127.0.0.1:{port}"),
+            "dev-a",
+            "unit-token",
+        ));
+        // Let the WS connect before the first poll (the HTTP fallback
+        // cannot talk to this WS-only double).
+        std::thread::sleep(Duration::from_millis(150));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut seen: Vec<String> = Vec::new();
+        while Instant::now() < deadline {
+            for inbound in sig.poll_incoming() {
+                if !seen.contains(&inbound.envelope.message_id) {
+                    seen.push(inbound.envelope.message_id.clone());
+                }
+            }
+            if seen.len() as u64 == FLOOD {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let overflowed = sig.counters().inbound_overflow;
+        done.store(true, AtomicOrdering::Relaxed);
+        drop(sig);
+        let _ = server.join();
+        assert!(
+            seen.len() as u64 == FLOOD,
+            "all {FLOOD} envelopes must arrive via overflow-reconnect; got {} (overflow={overflowed})",
+            seen.len()
+        );
+        assert!(overflowed >= 1, "overflow counter must count the drop");
+    }
+
+    /// Bounded read on a test-double socket: wait until a TEXT frame
+    /// containing `needle` arrives (skips pongs/empties; tolerates the
+    /// 50 ms read timeout). Panics after `secs`.
+    fn wait_for_text<S: std::io::Read + std::io::Write>(
+        ws: &mut tungstenite::WebSocket<S>,
+        needle: &str,
+        secs: u64,
+    ) -> String {
+        let deadline = Instant::now() + Duration::from_secs(secs);
+        while Instant::now() < deadline {
+            match ws.read() {
+                Ok(tungstenite::Message::Text(t)) => {
+                    let t = t.to_string();
+                    if t.contains(needle) {
+                        return t;
+                    }
+                }
+                Ok(tungstenite::Message::Close(_)) => {
+                    panic!("double saw close waiting for {needle}")
+                }
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(ref e))
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
+        panic!("double timed out waiting for {needle}");
+    }
+
+    /// Wait (bounded) for the adapter's WS transport to be connected, so
+    /// poll_incoming does not take the HTTP-fallback path against a
+    /// WS-only test double.
+    fn wait_ws_up(sig: &RemoteSignaling) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !sig.ws_connected() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(sig.ws_connected(), "adapter WS must connect to the double");
     }
 
     fn extract_message_id(frame: &str) -> String {
