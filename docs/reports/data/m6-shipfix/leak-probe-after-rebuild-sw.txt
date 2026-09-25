@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running `target\release\examples\reconfig_probe.exe --mode rebuild --iters 8 --encoder sw`
+encoder: H264 Encoder MFT (software, 1920x1080@60fps, 8000000 bps CBR, GOP 120)
+caps: bitrate: live (range unreported), gop: live (range unreported)
+mode rebuild, iters 8, base: ws 41.1 MiB private 54.4 MiB threads 50 handles 589
+rebuild    iter  1: ws   +49.6 MiB  private  +152.1 MiB  threads  +1  handles    +4
+rebuild    iter  2: ws   +49.8 MiB  private  +152.3 MiB  threads  +1  handles    +5
+rebuild    iter  3: ws   +50.1 MiB  private  +152.3 MiB  threads  +1  handles    +6
+rebuild    iter  4: ws   +50.3 MiB  private  +152.3 MiB  threads  +1  handles    +7
+rebuild    iter  5: ws   +50.4 MiB  private  +152.3 MiB  threads  +1  handles    +8
+rebuild    iter  6: ws   +50.7 MiB  private  +152.4 MiB  threads  +1  handles    +9
+rebuild    iter  7: ws   +51.0 MiB  private  +152.6 MiB  threads  +1  handles   +10
+rebuild    iter  8: ws   +51.2 MiB  private  +152.7 MiB  threads  +1  handles   +11

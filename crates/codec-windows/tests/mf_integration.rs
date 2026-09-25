@@ -517,3 +517,79 @@ fn hardware_encoder_accepts_gpu_input() {
         "DXVA path must not upload pixels"
     );
 }
+
+/// F72 drop-path teardown regression: create → encode one frame → drop,
+/// three cycles, then a fresh encoder must still encode (the shutdown
+/// sequence — DRAIN / END_OF_STREAM / END_STREAMING / manager detach /
+/// IMFShutdown on the async worker's exit — must release the old MFT
+/// without breaking the next one). Memory flatness itself is measured by
+/// `node-runtime --example leak_probe --phase encoder` and
+/// `codec-windows --example reconfig_probe --mode rebuild`; this test
+/// pins correctness across the teardown boundary.
+#[test]
+#[ignore = "requires Media Foundation + real GPU"]
+fn encoder_drop_shutdown_keeps_next_instance_usable() {
+    let _mf = MfRuntime::new().expect("MFStartup");
+    let device = frame_surface::GpuDevice::create_hardware().expect("hw");
+    let cfg = MfEncoderConfig {
+        width: 640,
+        height: 360,
+        fps: 30,
+        bitrate_bps: 2_000_000,
+        gop_size: 60,
+        preference: MfEncoderPreference::Auto,
+    };
+    let surface =
+        frame_surface::FrameSurface::new(&device, 640, 360, frame_surface::SurfaceFormat::Bgra8)
+            .expect("surface");
+    for round in 1..=3u64 {
+        let mut encoder = MfEncoder::new(device.clone(), cfg.clone()).expect("encoder");
+        let input = EncodeInput {
+            frame_id: round,
+            timestamp_ns: round * 16_666_666,
+            surface: surface.clone(),
+        };
+        // Depth-1 pipelines may defer the first output to the next input —
+        // either outcome is fine, a hard error is not.
+        let _ = encoder.encode(input, true);
+        let describe = encoder.describe();
+        drop(encoder);
+        eprintln!("drop-shutdown round {round}: {describe}");
+    }
+    let mut encoder = MfEncoder::new(device, cfg).expect("encoder after 3 drops");
+    let input = EncodeInput {
+        frame_id: 99,
+        timestamp_ns: 99 * 16_666_666,
+        surface,
+    };
+    match encoder.encode(input, true) {
+        Ok(packet) => assert!(packet.is_keyframe, "fresh IDR after drops"),
+        // The software depth-1 pipeline defers its first output.
+        Err(CodecError::Timeout(_)) => {}
+        Err(e) => panic!("encode after drop cycles: {e}"),
+    }
+}
+
+/// F72 decoder drop-path regression: create → reset → drop cycles, then a
+/// fresh decoder still negotiates (the shutdown + output-ring release in
+/// `Drop` must not poison the next instance).
+#[test]
+#[ignore = "requires Media Foundation + real GPU"]
+fn decoder_drop_shutdown_keeps_next_instance_usable() {
+    let _mf = MfRuntime::new().expect("MFStartup");
+    let device = frame_surface::GpuDevice::create_hardware().expect("hw");
+    for round in 1..=3u64 {
+        let mut decoder =
+            MfDecoder::new(device.clone(), MfDecoderConfig { use_gpu: true }).expect("decoder");
+        decoder.reset().expect("reset");
+        let describe = decoder.describe();
+        drop(decoder);
+        eprintln!("decoder drop-shutdown round {round}: {describe}");
+    }
+    let decoder = MfDecoder::new(device, MfDecoderConfig { use_gpu: true }).expect("decoder");
+    let (w, h) = decoder.dimensions();
+    assert!(
+        w <= 1920 * 4 && h <= 2160 * 4,
+        "sane default geometry {w}x{h}"
+    );
+}

@@ -16,6 +16,7 @@ use windows::core::Interface;
 use frame_surface::{FrameSurface, GpuDevice};
 
 use crate::cursor::{normalize_position, shape_to_cursor_message};
+use crate::recovery::{RecoveryDecision, recovery_decision};
 use crate::{
     CaptureError, CaptureMetadata, CaptureSource, CapturedFrame, DirtyRect, MonitorId, MoveRect,
 };
@@ -123,6 +124,18 @@ pub struct DxgiCapture {
     /// `capture_ns` at "DXGI AcquireNextFrame returned", which only this
     /// stage can stamp). Falls back to the capture's own start Instant.
     clock: Option<Box<dyn Fn() -> u64 + Send>>,
+    /// F71 typed irrecoverable state. `Some(reason)` once the reinit
+    /// budget is exhausted or a non-retryable failure (device removed)
+    /// hit; sticky for the object's life — every `next_frame`/`reinit`
+    /// returns [`CaptureError::Dead`] so callers cannot mistake death for
+    /// a transient blip and freeze the session.
+    dead: Option<String>,
+    /// Transient-reinit bookkeeping (the F71 policy, `recovery.rs`):
+    /// attempts burned, when the next attempt is allowed (backoff), and
+    /// the pending cause reported while the backoff window is open.
+    reinit_attempts: u32,
+    reinit_next_at: Option<Instant>,
+    reinit_last: Option<CaptureError>,
 }
 
 impl DxgiCapture {
@@ -174,6 +187,10 @@ impl DxgiCapture {
             dirty_buffer: Vec::new(),
             shape_buffer: Vec::new(),
             clock: None,
+            dead: None,
+            reinit_attempts: 0,
+            reinit_next_at: None,
+            reinit_last: None,
         };
         capture.start_duplication()?;
         Ok(capture)
@@ -201,40 +218,145 @@ impl DxgiCapture {
     }
 
     fn start_duplication(&mut self) -> Result<(), CaptureError> {
-        unsafe {
-            let Some(output) = self.output.clone() else {
-                return Err(CaptureError::Invalid("no output".into()));
-            };
-            let out1: IDXGIOutput1 = output
-                .cast()
-                .map_err(|e| CaptureError::api("cast IDXGIOutput1", e.code().0, "duplicate"))?;
-            match out1.DuplicateOutput(self.device.device()) {
-                Ok(dupl) => {
-                    self.desc = Some(dupl.GetDesc());
-                    self.duplication = Some(dupl);
-                    // Mode may have changed since the pool was built.
-                    self.pool.clear();
-                    self.last_surface = None;
-                    Ok(())
-                }
-                Err(e) => Err(classify_duplication_error(e.code())),
+        let Some(output) = self.output.clone() else {
+            return Err(CaptureError::Invalid("no output".into()));
+        };
+        let dupl = duplicate_output(&self.device, &output)?;
+        // Commit (construction path — nothing live to preserve).
+        self.desc = Some(unsafe { dupl.GetDesc() });
+        self.duplication = Some(dupl);
+        // Mode may have changed since the pool was built.
+        self.release_pool();
+        self.last_surface = None;
+        Ok(())
+    }
+
+    /// Recovery path for [`CaptureError::AccessLost`]: re-duplicate the
+    /// same output. F71 contract:
+    ///
+    /// * **Release-first is required by DDA**: the driver refuses a second
+    ///   `DuplicateOutput` on an output while any previous duplication
+    ///   object is alive — including an already access-lost stale one
+    ///   (measured `E_INVALIDARG`). So `reinit` drops the stale object
+    ///   before re-duplicating, and on failure `duplication` is `None`.
+    ///   That state is *not* the F71 dead state: [`CaptureSource::next_frame`]
+    ///   reports the retryable [`CaptureError::AccessLost`] (driving every
+    ///   caller's existing reinit loop) instead of the old silent
+    ///   `Invalid("duplication not started")` that froze the M6 soak for
+    ///   14.7 minutes while the session stayed `Connected`.
+    /// * transient failures are retried with the bounded exponential
+    ///   backoff of [`crate::recovery`] (calls inside the backoff window
+    ///   are no-ops that re-report the pending cause — the caller's loop
+    ///   cadence drives timing, this function never sleeps);
+    /// * when the budget is exhausted, or the failure is device removal,
+    ///   the capture transitions to the sticky typed dead state
+    ///   ([`CaptureError::Dead`]) — callers must end the session.
+    pub fn reinit(&mut self) -> Result<(), CaptureError> {
+        if let Some(reason) = self.dead.clone() {
+            return Err(CaptureError::Dead(reason));
+        }
+        if let Some(at) = self.reinit_next_at
+            && Instant::now() < at
+            && let Some(pending) = self.reinit_last.clone()
+        {
+            // Backoff window still open: report the pending transient
+            // cause without touching DXGI.
+            return Err(pending);
+        }
+        // Release-first (see doc comment); the stale duplication is
+        // already invalid — an access-lost object cannot acquire frames.
+        self.duplication.take();
+        let attempt = (|| -> Result<(IDXGIOutput, IDXGIOutputDuplication), CaptureError> {
+            let output = find_output(&self.device, &self.monitor_id)?;
+            let dupl = duplicate_output(&self.device, &output)?;
+            Ok((output, dupl))
+        })();
+        match attempt {
+            Ok((output, dupl)) => {
+                // Commit: swap in the fresh objects, release the old ring.
+                self.output = Some(output);
+                self.desc = Some(unsafe { dupl.GetDesc() });
+                self.duplication = Some(dupl);
+                self.release_pool();
+                self.last_surface = None;
+                self.reinit_attempts = 0;
+                self.reinit_next_at = None;
+                self.reinit_last = None;
+                Ok(())
             }
+            Err(e) => match recovery_decision(&e, self.reinit_attempts) {
+                RecoveryDecision::Retry {
+                    delay,
+                    attempts,
+                    cause: _,
+                } => {
+                    self.reinit_attempts = attempts;
+                    self.reinit_next_at = Some(Instant::now() + delay);
+                    self.reinit_last = Some(e.clone());
+                    Err(e)
+                }
+                RecoveryDecision::Die { reason } => {
+                    self.dead = Some(reason.clone());
+                    self.reinit_next_at = None;
+                    self.reinit_last = None;
+                    Err(CaptureError::Dead(reason))
+                }
+            },
         }
     }
 
-    /// Recovery path for [`CaptureError::AccessLost`]: drop the stale
-    /// duplication and re-duplicate the same output. If the output itself
-    /// is gone (monitor unplugged / topology change) returns
-    /// [`CaptureError::DisplayChanged`] — the caller must re-enumerate.
-    pub fn reinit(&mut self) -> Result<(), CaptureError> {
-        self.duplication = None;
-        // Re-check the output still exists under the same device name.
-        self.output = match find_output(&self.device, &self.monitor_id) {
-            Ok(o) => Some(o),
-            Err(e @ CaptureError::DisplayChanged(_)) => return Err(e),
-            Err(e) => return Err(e),
-        };
-        self.start_duplication()
+    /// F71: typed irrecoverable state reached (sticky).
+    pub fn is_dead(&self) -> bool {
+        self.dead.is_some()
+    }
+
+    /// The reason this capture died, if it has (F71 diagnostics).
+    pub fn dead_reason(&self) -> Option<&str> {
+        self.dead.as_deref()
+    }
+
+    /// Test seam (F71 integration evidence): force the typed dead state on
+    /// a healthy capture so a rig run can prove the session ends within
+    /// seconds instead of freezing `Connected`. Never call from product
+    /// paths.
+    #[doc(hidden)]
+    pub fn kill_for_test(&mut self, reason: &str) {
+        self.dead = Some(reason.to_owned());
+    }
+
+    /// Release the output duplication and ring WITHOUT ending the capture
+    /// object's life (M6 e2e regression: DDA refuses a second
+    /// `DuplicateOutput` on an output while any previous duplication
+    /// object in this process is alive — `E_INVALIDARG` — so a monitor
+    /// switch or display-change rebuild that constructs the replacement
+    /// `DxgiCapture` first fails whenever old and new target the same
+    /// output, e.g. `primary` == `\\.\DISPLAY5`). Call before constructing
+    /// the replacement; on construction failure [`DxgiCapture::reinit`]
+    /// is the recovery (transactional, policy-bounded).
+    pub fn release_duplication(&mut self) {
+        self.duplication.take();
+        self.desc = None;
+        self.release_pool();
+    }
+
+    /// Decommit the capture ring (F72): drop the pool surfaces and the
+    /// last-surface reference, then `Flush` the immediate context so the
+    /// driver retires the freed allocations now instead of holding several
+    /// full-resolution rings in its deferred-release queue (measured
+    /// +128 MiB private at 1080p before the flush; M2 F26b / M6 F72).
+    ///
+    /// COM lifetime note: each `FrameSurface` clone is one `IUnknown`
+    /// reference on the same `ID3D11Texture2D`; `clear()`/`take()` drop the
+    /// last references this struct holds. Downstream stages that still
+    /// carry a clone keep their texture alive independently — flushing
+    /// never pulls a surface out from under the encoder or renderer.
+    fn release_pool(&mut self) {
+        if self.pool.is_empty() && self.last_surface.is_none() {
+            return;
+        }
+        self.pool.clear();
+        self.last_surface = None;
+        unsafe { self.device.context().Flush() };
     }
 
     fn now_ns(&self) -> u64 {
@@ -397,6 +519,22 @@ impl DxgiCapture {
     }
 }
 
+/// Duplicate `output` on `device` without touching any capture state —
+/// the building block both construction and the F71 transactional
+/// `reinit` commit through (nothing is mutated until this succeeds).
+fn duplicate_output(
+    device: &GpuDevice,
+    output: &IDXGIOutput,
+) -> Result<IDXGIOutputDuplication, CaptureError> {
+    unsafe {
+        let out1: IDXGIOutput1 = output
+            .cast()
+            .map_err(|e| CaptureError::api("cast IDXGIOutput1", e.code().0, "duplicate"))?;
+        out1.DuplicateOutput(device.device())
+            .map_err(|e| classify_duplication_error(e.code()))
+    }
+}
+
 fn find_output(device: &GpuDevice, monitor_id: &str) -> Result<IDXGIOutput, CaptureError> {
     unsafe {
         let dxgi_dev: IDXGIDevice = device
@@ -469,9 +607,20 @@ impl CaptureSource for DxgiCapture {
     }
 
     fn next_frame(&mut self, timeout: Duration) -> Result<Option<CapturedFrame>, CaptureError> {
+        // F71: a dead capture reports death — typed, sticky, impossible to
+        // mistake for the old "invalid state" spin.
+        if let Some(reason) = self.dead.clone() {
+            return Err(CaptureError::Dead(reason));
+        }
         let timeout_ms = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
         let Some(duplication) = self.duplication.clone() else {
-            return Err(CaptureError::Invalid("duplication not started".into()));
+            // Only reachable between a failed (release-first) reinit and
+            // the next retry: report the retryable cause that drives every
+            // caller's reinit loop. The F71 bug was this branch returning
+            // `Invalid` forever with no escalation path — a frozen stream.
+            return Err(CaptureError::AccessLost(
+                "duplication released for reinit; retry pending".into(),
+            ));
         };
         // Desktop geometry for cursor normalization comes from the output
         // description (stable for the life of the duplication).
@@ -608,6 +757,33 @@ pub fn classify_acquire_error(hr: windows::core::HRESULT) -> CaptureError {
 // `FrameSurface::from_texture` before copying it into a pool slot; the
 // surface is only used as a copy source and never escapes this crate.
 
+/// F72 drop-path teardown. Release order matters and is deliberate:
+///
+/// 1. `IDXGIOutputDuplication` first — DDA holds one full-resolution
+///    surface per output and the driver refuses a second `DuplicateOutput`
+///    on the same output while the old object is alive (the
+///    `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `Exhausted` class).
+/// 2. The pool ring + last-surface reference (via [`DxgiCapture::release_pool`])
+///    — each `FrameSurface` drop is a COM `Release`; the trailing
+///    `ID3D11DeviceContext::Flush` retires the freed allocations now.
+///    Without it the driver parked several full-resolution rings in its
+///    deferred-release queue (measured +128 MiB private bytes at 1080p
+///    across create/drop cycles — M2 F26b, re-measured as M6 F72).
+/// 3. `IDXGIOutput` last (the duplication no longer references it).
+///
+/// COM lifetime note: the shared `GpuDevice` outlives every capture
+/// (process-lifetime by design), so the flush target is always valid here.
+/// Clones of pool surfaces held downstream (encoder in flight, renderer)
+/// keep their textures alive through their own references — this drop
+/// never invalidates a surface another stage still owns.
+impl Drop for DxgiCapture {
+    fn drop(&mut self) {
+        self.duplication.take();
+        self.release_pool();
+        self.output.take();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,6 +808,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn fatal_errors_are_dead_or_device_lost() {
+        assert!(CaptureError::Dead("budget".into()).is_fatal());
+        assert!(CaptureError::DeviceLost("removed".into()).is_fatal());
+        for not_fatal in [
+            CaptureError::AccessLost("churn".into()),
+            CaptureError::AccessDenied("secure".into()),
+            CaptureError::DisplayChanged("gone".into()),
+            CaptureError::Exhausted("limit".into()),
+            CaptureError::Invalid("contract".into()),
+            CaptureError::Api {
+                op: "DuplicateOutput",
+                hr: 1,
+                detail: String::new(),
+            },
+        ] {
+            assert!(!not_fatal.is_fatal());
+        }
+    }
+
     /// Requires a real interactive desktop; run with `cargo test -- --ignored`.
     #[test]
     #[ignore = "requires an interactive desktop session (DXGI duplication)"]
@@ -653,5 +849,39 @@ mod tests {
             }
         }
         panic!("no desktop update within 2 s — is something animating on screen?");
+    }
+
+    /// F71, live desktop: reinit is transactional — a successful reinit
+    /// keeps frames flowing, and a killed capture reports sticky typed
+    /// death from both `next_frame` and `reinit` (never `Invalid`).
+    /// Run with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "requires an interactive desktop session (DXGI duplication)"]
+    fn reinit_is_transactional_and_death_is_sticky() {
+        let device = GpuDevice::create_hardware().expect("hardware device");
+        let mut cap = DxgiCapture::new(device, "primary").expect("duplicate primary");
+        // Healthy reinit: same output, fresh duplication object.
+        cap.reinit().expect("reinit on a live desktop");
+        assert!(!cap.is_dead());
+        let (w, h) = cap.dimensions();
+        assert!(w > 0 && h > 0);
+
+        // Typed death is sticky across every entry point (F71's exact
+        // regression: the old code returned `Invalid` forever, which no
+        // caller escalated).
+        cap.kill_for_test("test: forced death");
+        assert!(cap.is_dead());
+        assert!(matches!(
+            cap.next_frame(Duration::from_millis(50)),
+            Err(CaptureError::Dead(reason)) if reason.contains("forced")
+        ));
+        assert!(matches!(cap.reinit(), Err(CaptureError::Dead(_))));
+        // A dead capture must not be mistaken for a recoverable state by
+        // callers keying on AccessLost/Invalid.
+        assert!(
+            cap.next_frame(Duration::from_millis(50))
+                .expect_err("dead capture must error")
+                .is_fatal()
+        );
     }
 }

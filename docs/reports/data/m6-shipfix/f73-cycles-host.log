@@ -1,0 +1,922 @@
+[rig-host] m2_rig role=host scenario=cycles dir=C:/Remote.deepflux.space/docs/reports/data/m6-shipfix/.sigSlope-sT9CDl stream=60s seed=2026 drop-fast=10 reorder-fast=5 drop-reliable-every=40
+[rig-host] metrics: C:/Remote.deepflux.space/docs/reports/data/m6-shipfix\f73-slope-host-rig-host-1.jsonl
+[rig-host] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-host] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m6-shipfix/.sigSlope-sT9CDl out=h2c.jsonl, in=c2h.jsonl)
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #1, session rig-controller-ctrl-2 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] loop alive, host=ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-2
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] congestion decision: bitrate=Some(3600000) fps=None res_down=false ()
+[host] encoder: NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 8000000 bps CBR, GOP 120)
+[host] congestion: bitrate -> 3600000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #2, session rig-controller-ctrl-8 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] session established: rig-controller-ctrl-8
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 3600000 bps CBR, GOP 120)
+[rig-host] congestion decision: bitrate=Some(3840084) fps=None res_down=false ()
+[host] congestion: bitrate -> 3840084 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(2880063) fps=None res_down=false ()
+[host] congestion: bitrate -> 2880063 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(2160047) fps=Some(30) res_down=false (bandwidth collapsed: fps cap applied)
+[host] congestion: fps cap 60 -> 30
+[host] congestion: bitrate -> 2160047 bps (live)
+[rig-host] congestion decision: bitrate=Some(1620035) fps=None res_down=false ()
+[host] congestion: bitrate -> 1620035 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(1215026) fps=None res_down=false ()
+[host] congestion: bitrate -> 1215026 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(911269) fps=Some(15) res_down=false (bandwidth collapsed: fps cap applied)
+[host] congestion: fps cap 30 -> 15
+[host] congestion: bitrate -> 911269 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(1211269) fps=None res_down=false ()
+[host] congestion: bitrate -> 1211269 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(908451) fps=None res_down=false ()
+[host] congestion: bitrate -> 908451 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(681338) fps=None res_down=false ()
+[host] congestion: bitrate -> 681338 bps (live)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] control goodbye received (User)
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #3, session rig-controller-ctrl-14 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-14
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 681338 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(511003) fps=None res_down=false ()
+[host] congestion: bitrate -> 511003 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #4, session rig-controller-ctrl-20 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] session established: rig-controller-ctrl-20
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 511003 bps CBR, GOP 120)
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #5, session rig-controller-ctrl-26 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] session established: rig-controller-ctrl-26
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 511003 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(811003) fps=None res_down=false ()
+[host] congestion: bitrate -> 811003 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(608252) fps=None res_down=false ()
+[host] congestion: bitrate -> 608252 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(500000) fps=None res_down=false ()
+[host] congestion: bitrate -> 500000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #6, session rig-controller-ctrl-32 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-32
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #7, session rig-controller-ctrl-38 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] session established: rig-controller-ctrl-38
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(800000) fps=None res_down=false ()
+[host] congestion: bitrate -> 800000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(600000) fps=None res_down=false ()
+[host] congestion: bitrate -> 600000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] congestion decision: bitrate=Some(500000) fps=None res_down=false ()
+[host] congestion: bitrate -> 500000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #8, session rig-controller-ctrl-44 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-44
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #9, session rig-controller-ctrl-50 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] loop alive, host=ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-50
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] control goodbye received (User)
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #10, session rig-controller-ctrl-56 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] session established: rig-controller-ctrl-56
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #11, session rig-controller-ctrl-62 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-62
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #12, session rig-controller-ctrl-68 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] loop alive, host=ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-68
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] encoder (reused): NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 500000 bps CBR, GOP 120)
+[host] capture: reusing duplication
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] done marker observed
+[rig-host] summary:
+{
+  "all_keys_up_disconnect": 24,
+  "channel_open_order": [
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable"
+  ],
+  "congestion": {
+    "congestion_decisions": 17,
+    "congestion_reconfigs": 17,
+    "enabled": true,
+    "encoder_rebuilds": 0,
+    "events": [
+      {
+        "at_ms": 3173,
+        "bitrate_bps": 3600000,
+        "encoder_bitrate_bps": 3600000,
+        "estimate_bps": 4000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 31215,
+        "bitrate_bps": 3840084,
+        "encoder_bitrate_bps": 3840084,
+        "estimate_bps": 4266761,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 33218,
+        "bitrate_bps": 2880063,
+        "encoder_bitrate_bps": 2880063,
+        "estimate_bps": 4947750,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 34220,
+        "bitrate_bps": 2160047,
+        "encoder_bitrate_bps": 2160047,
+        "estimate_bps": 5366575,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 35220,
+        "bitrate_bps": 1620035,
+        "encoder_bitrate_bps": 1620035,
+        "estimate_bps": 5823735,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 36222,
+        "bitrate_bps": 1215026,
+        "encoder_bitrate_bps": 1215026,
+        "estimate_bps": 6221446,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 39224,
+        "bitrate_bps": 911269,
+        "encoder_bitrate_bps": 911269,
+        "estimate_bps": 7937122,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 50249,
+        "bitrate_bps": 1211269,
+        "encoder_bitrate_bps": 1211269,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 52251,
+        "bitrate_bps": 908451,
+        "encoder_bitrate_bps": 908451,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 55258,
+        "bitrate_bps": 681338,
+        "encoder_bitrate_bps": 681338,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 61271,
+        "bitrate_bps": 511003,
+        "encoder_bitrate_bps": 511003,
+        "estimate_bps": 5184810,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 114378,
+        "bitrate_bps": 811003,
+        "encoder_bitrate_bps": 811003,
+        "estimate_bps": 4628288,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.78125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 116382,
+        "bitrate_bps": 608252,
+        "encoder_bitrate_bps": 608252,
+        "estimate_bps": 5370418,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 119386,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 6859153,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 168488,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 4472471,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.78125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 172498,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 6097614,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 181519,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      }
+    ],
+    "fps_retargets": 2,
+    "reconfig_errors": 0,
+    "resolution_step_down_rebuilds": 0
+  },
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 329.2586766,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "capture_dead": {
+      "chaos_injected_after_frames": 0,
+      "died": false,
+      "reason": null,
+      "session_end_after_ms": null
+    },
+    "capture_reinit": 0,
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 1,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 51.999916540832075,
+    "fps_retargets": 2,
+    "fps_target": 60,
+    "frames_captured": 15712,
+    "frames_encoded": 15642,
+    "keyframe_forced": 928,
+    "keyframes": 945,
+    "pacer": {
+      "fps_tick_rate": 54.92536894819253,
+      "skipped": 1522,
+      "ticks": 16522
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 17,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 300.80817509999997
+  },
+  "input": {
+    "all_keys_up": 24,
+    "final_position": [
+      46500,
+      55500
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 1500,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 50,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-shipfix\\f73-slope-host-rig-host-1.jsonl",
+    "records": 78567
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 48,
+    "envelopes_sent": 48,
+    "heartbeats_raised": 12,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 12,
+    "ice_minted": 12,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 12,
+    "wire_sent": 14
+  },
+  "proc": {
+    "final": {
+      "handles": 585,
+      "private_mib": 268.0078125,
+      "threads": 35,
+      "ws_mib": 102.7578125
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 617,
+        "private_mib": 263.28515625,
+        "threads": 43,
+        "ws_mib": 95.84375
+      },
+      {
+        "handles": 627,
+        "private_mib": 265.3828125,
+        "threads": 45,
+        "ws_mib": 99.0
+      },
+      {
+        "handles": 628,
+        "private_mib": 267.48828125,
+        "threads": 42,
+        "ws_mib": 100.78515625
+      },
+      {
+        "handles": 629,
+        "private_mib": 268.109375,
+        "threads": 42,
+        "ws_mib": 102.375
+      },
+      {
+        "handles": 624,
+        "private_mib": 269.78515625,
+        "threads": 40,
+        "ws_mib": 104.00390625
+      },
+      {
+        "handles": 630,
+        "private_mib": 271.64453125,
+        "threads": 42,
+        "ws_mib": 105.86328125
+      },
+      {
+        "handles": 631,
+        "private_mib": 272.85546875,
+        "threads": 42,
+        "ws_mib": 107.05078125
+      },
+      {
+        "handles": 632,
+        "private_mib": 274.203125,
+        "threads": 42,
+        "ws_mib": 108.40625
+      },
+      {
+        "handles": 633,
+        "private_mib": 275.7578125,
+        "threads": 42,
+        "ws_mib": 109.84375
+      },
+      {
+        "handles": 622,
+        "private_mib": 276.53515625,
+        "threads": 39,
+        "ws_mib": 110.671875
+      },
+      {
+        "handles": 625,
+        "private_mib": 277.84765625,
+        "threads": 40,
+        "ws_mib": 112.171875
+      },
+      {
+        "handles": 628,
+        "private_mib": 279.1484375,
+        "threads": 40,
+        "ws_mib": 113.4921875
+      }
+    ]
+  },
+  "prompts": 12,
+  "real_input": false,
+  "role": "host",
+  "scenario": "cycles",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8",
+      "rig-controller-ctrl-14",
+      "rig-controller-ctrl-20",
+      "rig-controller-ctrl-26",
+      "rig-controller-ctrl-32",
+      "rig-controller-ctrl-38",
+      "rig-controller-ctrl-44",
+      "rig-controller-ctrl-50",
+      "rig-controller-ctrl-56",
+      "rig-controller-ctrl-62",
+      "rig-controller-ctrl-68"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 1,
+        "dropped": 0,
+        "enqueued": 1,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 1436,
+    "loss_percent": null,
+    "netem_queue": {
+      "capacity": 300,
+      "delivered": 2277,
+      "depth": 0,
+      "dropped": 109,
+      "heap_capacity": 4096,
+      "heap_high_water": 1,
+      "high_water": 1
+    },
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 2277,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.20929999999999999,
+    "selected_pair": {
+      "local": "127.0.0.1:62456",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:60108",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 461.07073774554215
+  }
+}

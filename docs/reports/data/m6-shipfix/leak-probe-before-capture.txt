@@ -1,0 +1,13 @@
+   Compiling node-runtime v0.1.0 (C:\Remote.deepflux.space\crates\node-runtime)
+    Finished `release` profile [optimized] target(s) in 1.06s
+     Running `target\release\examples\leak_probe.exe --phase capture --iters 8`
+--- phase: DxgiCapture create/drop ---
+capture    iter  0: ws   +36.3 MiB  private   +52.3 MiB  threads  35  handles   412
+capture    iter  1: ws   +36.9 MiB  private   +52.5 MiB  threads  35  handles   418
+capture    iter  2: ws   +36.9 MiB  private   +52.5 MiB  threads  35  handles   419
+capture    iter  3: ws   +36.9 MiB  private   +52.5 MiB  threads  35  handles   420
+capture    iter  4: ws   +36.9 MiB  private   +52.5 MiB  threads  35  handles   421
+capture    iter  5: ws   +37.0 MiB  private  +180.2 MiB  threads  35  handles   422
+capture    iter  6: ws   +37.0 MiB  private  +180.2 MiB  threads  35  handles   423
+capture    iter  7: ws   +37.1 MiB  private  +180.3 MiB  threads  36  handles   429
+capture    iter  8: ws   +37.1 MiB  private  +180.3 MiB  threads  36  handles   430

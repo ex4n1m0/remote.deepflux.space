@@ -1,0 +1,16 @@
+    Finished `release` profile [optimized] target(s) in 0.28s
+     Running `target\release\examples\leak_probe.exe --phase decoder --iters 12`
+--- phase: MfDecoder create/drop ---
+decoder    iter  0: ws   +36.1 MiB  private   +52.2 MiB  threads  35  handles   394
+decoder    iter  1: ws   +42.9 MiB  private   +54.8 MiB  threads  40  handles   506
+decoder    iter  2: ws   +44.0 MiB  private   +56.1 MiB  threads  42  handles   528
+decoder    iter  3: ws   +45.1 MiB  private   +57.5 MiB  threads  44  handles   550
+decoder    iter  4: ws   +46.3 MiB  private   +58.8 MiB  threads  46  handles   572
+decoder    iter  5: ws   +47.3 MiB  private   +60.1 MiB  threads  48  handles   594
+decoder    iter  6: ws   +48.3 MiB  private   +61.3 MiB  threads  50  handles   616
+decoder    iter  7: ws   +49.7 MiB  private   +62.9 MiB  threads  52  handles   638
+decoder    iter  8: ws   +50.9 MiB  private   +64.3 MiB  threads  54  handles   660
+decoder    iter  9: ws   +51.8 MiB  private   +65.4 MiB  threads  56  handles   682
+decoder    iter 10: ws   +52.8 MiB  private   +66.7 MiB  threads  58  handles   704
+decoder    iter 11: ws   +53.8 MiB  private   +67.9 MiB  threads  60  handles   726
+decoder    iter 12: ws   +54.9 MiB  private   +69.1 MiB  threads  62  handles   748

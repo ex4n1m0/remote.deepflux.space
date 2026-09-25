@@ -1,0 +1,16 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target\release\examples\leak_probe.exe --phase transport --iters 12`
+--- phase: WebrtcTransport create/close ---
+transport  iter  0: ws    +9.1 MiB  private    +1.7 MiB  threads   5  handles   164
+transport  iter  1: ws   +11.4 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter  2: ws   +11.4 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter  3: ws   +11.5 MiB  private    +2.0 MiB  threads   5  handles   171
+transport  iter  4: ws   +11.5 MiB  private    +2.0 MiB  threads   5  handles   171
+transport  iter  5: ws   +11.5 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter  6: ws   +11.5 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter  7: ws   +11.5 MiB  private    +2.0 MiB  threads   5  handles   171
+transport  iter  8: ws   +11.5 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter  9: ws   +11.5 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter 10: ws   +11.5 MiB  private    +1.9 MiB  threads   5  handles   171
+transport  iter 11: ws   +11.5 MiB  private    +2.0 MiB  threads   5  handles   171
+transport  iter 12: ws   +11.5 MiB  private    +2.0 MiB  threads   5  handles   171

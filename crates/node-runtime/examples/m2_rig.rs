@@ -110,6 +110,12 @@ struct Args {
     /// (no file, no writer thread, zero metrics IO). Default off; can also
     /// be set via the environment (`RD_RIG_NO_SINK=1`).
     no_sink: bool,
+    /// M6 ship-fix F71 (chaos, test-only): force the typed capture dead
+    /// state after N captured frames (0 = off). Deterministic repro of
+    /// the soak's mid-stream capture death — the run then proves the
+    /// session ends `TransportError` within seconds instead of freezing
+    /// `Connected`.
+    chaos_capture_death_after: u32,
     idle_timeout_secs: u64,
     /// LAN-checkpoint mode (scope addendum to the M2 QA fix package): the
     /// host injects scripted input through the REAL `SendInputSink`
@@ -232,6 +238,7 @@ fn parse_args() -> Result<Args, String> {
         summary: std::env::temp_dir().join("rd-m2-summary.json"),
         report_stem: None,
         no_sink: false,
+        chaos_capture_death_after: 0,
         idle_timeout_secs: 300,
         real_input: false,
         netem: None,
@@ -396,6 +403,12 @@ fn parse_args() -> Result<Args, String> {
                 args.no_sink = true;
                 i += 1;
             }
+            "--chaos-capture-death-after" => {
+                args.chaos_capture_death_after = need("--chaos-capture-death-after")?
+                    .parse()
+                    .map_err(|e| format!("chaos-capture-death-after: {e}"))?;
+                i += 2;
+            }
             "--summary" => {
                 args.summary = PathBuf::from(need("--summary")?);
                 i += 2;
@@ -417,6 +430,7 @@ fn parse_args() -> Result<Args, String> {
                      [--bitrate-kbps N] [--monitor primary] [--window-size WxH] [--no-stimulus]\n\
                      [--drop-fast-pct N] [--reorder-fast-pct N] [--drop-reliable-nth N] [--seed N]\n\
                      [--mouse-moves N] [--metrics-dir DIR] [--no-sink] [--summary FILE] [--report-stem NAME]\n\
+                     [M6-test] [--chaos-capture-death-after N] (force typed capture death mid-stream; F71)\n\
                      [--idle-timeout-secs N] [--real-input]\n\
                      [M5] [--netem 'loss=N|delay_ms=N|rate_kbps=N|udp_blocked=B']\n\
                      [M5] [--netem-schedule 'secs:spec;secs:spec'] [--congestion on|off]\n\
@@ -716,6 +730,13 @@ struct HostPipeline {
     /// pending slot each, newest wins).
     want_params: Arc<Mutex<Option<codec_windows::EncoderParams>>>,
     want_fps: Arc<Mutex<Option<u32>>>,
+    /// F71 typed pipeline death: set by the capture/encode threads on an
+    /// irrecoverable failure (capture dead / device lost / budget
+    /// exhausted). The main loop polls it and ends the session through
+    /// the machines — the M6 soak froze 14.7 min `Connected` through the
+    /// old `let _ = cap.reinit()` discard.
+    fatal: Arc<AtomicBool>,
+    fatal_reason: Arc<Mutex<Option<String>>>,
 }
 
 impl HostPipeline {
@@ -764,6 +785,9 @@ impl HostPipeline {
         let want_params: Arc<Mutex<Option<codec_windows::EncoderParams>>> =
             Arc::new(Mutex::new(None));
         let want_fps: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
+        // F71 typed pipeline death (capture/encode thread → main loop).
+        let fatal = Arc::new(AtomicBool::new(false));
+        let fatal_reason: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let mut joins = Vec::new();
 
         // ---- capture thread ----
@@ -780,11 +804,21 @@ impl HostPipeline {
             let ticks = Arc::clone(&pacer_ticks);
             let skipped = Arc::clone(&pacer_skipped);
             let want_fps = Arc::clone(&want_fps);
+            let fatal = Arc::clone(&fatal);
+            let fatal_reason = Arc::clone(&fatal_reason);
+            let chaos_kill_after = args.chaos_capture_death_after;
             joins.push(
                 std::thread::Builder::new()
                     .name("capture".into())
                     .spawn(move || {
                         attach_thread_to_input_desktop().expect("input desktop");
+                        let mark_fatal = |reason: String| {
+                            let mut slot = fatal_reason.lock().expect("fatal reason");
+                            if slot.is_none() {
+                                *slot = Some(reason);
+                            }
+                            fatal.store(true, Ordering::Release);
+                        };
                         // Process-lifetime duplication (F26b): take the
                         // pooled instance or create it on first use.
                         let mut cap = match capture_pool.lock().expect("capture pool").take() {
@@ -792,8 +826,18 @@ impl HostPipeline {
                                 eprintln!("[host] capture: reusing duplication");
                                 cap
                             }
-                            None => DxgiCapture::new(device.clone(), &monitor)
-                                .expect("duplicate output"),
+                            None => match DxgiCapture::new(device.clone(), &monitor) {
+                                Ok(cap) => cap,
+                                Err(err) => {
+                                    // F71: a pipeline that never produced a
+                                    // frame must end the session, not exit
+                                    // silently into a frozen stream.
+                                    eprintln!("[host] capture init failed: {err}");
+                                    mark_fatal(format!("capture init failed: {err}"));
+                                    q.close();
+                                    return;
+                                }
+                            },
                         };
                         let stamp_clock = clock.clone();
                         cap.set_clock(Box::new(move || stamp_clock.now_ns()));
@@ -806,7 +850,23 @@ impl HostPipeline {
                         let mut pacer = FramePacer::new(fps);
                         eprintln!("[host] capture pacer mode: {}", pacer.mode);
                         pacer.start();
+                        // F71: bounded budget for non-AccessLost errors
+                        // (capture-windows' recovery policy decides).
+                        let mut err_attempts = 0u32;
                         while !stop.load(Ordering::Acquire) {
+                            // F71 chaos: force the typed dead state once N
+                            // frames were captured (deterministic repro of
+                            // the soak's mid-stream capture death).
+                            if chaos_kill_after > 0
+                                && counters.captured.load(Ordering::Relaxed)
+                                    >= u64::from(chaos_kill_after)
+                                && !cap.is_dead()
+                            {
+                                eprintln!(
+                                    "[host] chaos: killing capture after {chaos_kill_after} frames"
+                                );
+                                cap.kill_for_test("chaos: forced capture death (F71 repro)");
+                            }
                             // M5: apply a congestion fps retarget (if any).
                             if let Some(next_fps) = want_fps.lock().expect("want fps").take()
                                 && next_fps != pacer.fps()
@@ -825,6 +885,7 @@ impl HostPipeline {
                             let budget = pacer.period();
                             match cap.next_frame(budget) {
                                 Ok(Some(frame)) => {
+                                    err_attempts = 0;
                                     if let Some(cursor) = frame.cursor {
                                         if matches!(cursor, CursorMessage::Position { .. }) {
                                             counters
@@ -848,7 +909,15 @@ impl HostPipeline {
                                 Err(CaptureError::AccessLost(_)) => {
                                     counters.capture_reinit.fetch_add(1, Ordering::Relaxed);
                                     std::thread::sleep(Duration::from_millis(100));
-                                    let _ = cap.reinit();
+                                    // F71: reinit failure is never discarded;
+                                    // typed death ends the session.
+                                    if let Err(e) = cap.reinit() {
+                                        eprintln!("[host] capture reinit failed: {e}");
+                                        if e.is_fatal() {
+                                            mark_fatal(format!("capture dead: {e}"));
+                                            break;
+                                        }
+                                    }
                                 }
                                 Err(CaptureError::AccessDenied(detail)) => {
                                     eprintln!(
@@ -859,24 +928,79 @@ impl HostPipeline {
                                 Err(CaptureError::DisplayChanged(detail)) => {
                                     counters.capture_reinit.fetch_add(1, Ordering::Relaxed);
                                     eprintln!("[host] display changed: {detail}");
-                                    std::thread::sleep(Duration::from_millis(200));
+                                    // F71: bounded re-duplicate; the policy
+                                    // decides retry vs death. Release-first
+                                    // (DDA refuses a second duplication on
+                                    // the same output).
+                                    cap.release_duplication();
                                     match DxgiCapture::new(device.clone(), "primary") {
-                                        Ok(new_cap) => cap = new_cap,
-                                        Err(e) => eprintln!("[host] re-select failed: {e}"),
+                                        Ok(new_cap) => {
+                                            cap = new_cap;
+                                            err_attempts = 0;
+                                        }
+                                        Err(e) => {
+                                            err_attempts += 1;
+                                            let wait =
+                                                match capture_windows::recovery::recovery_decision(
+                                                    &e,
+                                                    err_attempts - 1,
+                                                ) {
+                                                    capture_windows::RecoveryDecision::Retry {
+                                                        delay,
+                                                        ..
+                                                    } => delay,
+                                                    capture_windows::RecoveryDecision::Die {
+                                                        reason,
+                                                    } => {
+                                                        let reason = format!(
+                                                            "display change unrecoverable: {reason}"
+                                                        );
+                                                        eprintln!("[host] {reason}");
+                                                        mark_fatal(reason);
+                                                        break;
+                                                    }
+                                                };
+                                            eprintln!("[host] re-select failed: {e}");
+                                            std::thread::sleep(wait);
+                                        }
                                     }
                                 }
                                 Err(CaptureError::DeviceLost(detail)) => {
                                     eprintln!("[host] capture DEVICE LOST: {detail}");
                                     counters.device_lost.fetch_add(1, Ordering::Relaxed);
+                                    mark_fatal(format!("capture device lost: {detail}"));
                                     break;
                                 }
                                 Err(e) => {
+                                    // F71: unknown errors are budgeted, not
+                                    // retried forever.
+                                    err_attempts += 1;
+                                    let wait = match capture_windows::recovery::recovery_decision(
+                                        &e,
+                                        err_attempts - 1,
+                                    ) {
+                                        capture_windows::RecoveryDecision::Retry {
+                                            delay, ..
+                                        } => delay,
+                                        capture_windows::RecoveryDecision::Die { reason } => {
+                                            let reason = format!(
+                                                "capture errors exhausted budget: {reason}"
+                                            );
+                                            eprintln!("[host] {reason}");
+                                            mark_fatal(reason);
+                                            break;
+                                        }
+                                    };
                                     eprintln!("[host] capture error: {e}");
-                                    std::thread::sleep(Duration::from_millis(100));
+                                    std::thread::sleep(wait);
                                 }
                             }
                         }
-                        *capture_pool.lock().expect("capture pool") = Some(cap);
+                        // A dead capture must not return to the pool — the
+                        // next session would start already dead (F71).
+                        if !cap.is_dead() {
+                            *capture_pool.lock().expect("capture pool") = Some(cap);
+                        }
                         q.close();
                     })
                     .expect("spawn capture"),
@@ -893,6 +1017,8 @@ impl HostPipeline {
             let encoder_pool = Arc::clone(&encoder_pool);
             let device = device.clone();
             let want_params = Arc::clone(&want_params);
+            let fatal = Arc::clone(&fatal);
+            let fatal_reason = Arc::clone(&fatal_reason);
             let enc_cfg = codec_windows::MfEncoderConfig {
                 width: args.encode_w & !1,
                 height: args.encode_h & !1,
@@ -908,7 +1034,10 @@ impl HostPipeline {
                         // Reuse the process-lifetime encoder when the
                         // pool holds one (F26); create it on first use.
                         let mut encoder = match encoder_pool.lock().expect("encoder pool").take() {
-                            Some(encoder) => {
+                            Some(mut encoder) => {
+                                // MF threading: this thread is the MFT's
+                                // home for the session (pool handoff).
+                                encoder.adopt_thread();
                                 eprintln!("[host] encoder (reused): {}", encoder.describe());
                                 encoder
                             }
@@ -918,7 +1047,14 @@ impl HostPipeline {
                                     encoder
                                 }
                                 Err(e) => {
+                                    // F71: same session-ending rule as
+                                    // capture init failure.
                                     eprintln!("[host] encoder init failed: {e}");
+                                    let mut slot = fatal_reason.lock().expect("fatal reason");
+                                    if slot.is_none() {
+                                        *slot = Some(format!("encoder init failed: {e}"));
+                                    }
+                                    fatal.store(true, Ordering::Release);
                                     q_out.close();
                                     return;
                                 }
@@ -988,6 +1124,13 @@ impl HostPipeline {
                                 Err(codec_windows::CodecError::DeviceLost(d)) => {
                                     eprintln!("[host] encode DEVICE LOST: {d}");
                                     counters.device_lost.fetch_add(1, Ordering::Relaxed);
+                                    // F71: encode-side device loss ends the
+                                    // session, not the stream quietly.
+                                    let mut slot = fatal_reason.lock().expect("fatal reason");
+                                    if slot.is_none() {
+                                        *slot = Some(format!("encoder device lost: {d}"));
+                                    }
+                                    fatal.store(true, Ordering::Release);
                                     break;
                                 }
                                 Err(e) => eprintln!("[host] encode error: {e}"),
@@ -1011,6 +1154,8 @@ impl HostPipeline {
             pacer_skipped,
             want_params,
             want_fps,
+            fatal,
+            fatal_reason,
         })
     }
 
@@ -1115,6 +1260,9 @@ impl ControllerPipeline {
                         // reset per session (IDR gate armed).
                         let mut decoder = match decoder_pool.lock().expect("decoder pool").take() {
                             Some(mut decoder) => {
+                                // MF threading: this thread is the MFT's
+                                // home for the session (pool handoff).
+                                decoder.adopt_thread();
                                 let _ = decoder.reset();
                                 eprintln!("[controller] decoder (reused): {}", decoder.describe());
                                 decoder
@@ -2076,6 +2224,10 @@ fn run(args: Args) -> i32 {
     // F26 evidence: per-session process diagnostics at session end.
     let mut per_session_diag: Vec<(String, u32, u32, u64, u64)> = Vec::new();
     let mut failure_reason = String::new();
+    // F71 evidence: typed pipeline death → machine Disconnected timing.
+    let mut capture_death_at: Option<Instant> = None;
+    let mut capture_death_reason: Option<String> = None;
+    let mut capture_death_session_ended_at: Option<Instant> = None;
     let host_out_file = args.dir.join("c2h.jsonl");
 
     // Controller start delay: give the host a moment to register.
@@ -2192,6 +2344,56 @@ fn run(args: Args) -> i32 {
             observer.render_started_at = Some(Instant::now());
             observer.controller_pipeline = Some(pipeline);
             eprintln!("[{device}] rendering started");
+        }
+
+        // ---- host: F71 typed pipeline death ends the session ----
+        // A capture/encoder death must reach the machines (StopStreaming +
+        // Disconnect{TransportError} + SessionEnded{TransportError}), never
+        // freeze the stream while `Connected` (the M6 soak's 14.7-minute
+        // hole). Best-effort wire goodbye first so the controller's side
+        // tears down too; `fail_session` keeps the transport open until
+        // the session-end handling retires it.
+        if let Some(pipeline) = observer.host_pipeline.as_ref()
+            && pipeline.fatal.load(Ordering::Acquire)
+            && matches!(
+                node.host_state(),
+                HostState::ConsentPrompted { .. }
+                    | HostState::Exchanging { .. }
+                    | HostState::Connecting { .. }
+                    | HostState::Connected { .. }
+            )
+        {
+            let reason = pipeline
+                .fatal_reason
+                .lock()
+                .expect("fatal reason")
+                .clone()
+                .unwrap_or_else(|| "host pipeline died".to_owned());
+            if capture_death_at.is_none() {
+                capture_death_at = Some(Instant::now());
+                capture_death_reason = Some(reason.clone());
+                eprintln!("[{device}] FATAL host pipeline death: {reason}");
+            }
+            let _ = node.send_wire(
+                Channel::Control,
+                &WireMessage::Disconnect {
+                    reason: ControlDisconnectReason::TransportError,
+                },
+            );
+            let _ = node.send_wire(
+                Channel::InputReliable,
+                &WireMessage::Input(InputEvent::AllKeysUp {
+                    trigger: AllKeysUpTrigger::Disconnect,
+                }),
+            );
+            node.fail_session(&reason, &mut observer);
+        }
+        if capture_death_at.is_some()
+            && capture_death_session_ended_at.is_none()
+            && matches!(node.host_state(), HostState::Disconnected { .. })
+        {
+            capture_death_session_ended_at = Some(Instant::now());
+            eprintln!("[{device}] F71: session ended after pipeline death");
         }
 
         // ---- host: drain encode→send queue into the transport ----
@@ -2822,6 +3024,14 @@ fn run(args: Args) -> i32 {
                 eprintln!("[{device}] done marker observed");
                 break;
             }
+            // F71 chaos mode: the injected death was answered by a typed
+            // session end — evidence complete, exit without waiting for
+            // the idle watchdog (the test asserts the timing from the
+            // summary).
+            if args.chaos_capture_death_after > 0 && capture_death_session_ended_at.is_some() {
+                eprintln!("[{device}] F71 chaos: typed session end confirmed; exiting");
+                break;
+            }
             // Idle watchdog: only fatal while the host machine is terminal
             // (between cycles the controller drives the next connect).
             if matches!(node.host_state(), HostState::Disconnected { .. })
@@ -2968,11 +3178,14 @@ fn run(args: Args) -> i32 {
         cursor_positions_tx += counters.cursor_positions.load(Ordering::Relaxed);
     }
     // M5: live-reconfig / fps-retarget evidence across every host pipeline
-    // (finished + the live one at exit).
+    // (finished + the live one at exit). F78: `capture_reinit` rides the
+    // same loop — the counter existed but no summary field read it, which
+    // hid F71's trigger behind a log grep in the M6 soak.
     let mut reconfig_live = 0u64;
     let mut reconfig_rebuilt = 0u64;
     let mut reconfig_errors = 0u64;
     let mut fps_retargets = 0u64;
+    let mut capture_reinit_total = 0u64;
     let mut all_host_counters: Vec<&Arc<HostPipeCounters>> =
         observer.finished_host_pipes.iter().collect();
     if let Some(pipeline) = observer.host_pipeline.as_ref() {
@@ -2983,6 +3196,7 @@ fn run(args: Args) -> i32 {
         reconfig_rebuilt += counters.reconfig_rebuilt.load(Ordering::Relaxed);
         reconfig_errors += counters.reconfig_errors.load(Ordering::Relaxed);
         fps_retargets += counters.fps_retargets.load(Ordering::Relaxed);
+        capture_reinit_total += counters.capture_reinit.load(Ordering::Relaxed);
     }
     let (pacer_ticks_total, pacer_skipped_total) =
         observer
@@ -3096,6 +3310,17 @@ fn run(args: Args) -> i32 {
     });
     if is_host {
         let stream_secs = observer.stream_secs_accum.max(0.001);
+        // F71 evidence block (built outside json! — nested macro objects
+        // in value position confuse the json! parser).
+        let capture_dead_summary = serde_json::json!({
+            "died": capture_death_at.is_some(),
+            "reason": capture_death_reason,
+            "session_end_after_ms": match (capture_death_at, capture_death_session_ended_at) {
+                (Some(at), Some(end)) => Some(end.duration_since(at).as_millis() as u64),
+                _ => None,
+            },
+            "chaos_injected_after_frames": args.chaos_capture_death_after,
+        });
         summary["host"] = serde_json::json!({
             "frames_captured": captured,
             "frames_encoded": encoded,
@@ -3118,6 +3343,12 @@ fn run(args: Args) -> i32 {
                 "fps_tick_rate": pacer_ticks_total as f64 / stream_secs,
             },
             "device_lost": device_lost_host,
+            // F78: the reinit counter the M6 soak could not see.
+            "capture_reinit": capture_reinit_total,
+            // F71 evidence: typed pipeline death and how fast the session
+            // ended after it (absent = no death; `session_end_after_ms` is
+            // the death→Disconnected latency the ship test bounds).
+            "capture_dead": capture_dead_summary,
         });
         // M6 F74c: host-side congestion evidence as counters, not stderr
         // lines — the decisions the policy made, the live reconfigs the

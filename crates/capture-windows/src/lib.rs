@@ -56,6 +56,7 @@ use protocol::wire::CursorMessage;
 
 mod cursor;
 mod dupl;
+pub mod recovery;
 
 pub use cursor::{monochrome_pitch, shape_to_cursor_message};
 // CR-3 (M4 QA): display enumeration is exported so `apps/desktop` (and
@@ -63,6 +64,7 @@ pub use cursor::{monochrome_pitch, shape_to_cursor_message};
 // one source of truth for monitor identity (the DXGI device names that
 // `SelectMonitor` consumes). The app can switch in a follow-up.
 pub use dupl::{DxgiCapture, MonitorInfo, enumerate_monitors};
+pub use recovery::{REINIT_BACKOFF_BASE, REINIT_BUDGET, REINIT_MAX_ATTEMPTS, RecoveryDecision};
 
 /// Stable identifier matching `protocol::capabilities::MonitorInfo::monitor_id`
 /// (the DXGI device name, e.g. `\\.\DISPLAY5`).
@@ -132,7 +134,7 @@ pub struct CapturedFrame {
 /// Typed capture failure. Each variant names the recovery the caller must
 /// perform — this is the "failure handling reviewed" part of the standing
 /// contract for unsafe/Win32 code.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CaptureError {
     /// DXGI_ERROR_ACCESS_LOST — the duplication is invalid (mode change,
     /// fullscreen transition, desktop switch). Recoverable by
@@ -153,6 +155,13 @@ pub enum CaptureError {
     Exhausted(String),
     /// Programming/contract error (bad monitor id, wrong state).
     Invalid(String),
+    /// Irrecoverable capture death (M6 soak F71): the source exhausted its
+    /// bounded reinit budget (or hit a non-retryable failure such as device
+    /// removal) and entered a terminal state. Every subsequent
+    /// [`CaptureSource::next_frame`] / [`DxgiCapture::reinit`] returns this
+    /// variant again. Callers MUST treat it as session-ending — a stream
+    /// that ignores it is a frozen session (the F71 soak signature).
+    Dead(String),
     /// Anything else; `hr` is the failing HRESULT.
     Api {
         op: &'static str,
@@ -169,6 +178,14 @@ impl CaptureError {
             detail: detail.into(),
         }
     }
+
+    /// F71: true when this failure is terminal for the capture (and thus
+    /// for the streaming session it feeds). `Dead` and `DeviceLost` have no
+    /// in-place recovery; every other variant has a documented retry or
+    /// re-enumeration path.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, CaptureError::Dead(_) | CaptureError::DeviceLost(_))
+    }
 }
 
 impl core::fmt::Display for CaptureError {
@@ -182,6 +199,7 @@ impl core::fmt::Display for CaptureError {
             CaptureError::DisplayChanged(d) => write!(f, "display changed (re-enumerate): {d}"),
             CaptureError::Exhausted(d) => write!(f, "duplication limit reached: {d}"),
             CaptureError::Invalid(d) => write!(f, "invalid capture state: {d}"),
+            CaptureError::Dead(d) => write!(f, "capture dead (end the session): {d}"),
             CaptureError::Api { op, hr, detail } => {
                 write!(f, "{op} failed: hr=0x{hr:08X} {detail}")
             }

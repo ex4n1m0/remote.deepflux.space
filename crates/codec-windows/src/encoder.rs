@@ -24,6 +24,10 @@ use windows::Win32::Media::MediaFoundation::{
     MFVideoFormat_NV12, eAVEncCommonRateControlMode_CBR,
 };
 use windows::Win32::Media::MediaFoundation::{
+    IMFShutdown, MFT_MESSAGE_COMMAND_DRAIN, MFT_MESSAGE_NOTIFY_END_OF_STREAM,
+    MFT_MESSAGE_NOTIFY_END_STREAMING,
+};
+use windows::Win32::Media::MediaFoundation::{
     MF_VERSION, MFSTARTUP_NOSOCKET, MFStartup, MFVideoInterlace_Progressive,
 };
 use windows::Win32::System::Com::CoTaskMemFree;
@@ -117,10 +121,20 @@ unsafe fn enumerate(
         if hr.is_err() || activates.is_null() {
             return Vec::new();
         }
-        let slice = std::slice::from_raw_parts(activates, count as usize);
+        // F72 COM-lifetime note: MFTEnumEx returns an array of AddRef'd
+        // `IMFActivate` pointers. We own BOTH the array memory (freed by
+        // CoTaskMemFree) and each object reference (freed by `drop`).
+        // Taking each interface out of the array — instead of cloning and
+        // abandoning the original reference — releases one activate
+        // object per entry per enumeration; leaking them accumulated
+        // handles and registry plumbing per encoder create/drop cycle
+        // (measured M6 F72: +33 handles/iter).
+        let slice = std::slice::from_raw_parts_mut(activates, count as usize);
         let mut out = Vec::new();
-        for slot in slice {
-            let Some(activate) = slot else { continue };
+        for slot in slice.iter_mut() {
+            let Some(activate) = slot.take() else {
+                continue;
+            };
             let name = activate
                 .GetStringLength(&MFT_FRIENDLY_NAME_Attribute)
                 .ok()
@@ -138,7 +152,7 @@ unsafe fn enumerate(
             out.push(Candidate {
                 name,
                 hardware: flags == MFT_ENUM_FLAG_HARDWARE,
-                activate: activate.clone(),
+                activate,
             });
         }
         CoTaskMemFree(Some(activates.cast()));
@@ -233,6 +247,14 @@ pub struct MfEncoder {
     /// Encoded bytes emitted (diagnostics: measured bitrate).
     pub bytes_emitted: u64,
     pub frames_encoded: u64,
+    /// F72: set by [`MfEncoder::shutdown`] (home-thread teardown before
+    /// pooling); `Drop`'s backstop MFT shutdown skips when set.
+    shut_down: bool,
+    /// Thread that constructed the MFT (the encode thread). The sync
+    /// backend's `Drop` backstop only runs there — MFT shutdown from a
+    /// foreign (pool-drop) thread is unsafe for the same reasons as on
+    /// the decoder side.
+    home_thread: std::thread::ThreadId,
 }
 
 /// The async-MFT event pump (see `Backend::Async`). Runs entirely on the
@@ -356,6 +378,18 @@ fn async_encoder_worker(args: WorkerArgs) {
         // 200 us poll ceiling adds at most one tick of event latency.
         std::thread::sleep(Duration::from_micros(200));
     }
+
+    // F72 drop-path teardown, on the transform's home thread: every exit
+    // path (stop flag, worker error, output channel gone) lands here. The
+    // full message sequence + `IMFShutdown` releases the vendor encoder's
+    // session (memory, threads, handles) NOW instead of stranding it past
+    // the final COM Release (the +14.1 ws / +28.1 private MiB per
+    // create/encode/drop cycle measured in docs/reports/m6-soak.md F72).
+    // Drop order matters: the transform must outlive the event generator
+    // and codec API because both are views onto it — the compiler's field
+    // order (declared `transform, event_gen, codec_api` above) already
+    // drops in that order after this function returns.
+    unsafe { crate::encoder::shutdown_transform(&transform) };
 }
 
 fn shared_guard(
@@ -652,6 +686,8 @@ impl MfEncoder {
                 rebuilt_count: 0,
                 bytes_emitted: 0,
                 frames_encoded: 0,
+                shut_down: false,
+                home_thread: std::thread::current().id(),
             })
         }
     }
@@ -659,6 +695,47 @@ impl MfEncoder {
     /// The probed live-reconfig capability matrix (CR-1).
     pub fn reconfig_capabilities(&self) -> &ReconfigCaps {
         &self.caps
+    }
+
+    /// F52/MF-threading: record the calling thread as the MFT's home. The
+    /// codec pool hands the encoder to each session's encode thread; MF
+    /// requires sequential use from one thread at a time, so the taking
+    /// thread adopts ownership. Call right after taking the instance out
+    /// of the pool.
+    pub fn adopt_thread(&mut self) {
+        self.home_thread = std::thread::current().id();
+    }
+
+    /// F72 teardown on the encoder's home thread (only when the instance
+    /// is being discarded ON that thread — e.g. same-thread probes; NEVER
+    /// before pooling: the pool exists to keep the MFT live across
+    /// sessions). Sync backend: the full MFT shutdown runs here. Async
+    /// backend: signals the worker, whose exit path performs the MFT
+    /// shutdown on the transform's own thread. Also releases the NV12
+    /// input ring with a context flush. Idempotent.
+    pub fn shutdown(&mut self) {
+        if !self.shut_down {
+            self.shut_down = true;
+            match &mut self.backend {
+                Backend::Sync { transform, .. } => {
+                    debug_assert_eq!(
+                        std::thread::current().id(),
+                        self.home_thread,
+                        "sync encoder MFT shutdown must run on its home thread"
+                    );
+                    unsafe { crate::encoder::shutdown_transform(transform) };
+                }
+                Backend::Async(worker) => {
+                    if let Ok(mut shared) = worker.shared.lock() {
+                        shared.stop = true;
+                    }
+                }
+            }
+        }
+        if !self.nv12_ring.is_empty() {
+            self.nv12_ring.clear();
+            unsafe { self.device.context().Flush() };
+        }
     }
 
     /// CR-1 counters: `(live reconfigurations, internal rebuilds)`.
@@ -803,6 +880,55 @@ unsafe fn make_device_manager(
     }
 }
 
+/// Full MFT shutdown (F72 drop-path fix). Must run on the transform's home
+/// thread (the async worker for hardware MFTs, the dropping thread for
+/// sync MFTs — sequential handoff, the same guarantee the pool relies on).
+///
+/// COM-lifetime notes, because this is where the leaks lived:
+///
+/// * `COMMAND_DRAIN` lets the MFT emit anything it still holds, then
+///   `NOTIFY_END_OF_STREAM` / `NOTIFY_END_STREAMING` take it out of
+///   streaming mode. Vendor async encoders keep their encode session
+///   (NVENC: ~14 MiB ws / ~28 MiB private, threads, handles — the M6 F72
+///   measurement) alive until these arrive; without them the object's
+///   final `Release` leaves the driver session stranded.
+/// * `SET_D3D_MANAGER` with a null `IUnknown*` (the `0` param) detaches
+///   the DXVA device manager the transform holds since construction — the
+///   documented way to break that reference before Shutdown.
+/// * `IMFShutdown::Shutdown` (when the MFT implements it) is the last
+///   resort for objects that keep worker threads/queues until told to
+///   stop. All steps are best-effort: a transform that refuses one still
+///   gets its references dropped by the caller.
+pub(crate) unsafe fn shutdown_transform(transform: &IMFTransform) {
+    unsafe {
+        // Steps are best-effort (a transform that refuses one still gets
+        // its references dropped by the caller). Set
+        // RD_CODEC_SHUTDOWN_DEBUG=1 to see which steps an MFT accepts.
+        let debug = std::env::var("RD_CODEC_SHUTDOWN_DEBUG").is_ok();
+        for (name, message) in [
+            ("DRAIN", MFT_MESSAGE_COMMAND_DRAIN),
+            ("END_OF_STREAM", MFT_MESSAGE_NOTIFY_END_OF_STREAM),
+            ("END_STREAMING", MFT_MESSAGE_NOTIFY_END_STREAMING),
+            ("DETACH_D3D_MANAGER", MFT_MESSAGE_SET_D3D_MANAGER),
+        ] {
+            let hr = transform.ProcessMessage(message, 0);
+            if debug {
+                eprintln!("[codec-shutdown] {name}: {hr:?}");
+            }
+        }
+        match transform.cast::<IMFShutdown>() {
+            Ok(shutdown) => {
+                let hr = shutdown.Shutdown();
+                if debug {
+                    eprintln!("[codec-shutdown] IMFShutdown: {hr:?}");
+                }
+            }
+            Err(e) if debug => eprintln!("[codec-shutdown] IMFShutdown cast: {e}"),
+            Err(_) => {}
+        }
+    }
+}
+
 /// Build a VT_UI4 VARIANT. `VARIANT`'s Rust layout (nested unions behind
 /// `ManuallyDrop`) makes member assignment awkward; the C layout is
 /// stable ABI (2-byte vt + 6 reserved bytes + 8-byte union), so write
@@ -932,6 +1058,13 @@ unsafe fn extract_output_sync(transform: &IMFTransform) -> Option<WorkerOutput> 
         let hr = transform.ProcessOutput(0, buffers.as_mut_slice(), &mut status);
         if let Err(e) = hr {
             let code = e.code();
+            // F72: `pSample` is ManuallyDrop'd inside the output array —
+            // on EVERY error path it must be taken and dropped explicitly
+            // or the caller-allocated buffer leaks. The software encoder
+            // answers the drain-before-input call with NEED_MORE_INPUT on
+            // every encode, which leaked ~3.7 MiB private per encoded
+            // frame (measured, reconfig_probe --encoder sw).
+            drop(core::mem::ManuallyDrop::take(&mut buffers[0].pSample));
             if code == MF_E_TRANSFORM_STREAM_CHANGE {
                 // The encoder finalized the dynamic output type after
                 // seeing the first input (SPS/PPS with the real
@@ -1187,19 +1320,30 @@ impl VideoEncoder for MfEncoder {
                 if let Some(g) = params.gop_size {
                     next.gop_size = g;
                 }
-                let fresh = MfEncoder::new(self.device.clone(), next.clone())?;
-                self.backend = fresh.backend;
-                self.converter = fresh.converter;
-                self.nv12_ring = fresh.nv12_ring;
-                self.ring_next = fresh.ring_next;
-                self.config = next;
-                self.bitrate_bps = fresh.bitrate_bps;
-                self.caps = fresh.caps;
-                self.force_keyframe_supported = fresh.force_keyframe_supported;
+                let mut fresh = MfEncoder::new(self.device.clone(), next.clone())?;
+                // Whole-struct swap (the type implements Drop, so partial
+                // moves out of `fresh` are illegal). After the swap
+                // `fresh` holds the OLD backend and drops at scope end:
+                // the async worker exits through its full-MFT-shutdown
+                // path, the old NV12 ring is flushed (F72 — the +14.1 ws /
+                // +28.1 private MiB per manual-preset rebuild was exactly
+                // this old MFT retaining its session).
+                let (bytes, frames, cfg_count, built) = (
+                    self.bytes_emitted,
+                    self.frames_encoded,
+                    self.reconfigured_count,
+                    self.rebuilt_count,
+                );
+                std::mem::swap(self, &mut fresh);
+                // `self` is now the fresh encoder; restore the cumulative
+                // diagnostics the rebuild must not lose.
+                self.bytes_emitted = bytes;
+                self.frames_encoded = frames;
+                self.reconfigured_count = cfg_count;
+                self.rebuilt_count = built + 1;
                 // A fresh MFT always starts with an IDR anyway; keep the
                 // invariant explicit.
                 self.pending_force_idr = true;
-                self.rebuilt_count += 1;
                 Ok(ReconfigureOutcome::Rebuilt { reason })
             }
         }
@@ -1215,6 +1359,35 @@ impl MfEncoder {
                 .dropped_outputs
                 .load(std::sync::atomic::Ordering::Relaxed),
             Backend::Sync { .. } => 0,
+        }
+    }
+}
+
+/// F72 drop-path teardown.
+///
+/// * Async backend: `AsyncWorker::drop` (field order: `backend` drops
+///   first) stops + joins the worker, whose exit path runs the full MFT
+///   shutdown on the transform's home thread — this `Drop` has nothing
+///   COM-touching to do for it.
+/// * Sync backend (inbox software encoder): the home-thread `Drop`
+///   backstop only (tests/probes construct and drop on one thread — the
+///   leak_probe-measured path). A foreign-thread `Drop` (pool teardown)
+///   skips the MFT messages, mirroring the decoder rule.
+/// * Both: release the NV12 input ring and flush the immediate context so
+///   the driver retires the freed allocations now (the same
+///   deferred-release queue the capture ring fix flushes; ~12 MiB of NV12
+///   slots at 1080p).
+impl Drop for MfEncoder {
+    fn drop(&mut self) {
+        if let Backend::Sync { transform, .. } = &self.backend
+            && !self.shut_down
+            && std::thread::current().id() == self.home_thread
+        {
+            unsafe { crate::encoder::shutdown_transform(transform) };
+        }
+        if !self.nv12_ring.is_empty() {
+            self.nv12_ring.clear();
+            unsafe { self.device.context().Flush() };
         }
     }
 }

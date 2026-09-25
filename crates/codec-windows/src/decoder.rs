@@ -66,6 +66,15 @@ pub struct MfDecoder {
     /// F18 IDR gate: true after `reset()` until an IDR access unit is
     /// fed; non-keyframe packets are dropped meanwhile.
     awaiting_idr: bool,
+    /// F72: set by [`MfDecoder::shutdown`] so `Drop` knows the MFT was
+    /// already shut down on its home thread. The codec pool hands the
+    /// decoder between threads; running MFT shutdown from a foreign
+    /// (pool-drop) thread faulted the inbox DXVA decoder at process exit
+    /// (M4 e2e, 0xC0000005 after a clean session).
+    shut_down: bool,
+    /// Thread that constructed the MFT (= the decode thread, the MF
+    /// threading home). `Drop`'s backstop shutdown only runs there.
+    home_thread: std::thread::ThreadId,
 }
 
 unsafe impl Send for MfDecoder {}
@@ -164,7 +173,38 @@ impl MfDecoder {
                 owned_ring: Vec::new(),
                 owned_next: 0,
                 awaiting_idr: false,
+                shut_down: false,
+                home_thread: std::thread::current().id(),
             })
+        }
+    }
+
+    /// MF-threading: record the calling thread as the MFT's home. The
+    /// codec pool hands the decoder to each session's decode thread; call
+    /// right after taking the instance out of the pool.
+    pub fn adopt_thread(&mut self) {
+        self.home_thread = std::thread::current().id();
+    }
+
+    /// F72 teardown on the decoder's home thread: the full MFT shutdown
+    /// (drain, end-of-stream, D3D-manager detach, `IMFShutdown`) plus the
+    /// output-ring release. Only when the instance is being discarded ON
+    /// that thread — never before pooling (the pool keeps the MFT live
+    /// across sessions). Idempotent.
+    pub fn shutdown(&mut self) {
+        debug_assert_eq!(
+            std::thread::current().id(),
+            self.home_thread,
+            "decoder MFT shutdown must run on its home thread"
+        );
+        if !self.shut_down {
+            self.shut_down = true;
+            unsafe { crate::encoder::shutdown_transform(&self.transform) };
+        }
+        if !self.owned_ring.is_empty() || self.upload_dst.is_some() {
+            self.owned_ring.clear();
+            self.upload_dst.take();
+            unsafe { self.device.context().Flush() };
         }
     }
 
@@ -227,9 +267,22 @@ unsafe fn enumerate_decoders() -> Vec<Candidate> {
             if hr.is_err() || activates.is_null() {
                 continue;
             }
+            // F72 hazard note: unlike the encoder's enumerate (which takes
+            // each AddRef'd activate out of the array and releases it), the
+            // DECODER's candidate activates must keep the original
+            // array-held references leaked. Releasing the un-activated
+            // vendor hardware-decoder IMFActivate objects drops their DLL
+            // refcount to zero, and this machine's driver leaves a dangling
+            // reference that faults (0xC0000005) at process exit — M4 e2e,
+            // controller child, deterministically. The encoder path is
+            // unaffected (verified by the same e2e). One decoder is
+            // process-lifetime (pool), so the leaked references are
+            // bounded: one per enumeration per process.
             let slice = std::slice::from_raw_parts(activates, count as usize);
             for slot in slice {
-                let Some(activate) = slot else { continue };
+                let Some(activate) = slot else {
+                    continue;
+                };
                 let name = activate
                     .GetStringLength(&MFT_FRIENDLY_NAME_Attribute)
                     .ok()
@@ -396,6 +449,11 @@ impl VideoDecoder for MfDecoder {
                     .ProcessOutput(0, buffers.as_mut_slice(), &mut status);
                 if let Err(e) = hr {
                     let code = e.code();
+                    // F72: release the caller-allocated sample on every
+                    // error path (NEED_MORE_INPUT fires once per decode on
+                    // the CPU-output path — the encoder-side twin of this
+                    // bug leaked ~3.7 MiB/frame there).
+                    drop(core::mem::ManuallyDrop::take(&mut buffers[0].pSample));
                     if code == MF_E_TRANSFORM_STREAM_CHANGE {
                         self.handle_stream_change()?;
                         continue;
@@ -577,6 +635,28 @@ impl VideoDecoder for MfDecoder {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0)
                 .map_err(|e| CodecError::Processing(e.message()))
+        }
+    }
+}
+
+/// F72 drop-path teardown. The owning decode thread normally runs the
+/// full shutdown via [`MfDecoder::shutdown`] before pooling; this `Drop`
+/// is the backstop for decoders dropped on their home thread without it
+/// (tests, probes — that is the leak_probe-measured path). A foreign-
+/// thread `Drop` (pool teardown) skips the MFT messages entirely — the
+/// inbox DXVA decoder faults on cross-thread shutdown — and releases
+/// only the GPU ring; the one pooled decoder per process is process-
+/// lifetime anyway, so nothing per-session is retained.
+impl Drop for MfDecoder {
+    fn drop(&mut self) {
+        if !self.shut_down && std::thread::current().id() == self.home_thread {
+            self.shut_down = true;
+            unsafe { crate::encoder::shutdown_transform(&self.transform) };
+        }
+        if !self.owned_ring.is_empty() || self.upload_dst.is_some() {
+            self.owned_ring.clear();
+            self.upload_dst.take();
+            unsafe { self.device.context().Flush() };
         }
     }
 }

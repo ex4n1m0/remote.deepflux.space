@@ -1,0 +1,12 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target\release\examples\leak_probe.exe --phase capture --iters 8`
+--- phase: DxgiCapture create/drop ---
+capture    iter  0: ws   +36.1 MiB  private   +52.7 MiB  threads  35  handles   392
+capture    iter  1: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   418
+capture    iter  2: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   419
+capture    iter  3: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   420
+capture    iter  4: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   421
+capture    iter  5: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   422
+capture    iter  6: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   423
+capture    iter  7: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   424
+capture    iter  8: ws   +37.0 MiB  private   +53.1 MiB  threads  35  handles   425

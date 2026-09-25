@@ -1,0 +1,16 @@
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running `target\release\examples\leak_probe.exe --phase encoder --iters 12`
+--- phase: MfEncoder create/encode/drop ---
+encoder    iter  0: ws   +36.5 MiB  private   +52.3 MiB  threads  35  handles   415
+encoder    iter  1: ws   +64.2 MiB  private  +118.9 MiB  threads  39  handles   491
+encoder    iter  2: ws   +66.3 MiB  private  +123.6 MiB  threads  39  handles   491
+encoder    iter  3: ws   +66.9 MiB  private  +124.6 MiB  threads  39  handles   491
+encoder    iter  4: ws   +68.0 MiB  private  +124.4 MiB  threads  39  handles   491
+encoder    iter  5: ws   +68.2 MiB  private  +122.9 MiB  threads  39  handles   491
+encoder    iter  6: ws   +71.2 MiB  private  +125.8 MiB  threads  39  handles   491
+encoder    iter  7: ws   +71.2 MiB  private  +123.5 MiB  threads  39  handles   491
+encoder    iter  8: ws   +71.5 MiB  private  +122.9 MiB  threads  39  handles   491
+encoder    iter  9: ws   +71.1 MiB  private  +124.6 MiB  threads  39  handles   491
+encoder    iter 10: ws   +70.6 MiB  private  +122.7 MiB  threads  39  handles   491
+encoder    iter 11: ws   +71.6 MiB  private  +122.9 MiB  threads  39  handles   491
+encoder    iter 12: ws   +75.6 MiB  private  +125.9 MiB  threads  39  handles   491

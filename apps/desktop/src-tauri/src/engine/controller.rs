@@ -143,6 +143,9 @@ impl ControllerPipeline {
                     .spawn(move || {
                         let mut decoder = match decoder_pool.lock().expect("decoder pool").take() {
                             Some(mut decoder) => {
+                                // MF threading: this thread is the MFT's
+                                // home for the session (pool handoff).
+                                decoder.adopt_thread();
                                 let _ = decoder.reset();
                                 decoder
                             }

@@ -1,0 +1,14 @@
+   Compiling codec-windows v0.1.0 (C:\Remote.deepflux.space\crates\codec-windows)
+    Finished `release` profile [optimized] target(s) in 1.69s
+     Running `target\release\examples\reconfig_probe.exe --mode rebuild --iters 8 --encoder hw`
+encoder: NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 8000000 bps CBR, GOP 120)
+caps: bitrate: live (range unreported), gop: live (range unreported)
+mode rebuild, iters 8, base: ws 70.4 MiB private 113.8 MiB threads 40 handles 549
+rebuild    iter  1: ws    +2.3 MiB  private   +14.9 MiB  threads  +1  handles   +10
+rebuild    iter  2: ws    +4.2 MiB  private   +26.1 MiB  threads  +1  handles   +11
+rebuild    iter  3: ws    +7.2 MiB  private   +28.2 MiB  threads  +1  handles   +12
+rebuild    iter  4: ws    +9.0 MiB  private   +29.0 MiB  threads  +1  handles   +13
+rebuild    iter  5: ws    +9.7 MiB  private   +28.8 MiB  threads  +1  handles   +14
+rebuild    iter  6: ws    +9.9 MiB  private   +29.7 MiB  threads  +1  handles   +14
+rebuild    iter  7: ws    +8.1 MiB  private   +16.7 MiB  threads  +1  handles   +15
+rebuild    iter  8: ws    +8.5 MiB  private   +28.1 MiB  threads  +1  handles   +17

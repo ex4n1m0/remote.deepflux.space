@@ -1,0 +1,12 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target\release\examples\leak_probe.exe --phase render --iters 8`
+--- phase: PresenterWindow + D3D11Renderer create/drop ---
+render     iter  0: ws   +36.4 MiB  private   +51.5 MiB  threads  35  handles   412
+render     iter  1: ws   +45.4 MiB  private   +60.4 MiB  threads  37  handles   466
+render     iter  2: ws   +45.7 MiB  private   +60.4 MiB  threads  37  handles   467
+render     iter  3: ws   +46.0 MiB  private   +60.5 MiB  threads  37  handles   468
+render     iter  4: ws   +46.2 MiB  private   +60.5 MiB  threads  37  handles   468
+render     iter  5: ws   +46.4 MiB  private   +60.5 MiB  threads  37  handles   468
+render     iter  6: ws   +46.6 MiB  private   +60.5 MiB  threads  37  handles   468
+render     iter  7: ws   +46.8 MiB  private   +60.5 MiB  threads  37  handles   468
+render     iter  8: ws   +47.0 MiB  private   +60.5 MiB  threads  37  handles   468

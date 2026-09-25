@@ -46,6 +46,13 @@ impl SessionSlot {
 /// unbounded memory (invariant 3).
 const SINK_BOUND: usize = 65_536;
 
+/// Default `BufWriter` capacity (flush when full — the pre-F76a policy).
+pub const WRITE_BUFFER_BYTES: usize = 1 << 20;
+
+/// Default flush-on-idle deadline (F76a): at most this much staleness on
+/// disk between records and a live reader seeing them.
+pub const FLUSH_IDLE: Duration = Duration::from_secs(1);
+
 /// Bounded-channel JSONL sink with a dedicated writer thread. Formatting
 /// happens off the hot path (schema requirement).
 pub struct JsonlReport {
@@ -104,8 +111,30 @@ impl JsonlReport {
         }
     }
 
-    /// Create `<dir>/<stem>.jsonl` (suffixing `-1`, `-2`, ... if taken).
+    /// Create `<dir>/<stem>.jsonl` (suffixing `-1`, `-2`, ... if taken)
+    /// with the default write policy: 1 MiB buffer + flush-on-idle (see
+    /// [`JsonlReport::create_with`]).
     pub fn create(dir: &std::path::Path, stem: &str) -> std::io::Result<Self> {
+        Self::create_with(dir, stem, WRITE_BUFFER_BYTES, FLUSH_IDLE)
+    }
+
+    /// Create with an explicit write policy (M6 soak F76a): `buffer_bytes`
+    /// is the `BufWriter` capacity (flush when full, as before) and
+    /// `flush_interval` is an additional flush-on-idle deadline — when no
+    /// record arrived for that long, whatever is buffered hits the disk so
+    /// a live monitor tailing the file sees progress at degraded record
+    /// rates. The M6 soak's on-disk JSONL froze for ~110 s while the
+    /// pipeline was alive (7.9 fps presented, 0 backpressure) because the
+    /// old policy flushed ONLY on the 1 MiB buffer fill; 1 s idle-flush is
+    /// the new default. Override the interval per process with
+    /// `RD_METRICS_FLUSH_MS` (soak wrappers can tighten or disable it at
+    /// 0 without a code change).
+    pub fn create_with(
+        dir: &std::path::Path,
+        stem: &str,
+        buffer_bytes: usize,
+        flush_interval: Duration,
+    ) -> std::io::Result<Self> {
         std::fs::create_dir_all(dir)?;
         let mut path = dir.join(format!("{stem}.jsonl"));
         let mut n = 1u32;
@@ -113,6 +142,10 @@ impl JsonlReport {
             path = dir.join(format!("{stem}-{n}.jsonl"));
             n += 1;
         }
+        let flush_interval = std::env::var("RD_METRICS_FLUSH_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map_or(flush_interval, Duration::from_millis);
         let writer_path = path.clone();
         let (tx, rx) = std::sync::mpsc::sync_channel(SINK_BOUND);
         let stop = Arc::new(AtomicBool::new(false));
@@ -123,18 +156,26 @@ impl JsonlReport {
             .name("jsonl-writer".into())
             .spawn(move || {
                 let file = std::fs::File::create(&writer_path).expect("create report file");
-                let mut out = std::io::BufWriter::with_capacity(1 << 20, file);
+                let mut out = std::io::BufWriter::with_capacity(buffer_bytes, file);
                 // F6 rotation: split at 128 MiB into `.jsonl.1`, `.jsonl.2`,
                 // ... (tooling safety; all parts retained by the caller).
                 const ROTATE_BYTES: usize = 128 * 1024 * 1024;
                 let mut written: usize = 0;
                 let mut part: u32 = 0;
+                let mut last_write = Instant::now();
                 loop {
                     let record = match rx.recv_timeout(Duration::from_millis(200)) {
                         Ok(record) => record,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                             if stop_w.load(Ordering::Acquire) {
                                 break;
+                            }
+                            // F76a flush-on-idle: bounded staleness on disk
+                            // even when records trickle in slower than the
+                            // buffer fills.
+                            if !flush_interval.is_zero() && last_write.elapsed() >= flush_interval {
+                                let _ = out.flush();
+                                last_write = Instant::now();
                             }
                             continue;
                         }
@@ -144,6 +185,7 @@ impl JsonlReport {
                     let _ = out.write_all(line.as_bytes());
                     let _ = out.write_all(b"\n");
                     written += line.len() + 1;
+                    last_write = Instant::now();
                     records_w.fetch_add(1, Ordering::Relaxed);
                     if written >= ROTATE_BYTES
                         && let Ok(next) =
@@ -152,7 +194,7 @@ impl JsonlReport {
                         let _ = out.flush();
                         part += 1;
                         written = 0;
-                        out = std::io::BufWriter::with_capacity(1 << 20, next);
+                        out = std::io::BufWriter::with_capacity(buffer_bytes, next);
                     }
                 }
                 while let Ok(record) = rx.try_recv() {

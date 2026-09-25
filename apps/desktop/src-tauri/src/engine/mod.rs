@@ -1073,6 +1073,51 @@ impl Engine {
             ..observer::ObserverFlags::default()
         };
 
+        // F71: typed host-pipeline death (capture dead / device lost)
+        // ends the session through the machines — stop streaming, wire
+        // goodbye so the controller learns, then the session-end handling
+        // below retires the transport and releases input. A frozen
+        // `Connected` stream must be impossible (M6 soak: 14.7 min).
+        if let Some(pipeline) = self.host_pipeline.as_ref()
+            && pipeline
+                .ctl
+                .fatal
+                .load(std::sync::atomic::Ordering::Acquire)
+            && host_in_session(self.node.host_state())
+        {
+            let reason = pipeline
+                .ctl
+                .fatal_reason
+                .lock()
+                .expect("fatal reason")
+                .clone()
+                .unwrap_or_else(|| "host pipeline died".to_owned());
+            self.error(
+                "host_pipeline_died",
+                format!("The session ended because the host stopped producing video: {reason}"),
+                None,
+            );
+            // Best-effort data-plane goodbye (the peer's
+            // `peer_transport_gone` path tears its side down); then the
+            // machine transition sends the signaling
+            // `Disconnect{TransportError}` and fires
+            // `SessionEnded{TransportError}` — the UI `session-ended`
+            // event with cause follows from the observer.
+            let _ = self.node.send_wire(
+                Channel::Control,
+                &WireMessage::Disconnect {
+                    reason: protocol::wire::ControlDisconnectReason::TransportError,
+                },
+            );
+            let _ = self.node.send_wire(
+                Channel::InputReliable,
+                &WireMessage::Input(InputEvent::AllKeysUp {
+                    trigger: AllKeysUpTrigger::Disconnect,
+                }),
+            );
+            self.node.fail_session(&reason, &mut self.observer);
+        }
+
         // Quality reconfig (host): rebuild the encode stage with the new
         // plan, then re-arm streaming so the start block below (next
         // iteration) rebuilds with `selected_plan`.

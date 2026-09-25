@@ -960,6 +960,20 @@ impl Node {
         self.inject_transport_failed(reason, observer);
     }
 
+    /// Typed local-failure session end (M6 soak F71): a host-side
+    /// pipeline death (capture dead, encoder device lost) must end the
+    /// session through the machines instead of freezing it `Connected`.
+    /// Injects `TransportFailed` WITHOUT closing the transport first, so
+    /// a best-effort wire goodbye sent just before this call still has a
+    /// chance to reach the peer (the session-end handling then closes the
+    /// transport as usual). The host machine fires `StopStreaming`, the
+    /// signaling `Disconnect{TransportError}`, and
+    /// `SessionEnded{TransportError}`; the UI's `session-ended` event and
+    /// the controller's own teardown follow from those.
+    pub fn fail_session(&mut self, reason: &str, observer: &mut dyn NodeObserver) {
+        self.inject_transport_failed(reason, observer);
+    }
+
     /// Send one wire message on a channel (encoded here).
     pub fn send_wire(
         &mut self,
