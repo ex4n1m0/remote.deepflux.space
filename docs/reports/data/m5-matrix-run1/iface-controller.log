@@ -1,0 +1,194 @@
+[rig-controller] m2_rig role=controller scenario=full dir=C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-f7JwY3 stream=64s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: docs/reports/data/m5-matrix\m5-iface-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-f7JwY3 out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1207 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] network change: restart_ice probe + goodbye + hard teardown
+[rig-controller] restart_ice ok
+[rig-controller] rendering stopped
+[rig-controller] session ended: Peer
+[rig-controller] controller -> Disconnected
+[rig-controller] host observed the network change (49 ms); waiting for self to re-register
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] re-establishing after network change (554 ms after host-down)
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-8
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] re-established in 1182 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      27464,
+      45464
+    ],
+    "moves_sent": 3000,
+    "reliable_send_errors": 0,
+    "reliable_sent": 100,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 1,
+    "device_lost": 0,
+    "fps_presented": 23.816704588548408,
+    "frame_id_gaps": 306,
+    "frames_decoded": 2544,
+    "frames_missing_packets": 0,
+    "frames_presented": 2543,
+    "frames_received": 3439,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 833,
+    "keyframe_requests_sent": 290,
+    "render_secs": 106.77379780000001
+  },
+  "cursor": {
+    "overlays_received": 310,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 111.6033078,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "docs/reports/data/m5-matrix\\m5-iface-rig-controller.jsonl",
+    "records": 17417
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 13,
+    "heartbeats_raised": 6,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 3394
+  },
+  "proc": {
+    "final": {
+      "handles": 614,
+      "private_mib": 112.40234375,
+      "threads": 41,
+      "ws_mib": 84.4140625
+    },
+    "per_session": [
+      {
+        "handles": 659,
+        "private_mib": 123.80859375,
+        "session": "rig-controller-ctrl-8",
+        "threads": 46,
+        "ws_mib": 95.46484375
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 623,
+        "private_mib": 121.0078125,
+        "threads": 45,
+        "ws_mib": 90.53125
+      },
+      {
+        "handles": 631,
+        "private_mib": 123.6875,
+        "threads": 45,
+        "ws_mib": 95.5390625
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1207
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1182
+      ]
+    ],
+    "ends": [
+      "Peer",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 42.6676245
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 2978,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 13227,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 1245.8452195503228,
+    "relay_in_use": false,
+    "rtt_ms": 0.237,
+    "selected_pair": {
+      "local": "127.0.0.1:61597",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:61596",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

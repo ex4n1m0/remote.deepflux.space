@@ -1,0 +1,26 @@
+    Finished `release` profile [optimized] target(s) in 0.35s
+=== cell baseline: scenario=soak stream=64s netem='loss=0' host_extra='' ctrl_extra=''
+--- cell baseline rc=0
+=== cell loss1: scenario=soak stream=64s netem='loss=1' host_extra='' ctrl_extra=''
+--- cell loss1 rc=0
+=== cell loss3: scenario=soak stream=64s netem='loss=3' host_extra='' ctrl_extra=''
+--- cell loss3 rc=0
+=== cell loss5: scenario=soak stream=64s netem='loss=5' host_extra='' ctrl_extra=''
+--- cell loss5 rc=0
+=== cell loss10: scenario=soak stream=64s netem='loss=10' host_extra='' ctrl_extra=''
+--- cell loss10 rc=0
+=== cell rtt50: scenario=soak stream=64s netem='delay_ms=25' host_extra='' ctrl_extra='--input-delay-ms 25'
+--- cell rtt50 rc=0
+=== cell rtt150: scenario=soak stream=64s netem='delay_ms=75' host_extra='' ctrl_extra='--input-delay-ms 75'
+--- cell rtt150 rc=0
+=== cell rtt250: scenario=soak stream=64s netem='delay_ms=125' host_extra='' ctrl_extra='--input-delay-ms 125'
+--- cell rtt250 rc=0
+=== cell bwstep: scenario=soak stream=84s netem='rate_kbps=20000' host_extra='--netem-schedule 21:rate_kbps=10000;41:rate_kbps=5000;61:rate_kbps=2000' ctrl_extra=''
+--- cell bwstep rc=0
+=== cell worst: scenario=soak stream=64s netem='loss=10,delay_ms=125,rate_kbps=2000' host_extra='' ctrl_extra='--input-delay-ms 125'
+--- cell worst rc=0
+=== cell iface: scenario=full stream=64s netem='loss=0' host_extra='' ctrl_extra=''
+--- cell iface rc=0
+=== cell udpblocked: scenario=soak stream=15s netem='loss=0' host_extra='--blackhole-candidates' ctrl_extra='--blackhole-candidates'
+--- cell udpblocked rc=1
+matrix overall rc=1

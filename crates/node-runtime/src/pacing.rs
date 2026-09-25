@@ -90,6 +90,23 @@ impl FramePacer {
         self.period
     }
 
+    /// The configured rate, fps (M5 congestion fps cap).
+    pub fn fps(&self) -> u32 {
+        (1.0 / self.period.as_secs_f64()).round() as u32
+    }
+
+    /// Change the rate (M5 congestion fps cap / cap lift). The schedule
+    /// resyncs to now + new period — no timer recreation (the handle is
+    /// reused), no queued backlog. Same-rate calls are no-ops.
+    pub fn retarget(&mut self, fps: u32) {
+        let fps = fps.max(1);
+        if fps == self.fps() {
+            return;
+        }
+        self.period = Duration::from_secs_f64(1.0 / fps as f64);
+        self.next = Some(Instant::now() + self.period);
+    }
+
     /// Block until the next absolute deadline. If the caller is behind by
     /// more than one period, deadlines are skipped (counted) and the
     /// schedule resyncs to now + period — obsolete time is dropped, never
@@ -206,5 +223,32 @@ mod tests {
         let t0 = Instant::now();
         pacer.wait();
         assert!(t0.elapsed() >= pacer.period() * 9 / 10);
+    }
+
+    /// M5: the congestion controller's fps cap retargets the live pacer —
+    /// same handle, new period, resynced schedule.
+    #[test]
+    fn retarget_changes_the_rate_without_recreating_the_pacer() {
+        let mut pacer = FramePacer::new(60);
+        pacer.start();
+        pacer.wait();
+        let before = pacer.fps();
+        pacer.retarget(30);
+        assert_eq!(pacer.fps(), 30);
+        assert_eq!(pacer.period(), Duration::from_secs_f64(1.0 / 30.0));
+        // The first wait after retarget is a full new period.
+        let t0 = Instant::now();
+        pacer.wait();
+        assert!(
+            t0.elapsed() >= Duration::from_millis(32),
+            "30 Hz period must apply immediately: {:?}",
+            t0.elapsed()
+        );
+        // Idempotent same-rate call.
+        pacer.retarget(30);
+        assert_eq!(pacer.fps(), 30);
+        pacer.retarget(0);
+        assert_eq!(pacer.fps(), 1, "fps clamps at 1");
+        assert_eq!(before, 60);
     }
 }

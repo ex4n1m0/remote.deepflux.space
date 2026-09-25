@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use node_runtime::node::NodeObserver;
 use node_runtime::timers::MachineKind;
 use protocol::capabilities::Capabilities;
-use protocol::wire::{ControlDisconnectReason, WireMessage};
+use protocol::wire::{ControlDisconnectReason, QualityPreset, WireMessage};
 use transport_webrtc::Channel;
 
 use super::diag::InputStat;
@@ -233,8 +233,14 @@ impl NodeObserver for EngineObserver {
             }
             (Channel::Control, WireMessage::SetQuality { preset }) => {
                 self.shared.set_quality(*preset);
-                let plan = plan_for(*preset);
-                self.flags.lock().expect("observer flags").want_reconfig = Some(plan);
+                // M5: `Auto` never rebuilds on the wire path either — it
+                // engages the congestion controller against the current
+                // pipeline (the engine loop owns it); manual presets pin
+                // their targets through the rebuild path.
+                if *preset != QualityPreset::Auto {
+                    let plan = plan_for(*preset);
+                    self.flags.lock().expect("observer flags").want_reconfig = Some(plan);
+                }
             }
             (Channel::Control, WireMessage::SelectMonitor { monitor_id }) => {
                 self.shared.set_active_monitor(Some(monitor_id.clone()));

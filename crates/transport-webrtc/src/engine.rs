@@ -29,6 +29,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::BytesMut;
+use rtc::interceptor::{BandwidthEstimator as _, EstimatorStats, Gcc, PacerBuilder, Slot};
 use rtc::media_stream::MediaStreamTrack;
 use rtc::rtp::Packet as RtpPacket;
 use rtc::rtp::extension::HeaderExtension;
@@ -45,20 +46,23 @@ use webrtc::media_stream::track_local::TrackLocal;
 use webrtc::media_stream::track_local::static_rtp::TrackLocalStaticRTP;
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 use webrtc::peer_connection::{
-    MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
-    RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceCandidateType, RTCPeerConnectionIceEvent,
-    RTCPeerConnectionState, RTCSessionDescription, RTCStatsReportEntry, Registry,
-    SettingEngineBuilder, StatsSelector, register_default_interceptors,
+    CongestionFeedback, MediaEngine, PeerConnection, PeerConnectionBuilder,
+    PeerConnectionEventHandler, RTCConfigurationBuilder, RTCIceCandidateInit, RTCIceCandidateType,
+    RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState, RTCSessionDescription,
+    RTCStatsReportEntry, Registry, SettingEngineBuilder, StatsSelector,
+    configure_congestion_control, register_default_interceptors,
 };
 use webrtc::runtime::TokioRuntime;
 
+use crate::chaos::{Netem, NetemProfile, PacketVerdict};
 use crate::rtp::{
     DEFAULT_MTU, FrameAssembler, FrameIdExt, is_keyframe_annexb, packetize_access_unit,
     parse_frame_id_ext, rtp_timestamp_from_ns,
 };
 use crate::{
-    Channel, ChannelQueues, ConnectionState, FRAME_ID_EXTENSION_URI, ReceivedFrame,
-    SelectedIcePair, Transport, TransportError, TransportEvent, TransportStats, VideoFrame,
+    Channel, ChannelQueues, CongestionStats, ConnectionState, FRAME_ID_EXTENSION_URI,
+    NetemQueueStats, ReceivedFrame, SelectedIcePair, Transport, TransportError, TransportEvent,
+    TransportStats, VideoFrame,
 };
 
 /// Upper bound for any trait-method bridge into the private runtime.
@@ -76,6 +80,115 @@ const CANDIDATE_DEDUPE_CAPACITY: usize = 128;
 /// SCTP send-buffer limit for data channels — webrtc-rs' built-in send
 /// backpressure (`try_send` then fails with `ErrSendBufferFull`).
 const DATA_CHANNEL_SEND_BUFFER_LIMIT: usize = 256 * 1024;
+
+/// Bound of the netem shaper's packet queue (M5 matrix): ~360 KiB of
+/// shaped video. Deliberately NOT a deep buffer: a delay-line shaper
+/// delivers at input rate until the queue FILLS, so the queue depth IS the
+/// bottleneck's buffer. At 1024 packets the 20→2 Mbps step-down took
+/// ~20 s to saturate (measured run 1: receiver saw 3.0 Mbps straight
+/// through the 2 Mbps phase — pure bufferbloat, phase over before the
+/// drop); 300 packets (~1.4 s at 2 Mbps) overflows within seconds,
+/// producing the queue-overflow loss a real shallow-buffered bottleneck
+/// shows (counted, invariant 3).
+const NETEM_QUEUE_CAPACITY: usize = 300;
+
+/// The product's STUN configuration (M5, RD-013): two independent public
+/// servers so one being unreachable does not degrade gathering to
+/// host-candidates-only. TURN stays forbidden (invariant 4) — these URLs
+/// are validated to `stun:`/`stuns:` scheme only, and a relayed candidate
+/// is surfaced as a transport failure, never used.
+pub const DEFAULT_STUN_SERVERS: [&str; 2] = [
+    "stun:stun.l.google.com:19302",
+    "stun:stun1.l.google.com:19302",
+];
+
+/// Tuning of the sender-side congestion controller (M5). The estimate is
+/// `rtc`'s GCC (delay-gradient + loss based) over TWCC feedback; the
+/// encoder-facing *policy* on top of it lives in `node-runtime::congestion`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CongestionOptions {
+    /// Estimate start, bps. Deliberately below the Balanced encode target:
+    /// a path that cannot carry the start rate is discovered by probing
+    /// down, not by congesting it first (rtc's own example rationale).
+    pub initial_bps: u64,
+    pub min_bps: u64,
+    pub max_bps: u64,
+}
+
+impl Default for CongestionOptions {
+    fn default() -> Self {
+        Self {
+            initial_bps: 4_000_000,
+            min_bps: 300_000,
+            max_bps: 12_000_000,
+        }
+    }
+}
+
+/// Construction options (M5). The zero value is exactly the pre-M5
+/// transport: no ICE servers, loopback-only sockets, no congestion
+/// estimator, no shaper — existing tests keep their meaning.
+#[derive(Debug, Clone, Default)]
+pub struct WebrtcTransportOptions {
+    /// STUN server URLs (`stun:`/`stuns:` only). TURN/relay URLs are a
+    /// typed construction error (invariant 4 enforced at the config layer).
+    pub ice_servers: Vec<String>,
+    /// Bind UDP sockets to all interfaces (WAN path) instead of loopback
+    /// only (test/rig path). Needed for srflx gathering to leave the
+    /// machine.
+    pub bind_all_interfaces: bool,
+    /// Sender-side congestion estimator (host role only; ignored for the
+    /// controller, which sends no media).
+    pub congestion: Option<CongestionOptions>,
+    /// Shape the outgoing RTP path (M5 matrix / chaos testing).
+    pub video_netem: Option<NetemProfile>,
+}
+
+impl WebrtcTransportOptions {
+    /// The product (WAN) configuration: public STUN, all-interface sockets,
+    /// congestion estimator on, no shaping.
+    pub fn wan() -> Self {
+        Self {
+            ice_servers: DEFAULT_STUN_SERVERS.iter().map(|s| s.to_string()).collect(),
+            bind_all_interfaces: true,
+            congestion: Some(CongestionOptions::default()),
+            video_netem: None,
+        }
+    }
+
+    fn validate(&self) -> Result<(), TransportError> {
+        for url in &self.ice_servers {
+            let scheme = url
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            match scheme.as_str() {
+                "stun" | "stuns" => {}
+                "turn" | "turns" => {
+                    return Err(TransportError(format!(
+                        "TURN server configured ({url:?}): relay is forbidden in MVP (invariant 4)"
+                    )));
+                }
+                other => {
+                    return Err(TransportError(format!(
+                        "unsupported ICE server scheme {other:?} in {url:?}"
+                    )));
+                }
+            }
+        }
+        if let Some(congestion) = &self.congestion
+            && !(congestion.min_bps <= congestion.initial_bps
+                && congestion.initial_bps <= congestion.max_bps)
+        {
+            return Err(TransportError(format!(
+                "congestion tuning must satisfy min<=initial<=max (got {}..{}..{})",
+                congestion.min_bps, congestion.initial_bps, congestion.max_bps
+            )));
+        }
+        Ok(())
+    }
+}
 
 /// Which SDP role this peer plays. The controller offers (the M0 trait's
 /// `compose_offer` is the controller role); the host answers and sends video.
@@ -299,6 +412,262 @@ struct VideoSend {
     ssrc: AtomicU32,
 }
 
+// ---------------------------------------------------------------------------
+// M5: congestion estimator publication + netem shaper
+// ---------------------------------------------------------------------------
+
+/// Non-async-readable projection of the sender-side GCC estimate. The
+/// estimator itself lives on the private runtime (called by the congestion
+/// interceptor); this is what `stats()` reads.
+#[derive(Debug, Default)]
+struct CongestionPublish {
+    target_bps: AtomicU64,
+    stats: StdMutex<EstimatorStats>,
+    updates: AtomicU64,
+}
+
+impl CongestionPublish {
+    fn snapshot(&self) -> (Option<u64>, CongestionStats) {
+        let stats = *self.stats.lock().expect("gcc stats poisoned");
+        let conv = |v: Option<f64>| v.filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u64);
+        (
+            Some(self.target_bps.load(Ordering::Relaxed)),
+            CongestionStats {
+                delay_based_bps: conv(stats.delay_based_bitrate),
+                loss_based_bps: conv(stats.loss_based_bitrate),
+                packet_loss: stats.packet_loss,
+                rtt_ms: stats.round_trip_time.map(|d| d.as_secs_f64() * 1000.0),
+                updates: self.updates.load(Ordering::Relaxed),
+            },
+        )
+    }
+}
+
+/// `rtc`'s ReportingEstimator pattern: delegate to `Gcc`, publish every
+/// target change to atomics so the poll-based trait never has to touch the
+/// runtime to read the estimate.
+struct ReportingGcc {
+    inner: Gcc,
+    publish: Arc<CongestionPublish>,
+}
+
+impl ReportingGcc {
+    fn new(options: CongestionOptions, publish: Arc<CongestionPublish>) -> Self {
+        Self {
+            inner: Gcc::new(
+                options.initial_bps as f64,
+                options.min_bps as f64,
+                options.max_bps as f64,
+            ),
+            publish,
+        }
+    }
+
+    fn publish(&self) {
+        self.publish.target_bps.store(
+            self.inner.target_bitrate().max(0.0) as u64,
+            Ordering::Relaxed,
+        );
+        *self.publish.stats.lock().expect("gcc stats poisoned") = self.inner.stats();
+        self.publish.updates.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl rtc::interceptor::BandwidthEstimator for ReportingGcc {
+    fn on_reports(&mut self, now: Instant, reports: &[rtc::interceptor::PacketReport]) {
+        self.inner.on_reports(now, reports);
+        self.publish();
+    }
+
+    fn target_bitrate(&self) -> f64 {
+        self.inner.target_bitrate()
+    }
+
+    fn handle_timeout(&mut self, now: Instant) {
+        self.inner.handle_timeout(now);
+        self.publish();
+    }
+
+    fn poll_timeout(&self) -> Option<Instant> {
+        self.inner.poll_timeout()
+    }
+
+    fn stats(&self) -> EstimatorStats {
+        self.inner.stats()
+    }
+}
+
+/// Shared netem state between the trait side (enqueue + verdicts) and the
+/// runtime shaper task (delayed writes).
+struct NetemShared {
+    netem: StdMutex<Netem>,
+    gauges: Arc<NetemGauges>,
+}
+
+#[derive(Default)]
+struct NetemGauges {
+    queued: AtomicU64,
+    written: AtomicU64,
+    dropped: AtomicU64,
+    /// Shaper queue capacity (the mpsc channel bound).
+    capacity: u32,
+}
+
+impl NetemGauges {
+    fn stats(&self) -> NetemQueueStats {
+        let queued = self.queued.load(Ordering::Relaxed);
+        let written = self.written.load(Ordering::Relaxed);
+        NetemQueueStats {
+            depth: queued.saturating_sub(written).min(u64::from(u32::MAX)) as u32,
+            capacity: self.capacity,
+            dropped: self.dropped.load(Ordering::Relaxed),
+            delivered: written,
+        }
+    }
+}
+
+/// Handle for mid-run profile changes (matrix step-down schedules). The
+/// shaper picks the new profile up on the next packet.
+#[derive(Clone)]
+pub struct NetemHandle {
+    shared: Arc<NetemShared>,
+}
+
+impl NetemHandle {
+    /// Replace the shaping profile (loss/delay/rate/blackhole).
+    pub fn set_profile(&self, profile: NetemProfile) {
+        self.shared
+            .netem
+            .lock()
+            .expect("netem poisoned")
+            .set_profile(profile);
+    }
+
+    /// Current gauges (bounded-queue evidence).
+    pub fn stats(&self) -> NetemQueueStats {
+        self.shared.gauges.stats()
+    }
+}
+
+/// One shaped outbound packet in the due-queue. `Ord` is inverted on
+/// purpose so the `BinaryHeap` (a max-heap) pops the earliest due first.
+struct ShapedPacket {
+    packet: RtpPacket,
+    frame_id: u64,
+    due: Instant,
+}
+
+#[derive(PartialEq, Eq)]
+struct DuePacket {
+    due: Instant,
+    seq: u64,
+    frame_id: u64,
+    packet: RtpPacket,
+}
+
+impl Ord for DuePacket {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Reverse (due, seq): earliest first.
+        other
+            .due
+            .cmp(&self.due)
+            .then_with(|| other.seq.cmp(&self.seq))
+    }
+}
+
+impl PartialOrd for DuePacket {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// The shaper task: writes due packets to the track in due order. The
+/// queue is the bounded channel plus this heap; on transport close the
+/// closing flag stops the loop and the pending heap is dropped.
+async fn netem_shaper_loop(
+    mut rx: tokio::sync::mpsc::Receiver<ShapedPacket>,
+    video: Arc<VideoSend>,
+    shared: Arc<Shared>,
+    gauges: Arc<NetemGauges>,
+) {
+    let mut heap: std::collections::BinaryHeap<DuePacket> = std::collections::BinaryHeap::new();
+    let mut seq = 0u64;
+    loop {
+        if shared.is_closing() {
+            return;
+        }
+        // Next due instant, if any. tokio's clock is std's Instant on this
+        // platform, but the type is distinct — convert at the boundary.
+        let next_due = heap
+            .peek()
+            .map(|top| tokio::time::Instant::from_std(top.due));
+        let recv = match next_due {
+            Some(due) => tokio::time::timeout_at(due, rx.recv()).await,
+            None => Ok(rx.recv().await),
+        };
+        match recv {
+            Ok(Some(shaped)) => {
+                gauges.queued.fetch_add(1, Ordering::Relaxed);
+                seq += 1;
+                heap.push(DuePacket {
+                    due: shaped.due,
+                    seq,
+                    frame_id: shaped.frame_id,
+                    packet: shaped.packet,
+                });
+            }
+            Ok(None) => {
+                // Sender gone (transport dropped): drain what is due, then stop.
+                while let Some(top) = heap.pop() {
+                    write_shaped(&video, top.frame_id, top.packet, &shared, &gauges).await;
+                }
+                return;
+            }
+            Err(_) => {
+                // Timeout reached: everything whose due instant has passed
+                // is written now, in due order.
+                while let Some(top) = heap.peek() {
+                    let due = top.due;
+                    if due > Instant::now() {
+                        break;
+                    }
+                    let top = heap.pop().expect("peek checked");
+                    write_shaped(&video, top.frame_id, top.packet, &shared, &gauges).await;
+                }
+            }
+        }
+        // Also flush anything already due after an enqueue.
+        while heap.peek().is_some_and(|top| top.due <= Instant::now()) {
+            let top = heap.pop().expect("peek checked");
+            write_shaped(&video, top.frame_id, top.packet, &shared, &gauges).await;
+        }
+    }
+}
+
+/// Write one shaped packet (frame-id extension rebuilt; single shaper task
+/// ⇒ single writer).
+async fn write_shaped(
+    video: &Arc<VideoSend>,
+    frame_id: u64,
+    packet: RtpPacket,
+    shared: &Arc<Shared>,
+    gauges: &Arc<NetemGauges>,
+) {
+    let extensions = [HeaderExtension::Custom {
+        uri: Cow::Borrowed(FRAME_ID_EXTENSION_URI),
+        extension: Box::new(FrameIdExt { frame_id }),
+    }];
+    if video
+        .track
+        .write_rtp_with_extensions(packet, &extensions)
+        .await
+        .is_ok()
+    {
+        shared.packets_sent.fetch_add(1, Ordering::Relaxed);
+    }
+    gauges.written.fetch_add(1, Ordering::Relaxed);
+}
+
 /// The transport. `Send` (trait requirement) but deliberately not `Sync`:
 /// the trait takes `&mut self`.
 pub struct WebrtcTransport {
@@ -312,6 +681,15 @@ pub struct WebrtcTransport {
     /// shared with the event handler (0 = not negotiated → received frames
     /// carry `frame_id: None`, the documented ADR-002 fallback).
     rx_frame_ext_id: Arc<AtomicU8>,
+    /// M5: sender-side GCC estimate publication (`None` when built without
+    /// congestion control).
+    congestion: Option<Arc<CongestionPublish>>,
+    /// M5: netem shaper state (`None` when built without shaping).
+    netem: Option<Arc<NetemShared>>,
+    /// Sender side of the bounded shaper queue (kept for `send_video`).
+    netem_tx: Option<tokio::sync::mpsc::Sender<ShapedPacket>>,
+    /// Receiver side, consumed by the shaper task at `compose_answer`.
+    netem_rx: Option<tokio::sync::mpsc::Receiver<ShapedPacket>>,
     closed: AtomicBool,
 }
 
@@ -322,13 +700,22 @@ impl Drop for WebrtcTransport {
 }
 
 impl WebrtcTransport {
-    /// Build a transport for `role`: private runtime + webrtc-rs peer
-    /// connection with no ICE servers (no STUN in the loopback spike, TURN
-    /// forbidden by invariant 4), mDNS disabled so host candidates carry
-    /// real addresses, loopback-only UDP sockets, default interceptors
-    /// (RTCP reports + NACK), exactly one H.264 codec, and the
-    /// `urn:rd:frame-id` header extension registered for negotiation.
+    /// Build a transport for `role` with the pre-M5 defaults: no ICE
+    /// servers (loopback), loopback-only UDP sockets, no congestion
+    /// estimator, no shaper.
     pub fn new(role: WebrtcTransportRole) -> Result<Self, TransportError> {
+        Self::with_options(role, WebrtcTransportOptions::default())
+    }
+
+    /// Build a transport with explicit options (M5). See
+    /// [`WebrtcTransportOptions`] and [`WebrtcTransportOptions::wan`] for
+    /// the product configuration (public STUN, all-interface sockets,
+    /// sender-side GCC).
+    pub fn with_options(
+        role: WebrtcTransportRole,
+        options: WebrtcTransportOptions,
+    ) -> Result<Self, TransportError> {
+        options.validate()?;
         let runtime = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
@@ -363,24 +750,97 @@ impl WebrtcTransport {
                 None,
             )
             .map_err(|e| TransportError(format!("header extension registration failed: {e}")))?;
-        let registry = register_default_interceptors(Registry::new(), &mut media)
+
+        // M5: sender-side congestion control on the media-sending role.
+        // `configure_congestion_control` places send history + pacer + TWCC
+        // and registers the transport-cc feedback/extension the remote
+        // needs; `register_default_interceptors` adds NACK/RR/SR on top
+        // (the rtc example's blessed order — slots are unique, so the
+        // receiver TWCC is not doubled).
+        let (congestion, registry) = match (role, options.congestion) {
+            (WebrtcTransportRole::Host, Some(tuning)) => {
+                let publish = Arc::new(CongestionPublish::default());
+                let reporting = ReportingGcc::new(tuning, Arc::clone(&publish));
+                let base = configure_congestion_control(
+                    Registry::new(),
+                    reporting,
+                    CongestionFeedback::Twcc,
+                    &mut media,
+                )
+                .map_err(|e| TransportError(format!("congestion setup failed: {e}")))?;
+                // `configure_congestion_control` builds its pacer at the
+                // 1 Mbps library default, and the estimator only re-rates
+                // the pacer when its target *changes* — a healthy path
+                // (target constant) would pace at 1 Mbps forever
+                // (measured: 974 kbps delivered vs a 3.6 Mbps encoder).
+                // Replace the slot with a pacer starting at our initial
+                // rate (`Registry::with` replaces, not stacks).
+                let initial = tuning.initial_bps as f64;
+                let base = base.with(
+                    Slot::Pacer,
+                    PacerBuilder::new().with_target_bitrate(initial).build(),
+                );
+                (Some(publish), base)
+            }
+            _ => (None, Registry::new()),
+        };
+        let registry = register_default_interceptors(registry, &mut media)
             .map_err(|e| TransportError(format!("interceptor setup failed: {e}")))?;
 
         let setting_engine = SettingEngineBuilder::new()
             .with_multicast_dns_mode(rtc::ice::mdns::MulticastDnsMode::Disabled)
             .build();
 
-        // Deliberately no `with_ice_servers`: zero ICE servers (invariant 4).
-        let config = RTCConfigurationBuilder::new().build();
+        // ICE servers: public STUN only. TURN URLs were rejected above at
+        // the configuration layer (invariant 4); a relayed candidate that
+        // somehow still appears is surfaced as a failure in the handler.
+        let config = RTCConfigurationBuilder::new()
+            .with_ice_servers(
+                options
+                    .ice_servers
+                    .iter()
+                    .map(|url| RTCIceServer {
+                        urls: vec![url.clone()],
+                        ..Default::default()
+                    })
+                    .collect(),
+            )
+            .build();
 
         let shared = Arc::new(Shared::new());
         let channels = Channels::new();
         let rx_frame_ext_id = Arc::new(AtomicU8::new(0));
 
+        // M5 netem: bounded shaper queue, deterministic per-transport seed
+        // (reproducible matrix cells; xorshift just needs nonzero).
+        static NETEM_SEED: AtomicU64 = AtomicU64::new(0x5EED_0000);
+        let seed = NETEM_SEED.fetch_add(0x9E37, Ordering::Relaxed) | 1;
+        let (netem, netem_tx, netem_rx) = match options.video_netem {
+            Some(profile) => {
+                let (tx, rx) = tokio::sync::mpsc::channel(NETEM_QUEUE_CAPACITY);
+                let gauges = Arc::new(NetemGauges {
+                    capacity: NETEM_QUEUE_CAPACITY as u32,
+                    ..Default::default()
+                });
+                let state = Arc::new(NetemShared {
+                    netem: StdMutex::new(Netem::new(seed, profile)),
+                    gauges,
+                });
+                (Some(state), Some(tx), Some(rx))
+            }
+            None => (None, None, None),
+        };
+
         let handler = TransportHandler {
             shared: Arc::clone(&shared),
             channels: channels.clone(),
             rx_frame_ext_id: Arc::clone(&rx_frame_ext_id),
+        };
+
+        let udp_addrs = if options.bind_all_interfaces {
+            vec!["0.0.0.0:0".to_owned()]
+        } else {
+            vec!["127.0.0.1:0".to_owned()]
         };
 
         let closing_probe = Arc::new(AtomicBool::new(false));
@@ -397,7 +857,7 @@ impl WebrtcTransport {
                     .with_setting_engine(setting_engine)
                     .with_handler(Arc::new(handler))
                     .with_runtime(Arc::new(TokioRuntime) as Arc<dyn webrtc::runtime::Runtime>)
-                    .with_udp_addrs(vec!["127.0.0.1:0".to_owned()])
+                    .with_udp_addrs(udp_addrs)
                     .with_data_channel_send_buffer_limit(DATA_CHANNEL_SEND_BUFFER_LIMIT)
                     .build()
                     .await
@@ -416,6 +876,10 @@ impl WebrtcTransport {
             channels: channels.clone(),
             shared,
             rx_frame_ext_id,
+            congestion,
+            netem,
+            netem_tx,
+            netem_rx,
             closed: AtomicBool::new(false),
         };
 
@@ -471,6 +935,21 @@ impl WebrtcTransport {
     /// Which SDP role this transport was built for (diagnostics/tests).
     pub fn role(&self) -> WebrtcTransportRole {
         self.role
+    }
+
+    /// Handle for mid-run netem profile changes (M5 matrix). `None` when
+    /// the transport was built without shaping.
+    pub fn netem_handle(&self) -> Option<NetemHandle> {
+        self.netem.as_ref().map(|shared| NetemHandle {
+            shared: Arc::clone(shared),
+        })
+    }
+
+    /// Replace the shaping profile (convenience over [`Self::netem_handle`]).
+    pub fn set_netem(&self, profile: NetemProfile) {
+        if let Some(handle) = self.netem_handle() {
+            handle.set_profile(profile);
+        }
     }
 
     fn bridge<T, F>(&self, label: &str, fut: F) -> Result<T, String>
@@ -888,6 +1367,16 @@ impl Transport for WebrtcTransport {
             .and_then(|inner| inner);
         let (sdp, video) =
             result.map_err(|e| TransportError(format!("compose_answer failed: {e}")))?;
+        // M5: arm the netem shaper task now that the video track exists.
+        if let (Some(rx), Some(shared_netem)) = (self.netem_rx.take(), self.netem.as_ref()) {
+            let gauges = Arc::clone(&shared_netem.gauges);
+            self.runtime.spawn(netem_shaper_loop(
+                rx,
+                Arc::clone(&video),
+                Arc::clone(&self.shared),
+                gauges,
+            ));
+        }
         *self.video.lock().expect("video poisoned") = Some(video);
         self.shared
             .push_event(TransportEvent::LocalAnswer { sdp: sdp.clone() });
@@ -992,6 +1481,58 @@ impl Transport for WebrtcTransport {
         let timestamp = rtp_timestamp_from_ns(frame.timestamp_ns);
         let frame_id = frame.frame_id;
 
+        // M5 netem path: per-packet verdicts on the caller thread (the
+        // Netem decision state is a plain mutex, deterministic), the actual
+        // RTP write happens in the shaper task at each packet's due time.
+        // The channel is bounded; overflow drops the incoming packet and
+        // counts it (queue-overflow loss, invariant 3 evidence).
+        if let (Some(state), Some(tx)) = (self.netem.as_ref(), self.netem_tx.as_ref()) {
+            let count = payloads.len();
+            let now = Instant::now();
+            let now_ms = netem_now_ms(now);
+            let mut dropped = 0u64;
+            for (index, payload) in payloads.into_iter().enumerate() {
+                let seq = video.seq.fetch_add(1, Ordering::Relaxed);
+                let packet = RtpPacket {
+                    header: RtpHeader {
+                        version: 2,
+                        marker: index + 1 == count,
+                        payload_type,
+                        sequence_number: seq,
+                        timestamp,
+                        ssrc,
+                        ..Default::default()
+                    },
+                    payload,
+                };
+                let verdict = state
+                    .netem
+                    .lock()
+                    .expect("netem poisoned")
+                    .verdict(now_ms, DEFAULT_MTU);
+                match verdict {
+                    PacketVerdict::Drop => dropped += 1,
+                    PacketVerdict::Deliver { delay_ms } => {
+                        if tx
+                            .try_send(ShapedPacket {
+                                packet,
+                                frame_id,
+                                due: now + Duration::from_millis(delay_ms),
+                            })
+                            .is_err()
+                        {
+                            dropped += 1; // queue overflow
+                        }
+                    }
+                }
+            }
+            if dropped > 0 {
+                state.gauges.dropped.fetch_add(dropped, Ordering::Relaxed);
+            }
+            self.shared.frames_sent.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
+
         let shared = Arc::clone(&self.shared);
         self.bridge("send_video", async move {
             let extensions = [HeaderExtension::Custom {
@@ -1039,6 +1580,7 @@ impl Transport for WebrtcTransport {
             Option<f64>,
             Option<(u64, u64, i64, f64)>,
             Option<(u64, u64)>,
+            Option<(f64, f64)>,
             Option<SelectedIcePair>,
             bool,
         );
@@ -1048,6 +1590,9 @@ impl Transport for WebrtcTransport {
                 let mut rtt = None;
                 let mut inbound = None;
                 let mut outbound = None;
+                // M5: remote-inbound-rtp = the receiver's RTCP RR projection
+                // of OUR outbound stream (fraction lost + RR RTT).
+                let mut remote_inbound = None;
                 let mut pair_ids: Option<(String, String, bool)> = None;
                 let mut relay = false;
 
@@ -1079,6 +1624,9 @@ impl Transport for WebrtcTransport {
                                 o.sent_rtp_stream_stats.bytes_sent,
                                 o.sent_rtp_stream_stats.packets_sent,
                             ));
+                        }
+                        RTCStatsReportEntry::RemoteInboundRtp(r) => {
+                            remote_inbound = Some((r.fraction_lost, r.round_trip_time));
                         }
                         _ => {}
                     }
@@ -1121,10 +1669,10 @@ impl Transport for WebrtcTransport {
                         nominated,
                     })
                 });
-                Ok((rtt, inbound, outbound, selected, relay))
+                Ok((rtt, inbound, outbound, remote_inbound, selected, relay))
             })
             .and_then(|inner| inner);
-        let (rtt, inbound, outbound, selected, relay) =
+        let (rtt, inbound, outbound, remote_inbound, selected, relay) =
             snapshot.map_err(|e| TransportError(format!("stats failed: {e}")))?;
 
         // Bitrate over the interval since the previous stats() call.
@@ -1175,6 +1723,19 @@ impl Transport for WebrtcTransport {
             }
         });
 
+        let (available_bandwidth_bps, congestion_stats) = self
+            .congestion
+            .as_ref()
+            .map(|publish| publish.snapshot())
+            .unwrap_or((None, CongestionStats::default()));
+        let (remote_loss_percent, remote_rtt_ms) = match remote_inbound {
+            Some((fraction_lost, rtt_secs)) => (
+                Some(fraction_lost.clamp(0.0, 1.0) * 100.0),
+                Some(rtt_secs.max(0.0) * 1000.0),
+            ),
+            None => (None, None),
+        };
+
         Ok(TransportStats {
             rtt_ms: rtt,
             send_bitrate_kbps: send_kbps,
@@ -1193,6 +1754,15 @@ impl Transport for WebrtcTransport {
             frames_dropped: self.shared.frames_dropped.load(Ordering::Relaxed),
             channel_queue,
             events_dropped: self.shared.events_overflow.load(Ordering::Relaxed),
+            available_bandwidth_bps,
+            remote_loss_percent,
+            remote_rtt_ms,
+            congestion_stats: if self.congestion.is_some() {
+                Some(congestion_stats)
+            } else {
+                None
+            },
+            netem_queue: self.netem.as_ref().map(|state| state.gauges.stats()),
         })
     }
 
@@ -1242,6 +1812,13 @@ fn session_ssrc() -> u32 {
         .wrapping_mul(0x9E37_79B9_7F4A_7C15)
         .wrapping_add(count.wrapping_mul(0xBF58_476D_1CE4_E5B9));
     (hash >> 32) as u32 | 1
+}
+
+/// Deterministic millisecond feed for the netem verdicts (process uptime).
+fn netem_now_ms(now: Instant) -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    now.saturating_duration_since(*start).as_millis() as u64
 }
 
 /// Find the negotiated extmap id for `FRAME_ID_EXTENSION_URI` in an SDP

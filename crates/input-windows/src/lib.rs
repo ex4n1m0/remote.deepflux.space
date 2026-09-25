@@ -18,8 +18,12 @@
 //!   by UIPI and fails with [`InputError::BlockedByUipi`]; it fails
 //!   visibly, never silently corrupts modifier state.
 
+pub mod capture;
 pub mod sendinput;
 
+pub use capture::{
+    INPUT_QUEUE_CAP, PresenterInput, ViewerInputEvent, WindowInputCapture, map_into_dest,
+};
 pub use protocol::wire::AllKeysUpTrigger;
 pub use sendinput::{MonitorRect, SendInputSink};
 

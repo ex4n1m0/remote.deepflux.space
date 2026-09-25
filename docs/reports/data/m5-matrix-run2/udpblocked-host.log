@@ -1,0 +1,278 @@
+[rig-host] m2_rig role=host scenario=soak dir=C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-t7Do3F stream=15s seed=2026 drop-fast=10 reorder-fast=5 drop-reliable-every=40
+[rig-host] metrics: docs/reports/data/m5-matrix\m5-udpblocked-rig-host.jsonl
+[rig-host] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-host] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-t7Do3F out=h2c.jsonl, in=c2h.jsonl)
+[rig-host] --blackhole-candidates: remote candidate ports -> 9 (UDP-blocked emulation)
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #1, session rig-controller-ctrl-2 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] loop alive, host=ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] transport failure: add_remote_candidate failed: failed to parse address
+[rig-host] loop alive, host=Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] loop alive, host=Connecting
+[rig-host] host -> Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] transport failure: peer connection failed
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] loop alive, host=Disconnected
+[rig-host] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [],
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 312.5156082,
+  "failed": true,
+  "failures": [
+    "host idle timeout after session end",
+    "no AllKeysUp(Disconnect) on teardown"
+  ],
+  "host": {
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 0,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 0.0,
+    "fps_retargets": 0,
+    "fps_target": 60,
+    "frames_captured": 0,
+    "frames_encoded": 0,
+    "keyframe_forced": 0,
+    "keyframes": 0,
+    "pacer": {
+      "fps_tick_rate": 0.0,
+      "skipped": 0,
+      "ticks": 0
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 0,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 0.001
+  },
+  "input": {
+    "all_keys_up": 0,
+    "final_position": null,
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 0,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 0,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "docs/reports/data/m5-matrix\\m5-udpblocked-rig-host.jsonl",
+    "records": 1871
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 3,
+    "envelopes_sent": 4,
+    "heartbeats_raised": 0,
+    "ice_forward_errors": 1,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 0
+  },
+  "proc": {
+    "final": {
+      "handles": 432,
+      "private_mib": 53.015625,
+      "threads": 32,
+      "ws_mib": 40.5
+    },
+    "per_session": [],
+    "per_session_end": []
+  },
+  "prompts": 1,
+  "real_input": false,
+  "role": "host",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [],
+    "established": [],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 2,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 0,
+    "loss_percent": null,
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": null,
+    "selected_pair": null,
+    "send_bitrate_kbps": 0.0
+  }
+}

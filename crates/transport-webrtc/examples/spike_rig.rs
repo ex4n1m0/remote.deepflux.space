@@ -1185,6 +1185,9 @@ fn main() {
                     rtt_ms: stats.rtt_ms.map(|v| v as f32),
                     loss_percent: stats.loss_percent.map(|v| v as f32),
                     at_ns: at,
+                    available_bandwidth_kbps: None,
+                    remote_loss_percent: None,
+                    remote_rtt_ms: None,
                 }));
                 for (index, kind) in [
                     QueueKind::ChannelControl,

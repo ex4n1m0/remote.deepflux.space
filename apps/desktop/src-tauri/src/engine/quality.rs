@@ -2,12 +2,16 @@
 //! mapped onto the host encoder/pacer configuration. The mapping is a
 //! product decision; the wire enum is the contract (`crates/protocol`).
 //!
-//! Preset changes rebuild the host encode stage: the Media Foundation
-//! encoder's bitrate/resolution are fixed at MFT creation and codec-windows
-//! exposes no live reconfiguration (change request filed for M5 — see
-//! docs/reports/m4-shell.md). Each rebuild drops one MFT instance; the
-//! known drop-path leak is counted (`encoder_rebuilds`) and bounded by user
-//! action.
+//! M5: `Auto` is no longer an alias for `Balanced`. Manual presets pin
+//! their targets and rebuild the encode stage once (geometry changes); the
+//! rebuild leak is bounded by user action (F56/CR-1). `Auto` starts from
+//! the Balanced geometry but hands the *bitrate/fps* to the host's
+//! congestion controller (`node_runtime::congestion` over the transport's
+//! GCC estimate), which retargets the encoder LIVE via
+//! `VideoEncoder::reconfigure` (no MFT rebuild on this machine's encoders)
+//! and the pacer via `FramePacer::retarget`; only sustained starvation
+//! (<800 kbps for 10 s) steps the resolution down, once, through the
+//! rebuild path.
 
 use codec_windows::{MfEncoderConfig, MfEncoderPreference};
 use protocol::wire::QualityPreset;
@@ -22,9 +26,9 @@ pub struct QualityPlan {
     pub encode_height: u32,
 }
 
-/// The preset table. `Auto` currently equals `Balanced` — congestion
-/// control that would differentiate it is M5 work (PLAN M5: "bitrate/FPS/
-/// resolution controls"); the UI presents it as "let the host decide".
+/// The preset table. `Auto` keeps the Balanced geometry as its starting
+/// point; the congestion controller owns the runtime bitrate/fps targets
+/// (see module docs and `engine::drive_congestion`).
 pub fn plan_for(preset: QualityPreset) -> QualityPlan {
     let (fps, bitrate_kbps, w, h) = match preset {
         QualityPreset::Auto | QualityPreset::Balanced => (60, 6_000, 1920, 1080),

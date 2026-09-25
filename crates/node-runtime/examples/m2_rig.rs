@@ -73,7 +73,10 @@ use render_windows::{
 };
 use session::{ControllerState, DisconnectCause, HostState, SessionConfig};
 use transport_webrtc::chaos::ChaosInjector;
-use transport_webrtc::{Channel, VideoFrame, WebrtcTransport, WebrtcTransportRole};
+use transport_webrtc::{
+    Channel, ReceivedFrame, Transport, TransportError, TransportEvent, TransportStats, VideoFrame,
+    WebrtcTransport, WebrtcTransportRole,
+};
 
 // ---------------------------------------------------------------------------
 // Args
@@ -109,6 +112,95 @@ struct Args {
     /// instead of the recording sink. Default off — on a single machine
     /// the scripted cursor would fight the operator.
     real_input: bool,
+    /// M5 netem (host): shape the outgoing RTP path (`loss=N|delay_ms=N|
+    /// rate_kbps=N|udp_blocked=B`).
+    netem: Option<String>,
+    /// M5 netem schedule (host): `secs:spec;secs:spec;...` — profile swaps
+    /// at stream-elapsed seconds (bandwidth step-down cells).
+    netem_schedule: Option<String>,
+    /// M5 congestion controller (host): `on` = transport GCC estimate +
+    /// `node_runtime::congestion` policy drive the encoder bitrate/fps.
+    congestion: bool,
+    /// M5 RTT shaping, controller→host half (ms): input messages enter a
+    /// bounded delay line (`chaos::DelayQueue`) so the input path carries
+    /// the other half of a +RTT cell.
+    input_delay_ms: u64,
+    /// M5 UDP-blocked expected-failure cell: every remote candidate's port
+    /// is rewritten to the discard port (9) before it reaches the ICE
+    /// agent, emulating a network where the peer's UDP is unreachable
+    /// (connectivity checks die). Signaling still works — exactly the
+    /// "signaling ok, ICE dead" stage the failure UX documents.
+    blackhole_candidates: bool,
+}
+
+/// Transport wrapper for the `--blackhole-candidates` cell (M5): rewrites
+/// every remote candidate's port to the discard port before the ICE agent
+/// sees it. Emulates "the network drops every UDP packet toward the peer"
+/// at the only seam the rig owns (loopback sockets cannot be filtered
+/// without a WFP driver — documented in m5-matrix.md).
+struct BlackholeTransport {
+    inner: Box<dyn Transport>,
+    rewritten: std::sync::atomic::AtomicU64,
+}
+
+impl BlackholeTransport {
+    fn rewrite(candidate: &str) -> String {
+        // `candidate:<foundation> <component> <proto> <priority> <addr>
+        //  <port> typ ...` — the port is field 5 (index 4).
+        let mut fields = candidate.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        if fields.len() >= 5 && fields[0].starts_with("candidate:") {
+            fields[4] = "9".to_owned();
+        }
+        fields.join(" ")
+    }
+}
+
+impl Transport for BlackholeTransport {
+    fn compose_offer(&mut self) -> Result<String, TransportError> {
+        self.inner.compose_offer()
+    }
+    fn compose_answer(&mut self, offer_sdp: &str) -> Result<String, TransportError> {
+        self.inner.compose_answer(offer_sdp)
+    }
+    fn apply_answer(&mut self, answer_sdp: &str) -> Result<(), TransportError> {
+        self.inner.apply_answer(answer_sdp)
+    }
+    fn add_remote_candidate(
+        &mut self,
+        candidate: &str,
+        sdp_mid: Option<&str>,
+        sdp_mline_index: Option<u16>,
+    ) -> Result<(), TransportError> {
+        let rewritten = Self::rewrite(candidate);
+        self.rewritten
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner
+            .add_remote_candidate(&rewritten, sdp_mid, sdp_mline_index)
+    }
+    fn send(&mut self, channel: Channel, bytes: &[u8]) -> Result<(), TransportError> {
+        self.inner.send(channel, bytes)
+    }
+    fn poll(&mut self) -> Option<TransportEvent> {
+        self.inner.poll()
+    }
+    fn send_video(&mut self, frame: VideoFrame) -> Result<(), TransportError> {
+        self.inner.send_video(frame)
+    }
+    fn poll_video(&mut self) -> Option<ReceivedFrame> {
+        self.inner.poll_video()
+    }
+    fn stats(&mut self) -> Result<TransportStats, TransportError> {
+        self.inner.stats()
+    }
+    fn channel_queue_gauges(&mut self) -> Option<transport_webrtc::ChannelQueues> {
+        self.inner.channel_queue_gauges()
+    }
+    fn restart_ice(&mut self) -> Result<(), TransportError> {
+        self.inner.restart_ice()
+    }
+    fn close(&mut self) {
+        self.inner.close()
+    }
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -137,6 +229,11 @@ fn parse_args() -> Result<Args, String> {
         report_stem: None,
         idle_timeout_secs: 300,
         real_input: false,
+        netem: None,
+        netem_schedule: None,
+        congestion: false,
+        input_delay_ms: 0,
+        blackhole_candidates: false,
     };
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -252,6 +349,36 @@ fn parse_args() -> Result<Args, String> {
                 args.real_input = true;
                 i += 1;
             }
+            "--netem" => {
+                let spec = need("--netem")?;
+                transport_webrtc::chaos::NetemProfile::parse(&spec)?;
+                args.netem = Some(spec);
+                i += 2;
+            }
+            "--netem-schedule" => {
+                let spec = need("--netem-schedule")?;
+                parse_netem_schedule(&spec)?;
+                args.netem_schedule = Some(spec);
+                i += 2;
+            }
+            "--congestion" => {
+                args.congestion = match need("--congestion")?.as_str() {
+                    "on" => true,
+                    "off" => false,
+                    other => return Err(format!("--congestion: {other:?} (on|off)")),
+                };
+                i += 2;
+            }
+            "--blackhole-candidates" => {
+                args.blackhole_candidates = true;
+                i += 1;
+            }
+            "--input-delay-ms" => {
+                args.input_delay_ms = need("--input-delay-ms")?
+                    .parse()
+                    .map_err(|e| format!("input-delay: {e}"))?;
+                i += 2;
+            }
             "--no-stimulus" => {
                 args.stimulus = false;
                 i += 1;
@@ -280,8 +407,11 @@ fn parse_args() -> Result<Args, String> {
                      [--stream-secs N] [--cycles N] [--cycle-stream-secs N] [--fps 60] [--encode-size WxH]\n\
                      [--bitrate-kbps N] [--monitor primary] [--window-size WxH] [--no-stimulus]\n\
                      [--drop-fast-pct N] [--reorder-fast-pct N] [--drop-reliable-nth N] [--seed N]\n\
-                     [--mouse-moves N] [--metrics-dir DIR] [--summary FILE] [--report-stem NAME]\
-                     [--idle-timeout-secs N] [--real-input]"
+                     [--mouse-moves N] [--metrics-dir DIR] [--summary FILE] [--report-stem NAME]\n\
+                     [--idle-timeout-secs N] [--real-input]\n\
+                     [M5] [--netem 'loss=N|delay_ms=N|rate_kbps=N|udp_blocked=B']\n\
+                     [M5] [--netem-schedule 'secs:spec;secs:spec'] [--congestion on|off]\n\
+                     [M5] [--input-delay-ms N]"
                 );
                 std::process::exit(0);
             }
@@ -510,6 +640,14 @@ struct HostPipeCounters {
     cursor_positions: AtomicU64,
     device_lost: AtomicU64,
     capture_reinit: AtomicU64,
+    /// M5 congestion: live `ICodecAPI` reconfigurations applied (no MFT
+    /// rebuild — CR-1), internal rebuilds (resolution changes only), and
+    /// failed attempts.
+    reconfig_live: AtomicU64,
+    reconfig_rebuilt: AtomicU64,
+    reconfig_errors: AtomicU64,
+    /// M5 congestion: pacer fps retargets applied.
+    fps_retargets: AtomicU64,
 }
 
 /// Process-lifetime codec instances (F26): `MfEncoder`/`MfDecoder` drop
@@ -554,6 +692,11 @@ struct HostPipeline {
     counters: Arc<HostPipeCounters>,
     pacer_ticks: Arc<AtomicU64>,
     pacer_skipped: Arc<AtomicU64>,
+    /// M5 congestion slots: the engine loop writes a wanted bitrate/fps,
+    /// the owning thread applies it on its next iteration (bounded: one
+    /// pending slot each, newest wins).
+    want_params: Arc<Mutex<Option<codec_windows::EncoderParams>>>,
+    want_fps: Arc<Mutex<Option<u32>>>,
 }
 
 impl HostPipeline {
@@ -598,6 +741,10 @@ impl HostPipeline {
         let pacer_ticks = Arc::new(AtomicU64::new(0));
         let pacer_skipped = Arc::new(AtomicU64::new(0));
         let capture_stop = Arc::new(AtomicBool::new(false));
+        // M5 congestion control slots (engine loop → owning threads).
+        let want_params: Arc<Mutex<Option<codec_windows::EncoderParams>>> =
+            Arc::new(Mutex::new(None));
+        let want_fps: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
         let mut joins = Vec::new();
 
         // ---- capture thread ----
@@ -613,6 +760,7 @@ impl HostPipeline {
             let fps = args.fps;
             let ticks = Arc::clone(&pacer_ticks);
             let skipped = Arc::clone(&pacer_skipped);
+            let want_fps = Arc::clone(&want_fps);
             joins.push(
                 std::thread::Builder::new()
                     .name("capture".into())
@@ -640,6 +788,18 @@ impl HostPipeline {
                         eprintln!("[host] capture pacer mode: {}", pacer.mode);
                         pacer.start();
                         while !stop.load(Ordering::Acquire) {
+                            // M5: apply a congestion fps retarget (if any).
+                            if let Some(next_fps) = want_fps.lock().expect("want fps").take()
+                                && next_fps != pacer.fps()
+                            {
+                                eprintln!(
+                                    "[host] congestion: fps cap {} -> {}",
+                                    pacer.fps(),
+                                    next_fps
+                                );
+                                pacer.retarget(next_fps);
+                                counters.fps_retargets.fetch_add(1, Ordering::Relaxed);
+                            }
                             pacer.wait();
                             ticks.store(pacer.ticks, Ordering::Relaxed);
                             skipped.store(pacer.skipped, Ordering::Relaxed);
@@ -713,6 +873,7 @@ impl HostPipeline {
             let clock = clock.clone();
             let encoder_pool = Arc::clone(&encoder_pool);
             let device = device.clone();
+            let want_params = Arc::clone(&want_params);
             let enc_cfg = codec_windows::MfEncoderConfig {
                 width: args.encode_w & !1,
                 height: args.encode_h & !1,
@@ -745,6 +906,32 @@ impl HostPipeline {
                             },
                         };
                         loop {
+                            // M5: apply a congestion bitrate step LIVE
+                            // (`reconfigure`, CR-1: bitrate changes never
+                            // rebuild the MFT on this machine's encoders).
+                            if let Some(params) = want_params.lock().expect("want params").take() {
+                                match encoder.reconfigure(&params) {
+                                    Ok(codec_windows::ReconfigureOutcome::Live { .. }) => {
+                                        counters.reconfig_live.fetch_add(1, Ordering::Relaxed);
+                                        if let Some(bps) = params.bitrate_bps {
+                                            eprintln!(
+                                                "[host] congestion: bitrate -> {bps} bps (live)"
+                                            );
+                                        }
+                                    }
+                                    Ok(codec_windows::ReconfigureOutcome::Rebuilt { reason }) => {
+                                        counters.reconfig_rebuilt.fetch_add(1, Ordering::Relaxed);
+                                        eprintln!(
+                                            "[host] congestion: reconfigure rebuilt ({reason})"
+                                        );
+                                    }
+                                    Ok(codec_windows::ReconfigureOutcome::Noop) => {}
+                                    Err(e) => {
+                                        counters.reconfig_errors.fetch_add(1, Ordering::Relaxed);
+                                        eprintln!("[host] congestion: reconfigure failed: {e}");
+                                    }
+                                }
+                            }
                             let Some(item) = q_in.pop(Duration::from_millis(100)) else {
                                 if !q_in.is_open() {
                                     break;
@@ -803,6 +990,8 @@ impl HostPipeline {
             counters,
             pacer_ticks,
             pacer_skipped,
+            want_params,
+            want_fps,
         })
     }
 
@@ -853,7 +1042,14 @@ impl ControllerPipeline {
         let decoder_pool = Arc::clone(&codec_pool.decoder);
         let q_recv_dec = Arc::new(FrameQueue::new(
             QueueKind::RecvToDecode,
-            2,
+            // M5 matrix evidence: the GCC pacer releases ~0.1 s bursts
+            // (~6 frames at 1080p60); a cap of 2 dropped one frame per
+            // burst slip, and every drop cascaded through the decoder's
+            // IDR gate (~10 lost frames per gap — rtt150 cell: 3490
+            // received, 2102 presented). 8 absorbs a burst plus jitter
+            // while staying far below a latency-relevant backlog (8
+            // frames ≈ 133 ms, dropped by newest-wins long before).
+            8,
             // Schema table says "bounded, drop-oldest" (F35): the oldest
             // queued frame is the stale one; the drop surfaces as a
             // frame-id gap -> keyframe request downstream.
@@ -1497,15 +1693,89 @@ impl NodeObserver for RigObserver {
 // run(): process setup + main loop + scenario engine
 // ---------------------------------------------------------------------------
 
-fn fresh_transport(is_host: bool) -> Result<Box<WebrtcTransport>, String> {
+/// Parse an M5 netem schedule (`secs:spec;secs:spec;...`) into
+/// `(secs, profile)` pairs; validates every profile eagerly.
+fn parse_netem_schedule(
+    spec: &str,
+) -> Result<Vec<(u64, transport_webrtc::chaos::NetemProfile)>, String> {
+    let mut out = Vec::new();
+    for entry in spec.split(';') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let (secs, profile_spec) = entry
+            .split_once(':')
+            .ok_or_else(|| format!("schedule entry {entry:?}: expected secs:spec"))?;
+        let secs: u64 = secs
+            .trim()
+            .parse()
+            .map_err(|e| format!("schedule secs {secs:?}: {e}"))?;
+        let profile = transport_webrtc::chaos::NetemProfile::parse(profile_spec.trim())?;
+        out.push((secs, profile));
+    }
+    if out.is_empty() {
+        return Err("empty netem schedule".into());
+    }
+    Ok(out)
+}
+
+/// Send one encoded input message now, or park it in the M5 delay line
+/// when the cell shapes the controller→host direction (RTT half).
+fn send_input_maybe_delayed(
+    node: &mut Node,
+    delay: &mut transport_webrtc::chaos::DelayQueue<Vec<u8>>,
+    delay_ms: u64,
+    now_ms: u64,
+    channel: Channel,
+    bytes: &[u8],
+) -> Result<(), transport_webrtc::TransportError> {
+    if delay_ms == 0 {
+        node.send_wire_bytes(channel, bytes)
+    } else {
+        match delay.push(now_ms, delay_ms, bytes.to_vec()) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(transport_webrtc::TransportError(
+                "input delay line full (bounded); message dropped".into(),
+            )),
+        }
+    }
+}
+
+/// M5-aware transport factory: the host carries the congestion estimator
+/// and (optionally) the netem shaper; the controller stays at the loopback
+/// baseline. Returns the handle for mid-run profile changes.
+fn fresh_transport_opts(
+    is_host: bool,
+    args: &Args,
+) -> Result<(Box<WebrtcTransport>, Option<transport_webrtc::NetemHandle>), String> {
     let role = if is_host {
         WebrtcTransportRole::Host
     } else {
         WebrtcTransportRole::Controller
     };
-    WebrtcTransport::new(role)
-        .map(Box::new)
-        .map_err(|e| format!("transport build: {e}"))
+    let options = if is_host {
+        transport_webrtc::WebrtcTransportOptions {
+            congestion: args
+                .congestion
+                .then_some(transport_webrtc::CongestionOptions {
+                    initial_bps: 4_000_000,
+                    min_bps: 300_000,
+                    max_bps: 12_000_000,
+                }),
+            video_netem: args
+                .netem
+                .as_deref()
+                .and_then(|spec| transport_webrtc::chaos::NetemProfile::parse(spec).ok()),
+            ..Default::default()
+        }
+    } else {
+        transport_webrtc::WebrtcTransportOptions::default()
+    };
+    let transport = WebrtcTransport::with_options(role, options)
+        .map_err(|e| format!("transport build: {e}"))?;
+    let handle = transport.netem_handle();
+    Ok((Box::new(transport), handle))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1606,8 +1876,41 @@ fn run(args: Args) -> i32 {
         clock.clone(),
         Box::new(signaling),
     );
-    let transport = fresh_transport(is_host).expect("transport");
-    node.attach_transport(transport);
+    let (transport, mut netem_handle) = fresh_transport_opts(is_host, &args).expect("transport");
+    if args.blackhole_candidates {
+        eprintln!(
+            "[{device}] --blackhole-candidates: remote candidate ports -> 9 (UDP-blocked emulation)"
+        );
+        node.attach_transport(Box::new(BlackholeTransport {
+            inner: transport,
+            rewritten: std::sync::atomic::AtomicU64::new(0),
+        }));
+    } else {
+        node.attach_transport(transport);
+    }
+    // M5 state: netem schedule + congestion controller (host side).
+    let netem_schedule: Vec<(u64, transport_webrtc::chaos::NetemProfile)> = args
+        .netem_schedule
+        .as_deref()
+        .map(parse_netem_schedule)
+        .transpose()
+        .expect("schedule validated at parse")
+        .unwrap_or_default();
+    let mut netem_schedule_index = 0usize;
+    let mut congestion_ctl = if is_host && args.congestion {
+        Some(node_runtime::congestion::CongestionController::new(
+            node_runtime::congestion::CongestionParams {
+                start_bps: u64::from(args.bitrate_kbps) * 1000,
+                ..Default::default()
+            },
+        ))
+    } else {
+        None
+    };
+    let mut congestion_events: Vec<serde_json::Value> = Vec::new();
+    // M5: controller→host input delay line (the RTT cell's other half).
+    let mut input_delay: transport_webrtc::chaos::DelayQueue<Vec<u8>> =
+        transport_webrtc::chaos::DelayQueue::new(1024);
 
     // ---- stimulus (host) ----
     let stimulus = if is_host && args.stimulus {
@@ -1724,6 +2027,10 @@ fn run(args: Args) -> i32 {
     let mut connect_attempts: Vec<(String, u64)> = Vec::new(); // (session, ms)
     let mut chaos = ChaosInjector::new(args.seed, args.drop_fast_pct, args.reorder_fast_pct)
         .with_drop_every_nth(args.drop_reliable_nth);
+    // M5: mutable pipeline args (the congestion last resort rewrites the
+    // encode geometry once) + the step-down edge flag.
+    let mut rig_args = args.clone();
+    let mut congestion_step_down_720p = false;
     let mut moves_sent: u64 = 0;
     let mut reliable_sent: u64 = 0;
     let mut reliable_send_errors: u64 = 0;
@@ -1790,8 +2097,11 @@ fn run(args: Args) -> i32 {
         // Host: after a teardown the transport is gone; re-attach a fresh
         // one so the next session's ComposeAnswer has a target.
         if is_host && !node.has_transport() {
-            match fresh_transport(true) {
-                Ok(transport) => node.attach_transport(transport),
+            match fresh_transport_opts(true, &args) {
+                Ok((transport, handle)) => {
+                    netem_handle = handle;
+                    node.attach_transport(transport)
+                }
                 Err(err) => {
                     failure_reason = format!("host transport rebuild: {err}");
                     break;
@@ -1827,7 +2137,7 @@ fn run(args: Args) -> i32 {
                 pipe_device,
                 Arc::clone(&host_force_flag),
                 &codec_pool,
-                &args,
+                &rig_args,
                 &report,
                 Arc::clone(&session_slot),
                 clock.clone(),
@@ -1999,8 +2309,67 @@ fn run(args: Args) -> i32 {
                     recv_bitrate_kbps: stats.recv_bitrate_kbps.map(|v| v as u32),
                     rtt_ms: stats.rtt_ms.map(|v| v as f32),
                     loss_percent: stats.loss_percent.map(|v| v as f32),
+                    available_bandwidth_kbps: stats
+                        .available_bandwidth_bps
+                        .map(|v| (v / 1000) as u32),
+                    remote_loss_percent: stats.remote_loss_percent.map(|v| v as f32),
+                    remote_rtt_ms: stats.remote_rtt_ms.map(|v| v as f32),
                     at_ns: clock.now_ns(),
                 }));
+                // M5: feed the congestion policy (host, streaming, on) and
+                // apply its decision to the live encoder/pacer slots.
+                if let (Some(ctl), Some(pipeline)) =
+                    (congestion_ctl.as_mut(), observer.host_pipeline.as_ref())
+                {
+                    let sample = node_runtime::congestion::CongestionSample {
+                        at_ms: clock.now_ms(),
+                        estimate_bps: stats.available_bandwidth_bps,
+                        remote_loss_percent: stats.remote_loss_percent,
+                        remote_rtt_ms: stats.remote_rtt_ms,
+                        ice_rtt_ms: stats.rtt_ms,
+                        send_bitrate_kbps: stats.send_bitrate_kbps,
+                    };
+                    let decision = ctl.sample(sample);
+                    if decision.bitrate_bps.is_some()
+                        || decision.fps_cap.is_some()
+                        || decision.resolution_step_down
+                    {
+                        eprintln!(
+                            "[{device}] congestion decision: bitrate={:?} fps={:?} res_down={} ({})",
+                            decision.bitrate_bps,
+                            decision.fps_cap,
+                            decision.resolution_step_down,
+                            decision.reason
+                        );
+                        congestion_events.push(serde_json::json!({
+                            "at_ms": clock.now_ms(),
+                            "bitrate_bps": decision.bitrate_bps,
+                            "fps_cap": decision.fps_cap,
+                            "resolution_step_down": decision.resolution_step_down,
+                            "reason": decision.reason,
+                            "estimate_bps": stats.available_bandwidth_bps,
+                            "remote_loss_percent": stats.remote_loss_percent,
+                            "encoder_bitrate_bps": ctl.bitrate_bps(),
+                        }));
+                    }
+                    if let Some(bps) = decision.bitrate_bps {
+                        *pipeline.want_params.lock().expect("want params") =
+                            Some(codec_windows::EncoderParams {
+                                bitrate_bps: Some(bps.min(u32::MAX as u64) as u32),
+                                ..Default::default()
+                            });
+                    }
+                    if let Some(fps) = decision.fps_cap {
+                        *pipeline.want_fps.lock().expect("want fps") = Some(fps);
+                    }
+                    // Resolution step-down (last resort): rebuild the
+                    // encode stage at 720p. The pooled encoder is dropped
+                    // (wrong geometry for reuse) — the one priced rebuild.
+                    if decision.resolution_step_down {
+                        eprintln!("[{device}] congestion: resolution step-down (720p rebuild)");
+                        congestion_step_down_720p = true;
+                    }
+                }
                 // Channel-queue samples live in the per-change block above
                 // (F32 cadence); this 1 Hz tick carries the LinkSample only.
                 if stats.relay_in_use {
@@ -2009,6 +2378,61 @@ fn run(args: Args) -> i32 {
                     break;
                 }
                 final_transport_stats = Some(stats);
+            }
+            // M5 netem schedule (host): swap the profile at the planned
+            // stream-elapsed seconds (bandwidth step-down cells).
+            if let (Some(handle), Some(started)) =
+                (netem_handle.as_ref(), observer.stream_started_at)
+            {
+                let elapsed_s = started.elapsed().as_secs();
+                while netem_schedule_index < netem_schedule.len()
+                    && netem_schedule[netem_schedule_index].0 <= elapsed_s
+                {
+                    let (at, profile) = &netem_schedule[netem_schedule_index];
+                    eprintln!("[{device}] netem schedule @ {at}s: {profile:?}");
+                    handle.set_profile(profile.clone());
+                    netem_schedule_index += 1;
+                }
+            }
+        }
+
+        // M5: congestion last resort — apply the 720p rebuild once.
+        if congestion_step_down_720p {
+            congestion_step_down_720p = false;
+            rig_args.encode_w = 1280;
+            rig_args.encode_h = 720;
+            if let Some(pipeline) = observer.host_pipeline.take() {
+                if let Some(started) = observer.stream_started_at.take() {
+                    observer.stream_secs_accum += started.elapsed().as_secs_f64();
+                }
+                observer
+                    .finished_host_pipes
+                    .push(Arc::clone(&pipeline.counters));
+                observer.finished_pacers.push((
+                    Arc::clone(&pipeline.pacer_ticks),
+                    Arc::clone(&pipeline.pacer_skipped),
+                ));
+                pipeline.stop();
+                // The pooled encoder has the old geometry: drop it (the
+                // one priced rebuild per sustained-starvation event).
+                *codec_pool.encoder.lock().expect("encoder pool") = None;
+                // The machine is still Connected; the start block below
+                // rebuilds at 720p on its next iteration.
+                observer.want_streaming = true;
+            }
+        }
+
+        // M5: input-delay line (controller→host RTT half). Flush due
+        // messages; the scenario pushes new ones through `queue_input`.
+        if args.input_delay_ms > 0 {
+            let now_ms = clock.now_ms();
+            for bytes in input_delay.drain_due(now_ms) {
+                let decoded = protocol::wire::decode(&bytes);
+                let channel = match decoded {
+                    Ok(WireMessage::Input(InputEvent::MouseMove { .. })) => Channel::InputFast,
+                    _ => Channel::InputReliable,
+                };
+                let _ = node.send_wire_bytes(channel, &bytes);
             }
         }
 
@@ -2067,7 +2491,14 @@ fn run(args: Args) -> i32 {
                                 y,
                             });
                             for bytes in chaos.transform(protocol::wire::encode(&msg)) {
-                                let _ = node.send_wire_bytes(Channel::InputFast, &bytes);
+                                let _ = send_input_maybe_delayed(
+                                    &mut node,
+                                    &mut input_delay,
+                                    args.input_delay_ms,
+                                    clock.now_ms(),
+                                    Channel::InputFast,
+                                    &bytes,
+                                );
                             }
                         }
                         reliable_sent += 1;
@@ -2091,7 +2522,14 @@ fn run(args: Args) -> i32 {
                             })
                         };
                         for bytes in chaos.transform(protocol::wire::encode(&msg)) {
-                            if let Err(err) = node.send_wire_bytes(Channel::InputReliable, &bytes) {
+                            if let Err(err) = send_input_maybe_delayed(
+                                &mut node,
+                                &mut input_delay,
+                                args.input_delay_ms,
+                                clock.now_ms(),
+                                Channel::InputReliable,
+                                &bytes,
+                            ) {
                                 let _ = err;
                                 reliable_send_errors += 1;
                             }
@@ -2199,8 +2637,8 @@ fn run(args: Args) -> i32 {
                             "[{device}] re-establishing after network change ({} ms after host-down)",
                             wait_started.elapsed().as_millis()
                         );
-                        match fresh_transport(false) {
-                            Ok(transport) => node.attach_transport(transport),
+                        match fresh_transport_opts(false, &args) {
+                            Ok((transport, _)) => node.attach_transport(transport),
                             Err(err) => {
                                 failure_reason = format!("rebuild transport: {err}");
                                 phase = CtrlPhase::Finished;
@@ -2298,8 +2736,8 @@ fn run(args: Args) -> i32 {
                             phase = CtrlPhase::Finished;
                             continue;
                         }
-                        match fresh_transport(false) {
-                            Ok(transport) => node.attach_transport(transport),
+                        match fresh_transport_opts(false, &args) {
+                            Ok((transport, _)) => node.attach_transport(transport),
                             Err(err) => {
                                 failure_reason = format!("rebuild transport: {err}");
                                 phase = CtrlPhase::Finished;
@@ -2470,6 +2908,23 @@ fn run(args: Args) -> i32 {
         keyframe_forced += counters.keyframe_forced.load(Ordering::Relaxed);
         cursor_positions_tx += counters.cursor_positions.load(Ordering::Relaxed);
     }
+    // M5: live-reconfig / fps-retarget evidence across every host pipeline
+    // (finished + the live one at exit).
+    let mut reconfig_live = 0u64;
+    let mut reconfig_rebuilt = 0u64;
+    let mut reconfig_errors = 0u64;
+    let mut fps_retargets = 0u64;
+    let mut all_host_counters: Vec<&Arc<HostPipeCounters>> =
+        observer.finished_host_pipes.iter().collect();
+    if let Some(pipeline) = observer.host_pipeline.as_ref() {
+        all_host_counters.push(&pipeline.counters);
+    }
+    for counters in &all_host_counters {
+        reconfig_live += counters.reconfig_live.load(Ordering::Relaxed);
+        reconfig_rebuilt += counters.reconfig_rebuilt.load(Ordering::Relaxed);
+        reconfig_errors += counters.reconfig_errors.load(Ordering::Relaxed);
+        fps_retargets += counters.fps_retargets.load(Ordering::Relaxed);
+    }
     let (pacer_ticks_total, pacer_skipped_total) =
         observer
             .finished_pacers
@@ -2592,6 +3047,11 @@ fn run(args: Args) -> i32 {
             "stream_secs": stream_secs,
             "fps_effective": encoded as f64 / stream_secs,
             "fps_target": args.fps,
+            "reconfig_live": reconfig_live,
+            "reconfig_rebuilt": reconfig_rebuilt,
+            "reconfig_errors": reconfig_errors,
+            "fps_retargets": fps_retargets,
+            "encode_size": format!("{}x{}", rig_args.encode_w, rig_args.encode_h),
             "pacer": {
                 "ticks": pacer_ticks_total,
                 "skipped": pacer_skipped_total,
@@ -2650,6 +3110,18 @@ fn run(args: Args) -> i32 {
             "reliable_send_errors": reliable_send_errors,
             "final_position_sent": final_position_sent,
             "seed": args.seed,
+        });
+        // M5 evidence: congestion decisions + netem shaping state.
+        summary["congestion"] = serde_json::json!({
+            "enabled": args.congestion,
+            "events": congestion_events,
+            "input_delay_ms": args.input_delay_ms,
+            "input_delay_dropped": input_delay.dropped,
+            "input_delay_delivered": input_delay.delivered,
+        });
+        summary["netem"] = serde_json::json!({
+            "initial": args.netem,
+            "schedule": args.netem_schedule,
         });
     }
     if let Some(stats) = final_transport_stats {

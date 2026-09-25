@@ -1,0 +1,1291 @@
+{
+ "cells": {
+  "baseline": {
+   "cell": "baseline",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 1327,
+   "frames_presented": 1105,
+   "fps_encoded": 20.9,
+   "fps_presented": 17.3,
+   "send_bitrate_kbps": {
+    "p50": 711,
+    "p95": 1876,
+    "p99": 2074,
+    "max": 2074
+   },
+   "recv_bitrate_kbps": {
+    "p50": 618,
+    "p95": 1934,
+    "p99": 2268,
+    "max": 2268
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.18,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 2.5841,
+     "p95": 131.4449,
+     "p99": 250.3003,
+     "max": 364.845
+    },
+    "recv_to_present": {
+     "p50": 2.1629,
+     "p95": 22.1974,
+     "p99": 47.4792,
+     "max": 59.994
+    },
+    "input_to_visible_proxy_p50": 4.9
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 81,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1180
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 1302,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 5909,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 387.6066577707761,
+    "relay_in_use": false,
+    "rtt_ms": 0.19699999999999998,
+    "selected_pair": {
+     "local": "127.0.0.1:51592",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:51591",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "loss1": {
+   "cell": "loss1",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 431,
+   "frames_presented": 240,
+   "fps_encoded": 6.8,
+   "fps_presented": 3.7,
+   "send_bitrate_kbps": {
+    "p50": 285,
+    "p95": 451,
+    "p99": 860,
+    "max": 860
+   },
+   "recv_bitrate_kbps": {
+    "p50": 285,
+    "p95": 451,
+    "p99": 864,
+    "max": 864
+   },
+   "loss_percent_mean": 0.78,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.219,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 147.2132,
+     "p95": 333.9399,
+     "p99": 344.0209,
+     "max": 367.5047
+    },
+    "recv_to_present": {
+     "p50": 2.6838,
+     "p95": 35.3406,
+     "p99": 41.2893,
+     "max": 46.287
+    },
+    "input_to_visible_proxy_p50": 150.1
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 124,
+   "frames_missing_packets": 1,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1165
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 14,
+    "frames_received": 408,
+    "frames_sent": 0,
+    "loss_percent": 0.8459483526268923,
+    "packets_lost": 19,
+    "packets_received": 2227,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 304.0146003600225,
+    "relay_in_use": false,
+    "rtt_ms": 0.44020000000000004,
+    "selected_pair": {
+     "local": "127.0.0.1:57005",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:57004",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "loss3": {
+   "cell": "loss3",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 444,
+   "frames_presented": 200,
+   "fps_encoded": 7.0,
+   "fps_presented": 3.1,
+   "send_bitrate_kbps": {
+    "p50": 277,
+    "p95": 493,
+    "p99": 865,
+    "max": 865
+   },
+   "recv_bitrate_kbps": {
+    "p50": 283,
+    "p95": 486,
+    "p99": 866,
+    "max": 866
+   },
+   "loss_percent_mean": 2.27,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.224,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 151.3757,
+     "p95": 330.1495,
+     "p99": 345.5817,
+     "max": 431.5391
+    },
+    "recv_to_present": {
+     "p50": 2.6884,
+     "p95": 39.7351,
+     "p99": 48.6334,
+     "max": 51.911
+    },
+    "input_to_visible_proxy_p50": 154.3
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 125,
+   "frames_missing_packets": 3,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1181
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 44,
+    "frames_received": 381,
+    "frames_sent": 0,
+    "loss_percent": 2.488401518346689,
+    "packets_lost": 59,
+    "packets_received": 2312,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 407.6164790488603,
+    "relay_in_use": false,
+    "rtt_ms": 0.2529,
+    "selected_pair": {
+     "local": "127.0.0.1:50686",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:50685",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "loss5": {
+   "cell": "loss5",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 472,
+   "frames_presented": 139,
+   "fps_encoded": 7.4,
+   "fps_presented": 2.2,
+   "send_bitrate_kbps": {
+    "p50": 268,
+    "p95": 553,
+    "p99": 958,
+    "max": 958
+   },
+   "recv_bitrate_kbps": {
+    "p50": 270,
+    "p95": 460,
+    "p99": 960,
+    "max": 960
+   },
+   "loss_percent_mean": 4.83,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.241,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 76.4101,
+     "p95": 317.6077,
+     "p99": 358.7877,
+     "max": 511.8006
+    },
+    "recv_to_present": {
+     "p50": 2.5344,
+     "p95": 28.7051,
+     "p99": 43.6699,
+     "max": 48.0149
+    },
+    "input_to_visible_proxy_p50": 79.2
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 2,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 145,
+   "frames_missing_packets": 17,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1184
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 77,
+    "frames_received": 370,
+    "frames_sent": 0,
+    "loss_percent": 5.080645161290323,
+    "packets_lost": 126,
+    "packets_received": 2354,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 270.17455420241396,
+    "relay_in_use": false,
+    "rtt_ms": 0.26170000000000004,
+    "selected_pair": {
+     "local": "127.0.0.1:57659",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:57658",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "loss10": {
+   "cell": "loss10",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 478,
+   "frames_presented": 60,
+   "fps_encoded": 7.5,
+   "fps_presented": 0.9,
+   "send_bitrate_kbps": {
+    "p50": 317,
+    "p95": 554,
+    "p99": 939,
+    "max": 939
+   },
+   "recv_bitrate_kbps": {
+    "p50": 308,
+    "p95": 554,
+    "p99": 940,
+    "max": 940
+   },
+   "loss_percent_mean": 10.16,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.225,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 138.0055,
+     "p95": 295.5129,
+     "p99": 353.0663,
+     "max": 474.0128
+    },
+    "recv_to_present": {
+     "p50": 2.8709,
+     "p95": 26.3787,
+     "p99": 58.0055,
+     "max": 58.0055
+    },
+    "input_to_visible_proxy_p50": 141.1
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 2,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 227,
+   "frames_missing_packets": 56,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1188
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 135,
+    "frames_received": 289,
+    "frames_sent": 0,
+    "loss_percent": 10.607657182999649,
+    "packets_lost": 302,
+    "packets_received": 2545,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 240.32141700675467,
+    "relay_in_use": false,
+    "rtt_ms": 0.1884,
+    "selected_pair": {
+     "local": "127.0.0.1:60402",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:60401",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "rtt50": {
+   "cell": "rtt50",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 3276,
+   "frames_presented": 2398,
+   "fps_encoded": 51.4,
+   "fps_presented": 37.4,
+   "send_bitrate_kbps": {
+    "p50": 2208,
+    "p95": 2332,
+    "p99": 2451,
+    "max": 2451
+   },
+   "recv_bitrate_kbps": {
+    "p50": 2199,
+    "p95": 2352,
+    "p99": 2453,
+    "max": 2453
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.229,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 1.8071,
+     "p95": 4.2801,
+     "p99": 59.9826,
+     "max": 326.638
+    },
+    "recv_to_present": {
+     "p50": 2.2357,
+     "p95": 33.4717,
+     "p99": 47.5678,
+     "max": 53.763
+    },
+    "input_to_visible_proxy_p50": 4.3
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 32,
+    "channel_input_reliable": 8,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 131,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1180
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 3226,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 14894,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 2232.460185854067,
+    "relay_in_use": false,
+    "rtt_ms": 0.1459,
+    "selected_pair": {
+     "local": "127.0.0.1:62707",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:62706",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "rtt150": {
+   "cell": "rtt150",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 3470,
+   "frames_presented": 2651,
+   "fps_encoded": 54.5,
+   "fps_presented": 41.4,
+   "send_bitrate_kbps": {
+    "p50": 2263,
+    "p95": 2355,
+    "p99": 2382,
+    "max": 2382
+   },
+   "recv_bitrate_kbps": {
+    "p50": 2261,
+    "p95": 2356,
+    "p99": 2386,
+    "max": 2386
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.217,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 5.4681,
+     "p95": 10.6245,
+     "p99": 17.4897,
+     "max": 128.0031
+    },
+    "recv_to_present": {
+     "p50": 2.4419,
+     "p95": 34.7811,
+     "p99": 49.6734,
+     "max": 55.8559
+    },
+    "input_to_visible_proxy_p50": 8.1
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 32,
+    "channel_input_reliable": 9,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 4,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 128,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1180
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 3429,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 16506,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 2162.14162969704,
+    "relay_in_use": false,
+    "rtt_ms": 0.2333,
+    "selected_pair": {
+     "local": "127.0.0.1:63037",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:63036",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "rtt250": {
+   "cell": "rtt250",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 1303,
+   "frames_presented": 848,
+   "fps_encoded": 20.4,
+   "fps_presented": 13.2,
+   "send_bitrate_kbps": {
+    "p50": 329,
+    "p95": 2442,
+    "p99": 2517,
+    "max": 2517
+   },
+   "recv_bitrate_kbps": {
+    "p50": 318,
+    "p95": 2443,
+    "p99": 2499,
+    "max": 2499
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.221,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 5.6903,
+     "p95": 215.1991,
+     "p99": 331.227,
+     "max": 351.135
+    },
+    "recv_to_present": {
+     "p50": 2.6104,
+     "p95": 36.1414,
+     "p99": 49.2648,
+     "max": 57.4168
+    },
+    "input_to_visible_proxy_p50": 8.5
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 32,
+    "channel_input_reliable": 6,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 4,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 111,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 185
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1207
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 1298,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 6368,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 146.55361406403557,
+    "relay_in_use": false,
+    "rtt_ms": 0.2205,
+    "selected_pair": {
+     "local": "127.0.0.1:52160",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:61771",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "bwstep": {
+   "cell": "bwstep",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 4490,
+   "frames_presented": 4087,
+   "fps_encoded": 53.6,
+   "fps_presented": 48.6,
+   "send_bitrate_kbps": {
+    "p50": 2211,
+    "p95": 2311,
+    "p99": 2343,
+    "max": 2343
+   },
+   "recv_bitrate_kbps": {
+    "p50": 2207,
+    "p95": 2298,
+    "p99": 2367,
+    "max": 2367
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.208,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 2.4204,
+     "p95": 7.66,
+     "p99": 13.9608,
+     "max": 83.6885
+    },
+    "recv_to_present": {
+     "p50": 2.713,
+     "p95": 24.6993,
+     "p99": 40.5514,
+     "max": 56.3243
+    },
+    "input_to_visible_proxy_p50": 5.3
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 169,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 3,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1195
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 4444,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 21414,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 2291.0894780054077,
+    "relay_in_use": false,
+    "rtt_ms": 0.2207,
+    "selected_pair": {
+     "local": "127.0.0.1:50684",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:62280",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "worst": {
+   "cell": "worst",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 435,
+   "frames_presented": 58,
+   "fps_encoded": 6.8,
+   "fps_presented": 0.9,
+   "send_bitrate_kbps": {
+    "p50": 257,
+    "p95": 428,
+    "p99": 935,
+    "max": 935
+   },
+   "recv_bitrate_kbps": {
+    "p50": 253,
+    "p95": 424,
+    "p99": 936,
+    "max": 936
+   },
+   "loss_percent_mean": 10.32,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.226,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 149.6043,
+     "p95": 324.5433,
+     "p99": 352.4735,
+     "max": 442.4456
+    },
+    "recv_to_present": {
+     "p50": 2.7914,
+     "p95": 55.2441,
+     "p99": 66.2728,
+     "max": 66.2728
+    },
+    "input_to_visible_proxy_p50": 152.6
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 32,
+    "channel_input_reliable": 9,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 3,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 178,
+   "frames_missing_packets": 39,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 184
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1184
+     ]
+    ],
+    "ends": [
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 113,
+    "frames_received": 269,
+    "frames_sent": 0,
+    "loss_percent": 10.285474391267842,
+    "packets_lost": 245,
+    "packets_received": 2137,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 312.6666617414826,
+    "relay_in_use": false,
+    "rtt_ms": 0.2716,
+    "selected_pair": {
+     "local": "127.0.0.1:51833",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:51832",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "iface": {
+   "cell": "iface",
+   "failed": false,
+   "failures": [],
+   "frames_encoded": 729,
+   "frames_presented": 468,
+   "fps_encoded": 6.7,
+   "fps_presented": 4.4,
+   "send_bitrate_kbps": {
+    "p50": 271,
+    "p95": 471,
+    "p99": 912,
+    "max": 1278
+   },
+   "recv_bitrate_kbps": {
+    "p50": 269,
+    "p95": 463,
+    "p99": 913,
+    "max": 1643
+   },
+   "loss_percent_mean": 0.0,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 4000,
+    "p95": 4000,
+    "p99": 4000,
+    "max": 4000
+   },
+   "ice_rtt_ms_mean": 0.224,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": 142.4181,
+     "p95": 341.2807,
+     "p99": 377.9894,
+     "max": 481.2421
+    },
+    "recv_to_present": {
+     "p50": 2.4624,
+     "p95": 36.8971,
+     "p99": 62.0972,
+     "max": 78.2217
+    },
+    "input_to_visible_proxy_p50": 145.1
+   },
+   "queue_high_water": {
+    "channel_control": 1,
+    "channel_input_fast": 30,
+    "channel_input_reliable": 1,
+    "channel_cursor": 1,
+    "capture_to_encode": 1,
+    "encode_to_send": 1,
+    "recv_to_decode": 4,
+    "decode_to_present": 1
+   },
+   "keyframe_requests": 192,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [
+     3600000
+    ],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [
+     [
+      "rig-controller-ctrl-2",
+      1204
+     ],
+     [
+      "rig-controller-ctrl-8",
+      1162
+     ]
+    ],
+    "ends": [
+     "Peer",
+     "User"
+    ],
+    "established": [
+     "rig-controller-ctrl-2",
+     "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 42.6673917
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 416,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 2267,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 336.23439470318016,
+    "relay_in_use": false,
+    "rtt_ms": 0.1617,
+    "selected_pair": {
+     "local": "127.0.0.1:51970",
+     "local_type": "host",
+     "nominated": true,
+     "remote": "127.0.0.1:51969",
+     "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+   }
+  },
+  "udpblocked": {
+   "cell": "udpblocked",
+   "failed": true,
+   "failures": [
+    "connect timeout",
+    "no session established"
+   ],
+   "frames_encoded": 0,
+   "frames_presented": 0,
+   "fps_encoded": null,
+   "fps_presented": 0.0,
+   "send_bitrate_kbps": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+   },
+   "recv_bitrate_kbps": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+   },
+   "loss_percent_mean": null,
+   "remote_loss_percent_mean": 0.0,
+   "gcc_estimate_kbps": {
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+   },
+   "ice_rtt_ms_mean": null,
+   "latency_ms": {
+    "capture_to_send": {
+     "p50": null,
+     "p95": null,
+     "p99": null,
+     "max": null
+    },
+    "recv_to_present": {
+     "p50": null,
+     "p95": null,
+     "p99": null,
+     "max": null
+    },
+    "input_to_visible_proxy_p50": null
+   },
+   "queue_high_water": {
+    "channel_control": 0,
+    "channel_input_fast": 0,
+    "channel_input_reliable": 0,
+    "channel_cursor": 0
+   },
+   "keyframe_requests": 0,
+   "frames_missing_packets": 0,
+   "congestion": {
+    "enabled": false,
+    "decision_count": 0,
+    "bitrate_targets_kbps": [],
+    "reconfig_live": 0,
+    "reconfig_rebuilt": 0,
+    "reconfig_errors": 0,
+    "fps_retargets": 0,
+    "live_bitrate_steps_bps": [],
+    "netem_schedule_swaps": 0,
+    "resolution_step_downs": 0,
+    "input_delay_dropped": 0
+   },
+   "recovery": {
+    "connect_attempts_ms": [],
+    "ends": [
+     "Peer"
+    ],
+    "established": [],
+    "netchange_at_stream_elapsed_s": 0.0
+   },
+   "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 0,
+    "loss_percent": null,
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": null,
+    "selected_pair": null,
+    "send_bitrate_kbps": null
+   }
+  }
+ },
+ "generated_from": "C:\\Remote.deepflux.space\\docs\\reports\\data\\m5-matrix-run2"
+}

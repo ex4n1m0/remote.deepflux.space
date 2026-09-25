@@ -1,0 +1,173 @@
+[rig-controller] m2_rig role=controller scenario=soak dir=C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-MO4qyw stream=64s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: docs/reports/data/m5-matrix\m5-loss5-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-MO4qyw out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1184 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-fast"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      27464,
+      45464
+    ],
+    "moves_sent": 3000,
+    "reliable_send_errors": 0,
+    "reliable_sent": 100,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 9,
+    "device_lost": 0,
+    "fps_presented": 2.1702648296572957,
+    "frame_id_gaps": 128,
+    "frames_decoded": 139,
+    "frames_missing_packets": 17,
+    "frames_presented": 139,
+    "frames_received": 371,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 223,
+    "keyframe_requests_sent": 145,
+    "render_secs": 64.0474831
+  },
+  "cursor": {
+    "overlays_received": 113,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 66.5504465,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "docs/reports/data/m5-matrix\\m5-loss5-rig-controller.jsonl",
+    "records": 2835
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 3,
+    "envelopes_sent": 8,
+    "heartbeats_raised": 4,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 3247
+  },
+  "proc": {
+    "final": {
+      "handles": 608,
+      "private_mib": 109.7109375,
+      "threads": 40,
+      "ws_mib": 79.83984375
+    },
+    "per_session": [
+      {
+        "handles": 642,
+        "private_mib": 121.09765625,
+        "session": "rig-controller-ctrl-2",
+        "threads": 45,
+        "ws_mib": 90.1953125
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 625,
+        "private_mib": 120.9921875,
+        "threads": 44,
+        "ws_mib": 90.39453125
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1184
+      ]
+    ],
+    "ends": [
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 77,
+    "frames_received": 370,
+    "frames_sent": 0,
+    "loss_percent": 5.080645161290323,
+    "packets_lost": 126,
+    "packets_received": 2354,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 270.17455420241396,
+    "relay_in_use": false,
+    "rtt_ms": 0.26170000000000004,
+    "selected_pair": {
+      "local": "127.0.0.1:57659",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:57658",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

@@ -162,7 +162,14 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
   introspection for the resource sampler (`GetProcessTimes`/
   `GetProcessMemoryInfo`, `metrics.rs`), and diagnostic windows in its
   example binaries (stimulus/viewer). Anything beyond that list still
-  belongs in a `*-windows` crate.
+  belongs in a `*-windows` crate. **CR-2 landed (M5, 2026-09-25):** the
+  last app-side Win32 unsafe (viewer input capture: window subclass proc,
+  focus-loss, destination-rect mapping) moved from
+  `apps/desktop`/`engine/viewer.rs` into `input-windows::capture` behind
+  the narrow `PresenterInput` trait; the fullscreen window-style toggle
+  moved into `render-windows::PresenterWindow::toggle_borderless_fullscreen`.
+  `apps/desktop` is unsafe-free again; the placement split is documented in
+  `input-windows/src/capture.rs`'s module docs.
 
 ## Workflow for agents
 

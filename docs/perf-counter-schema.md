@@ -143,6 +143,13 @@ Soak and WAN-matrix evidence beyond frame timing (all fields `Option`;
   integer field serialized every committed M2 loopback sample as `0`
   (measured RTT 0.18–0.2 ms). `f32` matches `loss_percent`'s numeric
   policy; JSON consumers reading the field as a number are unaffected.
+  **2026-09-25 (M5, RD-013, additive optional fields):**
+  `available_bandwidth_kbps` (sender-side congestion estimate — `rtc`'s
+  GCC over TWCC feedback; `None` when the transport runs without
+  congestion control), `remote_loss_percent`, and `remote_rtt_ms`
+  (receiver-reported RTCP-RR projection of the outbound stream — the
+  sender's media-path loss/RTT signals, distinct from the ICE pair's
+  `rtt_ms`). Additive within the version per the policy above.
 
 ## CounterRecord
 
@@ -203,6 +210,8 @@ Stages emit through `PerfSink::record`. Requirements:
   typed Tauri commands — counters are fine over IPC, frames are not).
 - **M5**: RTT/loss joined per frame via `LinkSample`; congestion response
   measured against the gauges; input-to-visible reported with the F8 proxy
-  label until the input counters land.
+  label until the input counters land. (Delivered: `LinkSample` now carries
+  the GCC estimate + RR loss/RTT above; the M5 matrix JSONL under
+  `docs/reports/data/m5-matrix/` is the reference recording.)
 - **M6**: soak gate consumes the full schema (session-scoped); pass/fail from
   distributions, never from FPS alone.

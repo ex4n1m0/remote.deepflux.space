@@ -153,6 +153,53 @@ pub struct TransportStats {
     /// the runtime polls slower than messages arrive. Nonzero on a lossless
     /// link means the consuming loop is the bottleneck, not the network.
     pub events_dropped: u64,
+    // --- M5 additions (congestion + netem; all `None`/0 when inactive). ---
+    /// Sender-side bandwidth estimate from the configured congestion
+    /// controller (M5: `Gcc` over TWCC feedback), bits per second. `None`
+    /// when the transport was built without congestion control.
+    pub available_bandwidth_bps: Option<u64>,
+    /// Receiver-reported fraction lost for the OUTBOUND stream (RTCP RR via
+    /// `remote-inbound-rtp` stats), percent — the media-path loss signal a
+    /// sender-side congestion policy reacts to. `None` until the first
+    /// receiver report arrives.
+    pub remote_loss_percent: Option<f64>,
+    /// RTT implied by the most recent receiver report (media path),
+    /// milliseconds. `None` until the first RR.
+    pub remote_rtt_ms: Option<f64>,
+    /// Sender-side loss-derived state of the estimator (delay vs loss
+    /// halves), for diagnostics. `None` without congestion control.
+    pub congestion_stats: Option<CongestionStats>,
+    /// Netem shaper queue (invariant 3: bounded, counted). `None` when no
+    /// shaper is configured.
+    pub netem_queue: Option<NetemQueueStats>,
+}
+
+/// Sender-side congestion estimator snapshot (M5).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CongestionStats {
+    /// Delay-based half of the estimate, bps.
+    pub delay_based_bps: Option<u64>,
+    /// Loss-based half of the estimate, bps.
+    pub loss_based_bps: Option<u64>,
+    /// Remote-reported loss fraction over the estimator's window (0..=1).
+    pub packet_loss: Option<f64>,
+    /// RTT implied by the most recent feedback, milliseconds.
+    pub rtt_ms: Option<f64>,
+    /// How many times the estimate has changed since transport creation.
+    pub updates: u64,
+}
+
+/// Netem shaper queue gauges (the M5 matrix's shaped link; invariant 3
+/// evidence — the shaper's queue is bounded and its overflow is counted).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NetemQueueStats {
+    pub depth: u32,
+    pub capacity: u32,
+    /// Packets dropped by the shaper: injected loss, blackhole, and
+    /// queue-overflow (bandwidth step-downs) combined.
+    pub dropped: u64,
+    /// Packets released to the wire so far.
+    pub delivered: u64,
 }
 
 /// Per-channel send-queue gauges (depth/capacity plus cumulative counters).
@@ -318,7 +365,10 @@ pub mod chaos;
 pub mod engine;
 pub mod rtp;
 
-pub use engine::{WebrtcTransport, WebrtcTransportRole};
+pub use engine::{
+    CongestionOptions, DEFAULT_STUN_SERVERS, NetemHandle, WebrtcTransport, WebrtcTransportOptions,
+    WebrtcTransportRole,
+};
 
 #[cfg(test)]
 mod tests {

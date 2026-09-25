@@ -1,0 +1,187 @@
+[rig-host] m2_rig role=host scenario=soak dir=C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-QE7mBS stream=64s seed=2026 drop-fast=10 reorder-fast=5 drop-reliable-every=40
+[rig-host] metrics: docs/reports/data/m5-matrix\m5-loss10-rig-host.jsonl
+[rig-host] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-host] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-QE7mBS out=h2c.jsonl, in=c2h.jsonl)
+[rig-host] host -> Registering
+[rig-host] host -> Online
+[rig-host] consent prompt #1, session rig-controller-ctrl-2 (auto-accept in 300 ms)
+[rig-host] host -> ConsentPrompted
+[rig-host] loop alive, host=ConsentPrompted
+[rig-host] host -> Exchanging
+[rig-host] host -> Connecting
+[rig-host] host -> Connecting
+[rig-host] session established: rig-controller-ctrl-2
+[rig-host] host -> Connected
+[rig-host] streaming started
+[host] capture: \\.\DISPLAY5 at 3840x2160, pacer fps 60
+[host] capture pacer mode: high-resolution waitable timer
+[rig-host] congestion decision: bitrate=Some(3600000) fps=None res_down=false ()
+[host] encoder: NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 8000000 bps CBR, GOP 120)
+[host] congestion: bitrate -> 3600000 bps (live)
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] loop alive, host=Connected
+[rig-host] control goodbye received (User)
+[rig-host] streaming stopped
+[rig-host] session ended: Peer
+[rig-host] host -> Disconnected
+[rig-host] done marker observed
+[rig-host] summary:
+{
+  "all_keys_up_disconnect": 2,
+  "channel_open_order": [
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast"
+  ],
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 67.543893,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 1,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 59.186315801633306,
+    "fps_retargets": 0,
+    "fps_target": 60,
+    "frames_captured": 3819,
+    "frames_encoded": 3792,
+    "keyframe_forced": 463,
+    "keyframes": 464,
+    "pacer": {
+      "fps_tick_rate": 59.84186043867671,
+      "skipped": 36,
+      "ticks": 3834
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 1,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 64.0688637
+  },
+  "input": {
+    "all_keys_up": 3,
+    "final_position": [
+      27464,
+      45464
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 2948,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 98,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 1
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "docs/reports/data/m5-matrix\\m5-loss10-rig-host.jsonl",
+    "records": 18599
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 4,
+    "envelopes_sent": 7,
+    "heartbeats_raised": 4,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 3
+  },
+  "proc": {
+    "final": {
+      "handles": 619,
+      "private_mib": 283.35546875,
+      "threads": 39,
+      "ws_mib": 103.75
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 644,
+        "private_mib": 294.64453125,
+        "threads": 43,
+        "ws_mib": 114.53125
+      }
+    ]
+  },
+  "prompts": 1,
+  "real_input": false,
+  "role": "host",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 54,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 3341,
+    "loss_percent": null,
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 13648,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.1751,
+    "selected_pair": {
+      "local": "127.0.0.1:63486",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:61970",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 1714.0809659665888
+  }
+}

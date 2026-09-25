@@ -54,6 +54,13 @@ pub struct HostPipeCounters {
     pub monitor_switches: AtomicU64,
     pub display_changed: AtomicU64,
     pub encode_errors: AtomicU64,
+    /// M5 congestion: live `ICodecAPI` bitrate reconfigurations (CR-1 —
+    /// never a rebuild on this machine's encoders), internal rebuilds,
+    /// failed attempts, and pacer fps retargets.
+    pub reconfig_live: AtomicU64,
+    pub reconfig_rebuilt: AtomicU64,
+    pub reconfig_errors: AtomicU64,
+    pub fps_retargets: AtomicU64,
 }
 
 /// Host-stage runtime control shared with the engine loop.
@@ -67,6 +74,11 @@ pub struct HostCtl {
     /// Capture thread saw a display change (engine refreshes the input
     /// sink's display metrics once per edge).
     pub display_changed_edge: AtomicBool,
+    /// M5 congestion slots: the engine loop writes a wanted bitrate (live
+    /// reconfigure) / fps cap; the owning thread applies it on its next
+    /// iteration. One pending slot each, newest wins (bounded).
+    pub want_params: Arc<Mutex<Option<codec_windows::EncoderParams>>>,
+    pub want_fps: Arc<Mutex<Option<u32>>>,
 }
 
 impl HostCtl {
@@ -76,6 +88,8 @@ impl HostCtl {
             active_monitor: Mutex::new(monitor.to_owned()),
             force_keyframe: Arc::new(AtomicBool::new(false)),
             display_changed_edge: AtomicBool::new(false),
+            want_params: Arc::new(Mutex::new(None)),
+            want_fps: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -184,6 +198,18 @@ impl HostPipeline {
                         let mut pacer = FramePacer::new(fps);
                         pacer.start();
                         while !stop.load(Ordering::Acquire) {
+                            // M5: apply a congestion fps retarget (if any).
+                            if let Some(next_fps) = ctl.want_fps.lock().expect("want fps").take()
+                                && next_fps != pacer.fps()
+                            {
+                                eprintln!(
+                                    "[host] congestion: fps cap {} -> {}",
+                                    pacer.fps(),
+                                    next_fps
+                                );
+                                pacer.retarget(next_fps);
+                                counters.fps_retargets.fetch_add(1, Ordering::Relaxed);
+                            }
                             pacer.wait();
                             // Monitor switch (SelectMonitor): swap the
                             // duplication, force a keyframe.
@@ -292,6 +318,7 @@ impl HostPipeline {
             let device = device.clone();
             let enc_cfg = plan.encoder_config();
             let describe_slot = Arc::clone(&encoder_describe);
+            let ctl = Arc::clone(&ctl);
             joins.push(
                 std::thread::Builder::new()
                     .name("encode".into())
@@ -310,6 +337,35 @@ impl HostPipeline {
                         *describe_slot.lock().expect("describe") = Some(encoder.describe());
                         eprintln!("[host] encoder: {}", encoder.describe());
                         loop {
+                            // M5: apply a congestion bitrate step LIVE via
+                            // `reconfigure` (CR-1: bitrate changes never
+                            // rebuild the MFT — the rebuild leak is priced
+                            // out of the adaptation path).
+                            if let Some(params) =
+                                ctl.want_params.lock().expect("want params").take()
+                            {
+                                match encoder.reconfigure(&params) {
+                                    Ok(codec_windows::ReconfigureOutcome::Live { .. }) => {
+                                        counters.reconfig_live.fetch_add(1, Ordering::Relaxed);
+                                        if let Some(bps) = params.bitrate_bps {
+                                            eprintln!(
+                                                "[host] congestion: bitrate -> {bps} bps (live)"
+                                            );
+                                        }
+                                    }
+                                    Ok(codec_windows::ReconfigureOutcome::Rebuilt { reason }) => {
+                                        counters.reconfig_rebuilt.fetch_add(1, Ordering::Relaxed);
+                                        eprintln!(
+                                            "[host] congestion: reconfigure rebuilt ({reason})"
+                                        );
+                                    }
+                                    Ok(codec_windows::ReconfigureOutcome::Noop) => {}
+                                    Err(e) => {
+                                        counters.reconfig_errors.fetch_add(1, Ordering::Relaxed);
+                                        eprintln!("[host] congestion: reconfigure failed: {e}");
+                                    }
+                                }
+                            }
                             let Some(item) = q_in.pop(Duration::from_millis(100)) else {
                                 if !q_in.is_open() {
                                     break;

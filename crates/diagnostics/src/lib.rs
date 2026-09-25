@@ -147,7 +147,7 @@ pub struct ResourceSample {
 /// Transport link quality (QA F7; RTT/loss filled from M5's transport
 /// statistics, bitrate from M2's RTP counters). `Option` for the same reason
 /// as [`ResourceSample`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LinkSample {
     pub session_id: String,
     pub send_bitrate_kbps: Option<u32>,
@@ -158,6 +158,16 @@ pub struct LinkSample {
     /// `docs/perf-counter-schema.md`.
     pub rtt_ms: Option<f32>,
     pub loss_percent: Option<f32>,
+    /// M5 (RD-013, additive optional per the schema policy): sender-side
+    /// congestion-estimator target (GCC over TWCC feedback), `None` when
+    /// the transport runs without congestion control.
+    pub available_bandwidth_kbps: Option<u32>,
+    /// M5: receiver-reported (RTCP RR) loss of the outbound stream,
+    /// percent — the sender's media-path loss signal.
+    pub remote_loss_percent: Option<f32>,
+    /// M5: RTT implied by the latest receiver report, ms (media path;
+    /// `rtt_ms` above is the ICE candidate pair).
+    pub remote_rtt_ms: Option<f32>,
     /// Same zero-based monotonic clock as `FrameTiming`.
     pub at_ns: u64,
 }
@@ -301,6 +311,9 @@ mod tests {
             recv_bitrate_kbps: None,
             rtt_ms: Some(12.5),
             loss_percent: Some(0.2),
+            available_bandwidth_kbps: Some(6_000),
+            remote_loss_percent: None,
+            remote_rtt_ms: None,
             at_ns: 2_000,
         });
         let value = serde_json::to_value(&record).unwrap();
@@ -380,6 +393,9 @@ mod tests {
                 recv_bitrate_kbps: Some(2),
                 rtt_ms: Some(3.25),
                 loss_percent: Some(0.0),
+                available_bandwidth_kbps: None,
+                remote_loss_percent: Some(1.5),
+                remote_rtt_ms: Some(42.0),
                 at_ns: 17,
             }),
         ];

@@ -3,12 +3,17 @@
 
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRect, CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
-    DispatchMessageW, GetClientRect, MSG, PM_REMOVE, PeekMessageW, RegisterClassW,
-    TranslateMessage, UnregisterClassW, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND,
-    WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    DispatchMessageW, GWL_STYLE, GetClientRect, GetWindowPlacement, MSG, PM_REMOVE, PeekMessageW,
+    RegisterClassW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, TranslateMessage, UnregisterClassW,
+    WINDOW_EX_STYLE, WINDOWPLACEMENT, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WNDCLASSW,
+    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_VISIBLE,
 };
 use windows::core::PCWSTR;
 use windows::core::w;
@@ -143,6 +148,74 @@ impl PresenterWindow {
     /// returns true, or the swapchain goes stale.
     pub fn take_resized(&mut self) -> bool {
         std::mem::take(&mut self.resized)
+    }
+
+    /// Toggle borderless fullscreen (M5 CR-2: the window-style unsafe that
+    /// lived in `apps/desktop`'s viewer now lives with the window). The
+    /// caller keeps the `fullscreen` flag and the saved window placement
+    /// (restored on leave). Failure handling: each Win32 call is
+    /// best-effort — a failed placement save still toggles the style; a
+    /// failed monitor query leaves the window at its current position.
+    pub fn toggle_borderless_fullscreen(
+        &self,
+        fullscreen: &mut bool,
+        saved: &mut Option<WINDOWPLACEMENT>,
+    ) {
+        unsafe {
+            if *fullscreen {
+                // Leave fullscreen: restore style + placement.
+                SetWindowLongPtrW(
+                    self.hwnd,
+                    GWL_STYLE,
+                    (WS_OVERLAPPEDWINDOW | WS_VISIBLE).0 as isize,
+                );
+                if let Some(placement) = saved.take() {
+                    let _ = SetWindowPlacement(self.hwnd, &placement);
+                }
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+                *fullscreen = false;
+            } else {
+                let mut placement = WINDOWPLACEMENT {
+                    length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+                    ..Default::default()
+                };
+                if GetWindowPlacement(self.hwnd, &mut placement).is_ok() {
+                    *saved = Some(placement);
+                }
+                SetWindowLongPtrW(self.hwnd, GWL_STYLE, (WS_POPUP | WS_VISIBLE).0 as isize);
+                let monitor = MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST);
+                let mut info = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                if GetMonitorInfoW(monitor, &mut info).as_bool() {
+                    let RECT {
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    } = info.rcMonitor;
+                    let _ = SetWindowPos(
+                        self.hwnd,
+                        None,
+                        left,
+                        top,
+                        right - left,
+                        bottom - top,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                }
+                *fullscreen = true;
+            }
+        }
     }
 }
 

@@ -97,7 +97,14 @@ impl ControllerPipeline {
         };
         let q_recv_dec = Arc::new(FrameQueue::new(
             QueueKind::RecvToDecode,
-            2,
+            // M5 matrix evidence: the GCC pacer releases ~0.1 s bursts
+            // (~6 frames at 1080p60); a cap of 2 dropped one frame per
+            // burst slip, and every drop cascaded through the decoder's
+            // IDR gate (~10 lost frames per gap — rtt150 cell: 3490
+            // received, 2102 presented). 8 absorbs a burst plus jitter
+            // while staying far below a latency-relevant backlog (8
+            // frames ≈ 133 ms, dropped by newest-wins long before).
+            8,
             // Bounded, drop-oldest (schema table): the stale frame drops
             // and surfaces as a frame-id gap → keyframe request.
             DropPolicy::NewestWins,
@@ -269,7 +276,7 @@ impl ControllerPipeline {
                                 }
                             }
                             let Some(item) = item else {
-                                if !viewer.pump_and_present(None) {
+                                if !viewer.pump_and_present(None, &viewer_ctl) {
                                     counters.window_closed.store(true, Ordering::Release);
                                     break;
                                 }
@@ -283,7 +290,7 @@ impl ControllerPipeline {
                                 surface: item.decoded.surface,
                             };
                             viewer.set_cursor(cursor_overlay);
-                            if !viewer.pump_and_present(Some(&rf)) {
+                            if !viewer.pump_and_present(Some(&rf), &viewer_ctl) {
                                 counters.window_closed.store(true, Ordering::Release);
                                 break;
                             }

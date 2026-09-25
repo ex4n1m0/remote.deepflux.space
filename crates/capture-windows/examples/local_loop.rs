@@ -396,6 +396,9 @@ fn main() {
                             rtt_ms: Some(0.0), // in-process wire stand-in
                             loss_percent: Some(0.0),
                             at_ns: clock.ns(),
+                            available_bandwidth_kbps: None,
+                            remote_loss_percent: None,
+                            remote_rtt_ms: None,
                         }));
                     }
                 }

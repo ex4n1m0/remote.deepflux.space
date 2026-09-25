@@ -20,6 +20,9 @@
 //!   `AllKeysUp`, fast-channel stale suppression, disconnect safety.
 //! * [`pacing::FramePacer`] — the M1 QA F20 fix: 60 Hz absolute-deadline
 //!   pacing on a high-resolution waitable timer (57 → 60 fps).
+//! * [`congestion`] — the M5 host-side congestion *policy* (encoder/pacer
+//!   steps with hysteresis) on top of the transport's GCC bandwidth
+//!   estimate; pure and clock-injected, unit-tested without a network.
 //! * [`metrics`] — session-scoped JSONL counter sink (F6), bounded
 //!   hand-off queues with F5 sampling, 1 Hz resource sampler.
 //!
@@ -35,6 +38,7 @@
 //! counted drop policy.
 
 pub mod clock;
+pub mod congestion;
 pub mod input;
 pub mod metrics;
 pub mod node;
@@ -44,6 +48,9 @@ pub mod signaling_remote;
 pub mod timers;
 
 pub use clock::{Clock, ManualClock, MonotonicClock};
+pub use congestion::{
+    CongestionController, CongestionDecision, CongestionParams, CongestionSample,
+};
 pub use node::{NoObserver, Node, NodeCounters, NodeObserver};
 pub use signaling::{
     FileSignaling, HubEndpoint, InboundEnvelope, SignalingDirection, SignalingHub, SignalingIo,

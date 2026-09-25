@@ -516,3 +516,363 @@ fn decode_move(bytes: &[u8]) -> (u64, u16, u16) {
         other => panic!("unexpected {other:?}"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// M5: STUN configuration, netem shaping, congestion estimate
+// ---------------------------------------------------------------------------
+
+use transport_webrtc::{CongestionOptions, WebrtcTransportOptions};
+
+/// TURN is rejected at the configuration layer (invariant 4) — the error
+/// is typed and names the invariant, before any peer connection exists.
+#[test]
+fn turn_ice_servers_are_rejected_at_configuration() {
+    let err = WebrtcTransport::with_options(
+        WebrtcTransportRole::Controller,
+        WebrtcTransportOptions {
+            ice_servers: vec!["turn:turn.example.com:3478".to_owned()],
+            ..Default::default()
+        },
+    )
+    .err()
+    .expect("TURN must be rejected");
+    assert!(
+        err.0.contains("invariant 4") && err.0.contains("TURN"),
+        "error must name the invariant: {err:?}"
+    );
+    let err = WebrtcTransport::with_options(
+        WebrtcTransportRole::Controller,
+        WebrtcTransportOptions {
+            ice_servers: vec!["turns:turn.example.com:5349".to_owned()],
+            ..Default::default()
+        },
+    )
+    .err()
+    .expect("TURN(S) must be rejected");
+    assert!(err.0.contains("invariant 4"));
+    // Unknown schemes fail typed too.
+    assert!(
+        WebrtcTransport::with_options(
+            WebrtcTransportRole::Controller,
+            WebrtcTransportOptions {
+                ice_servers: vec!["qt://example.com".to_owned()],
+                ..Default::default()
+            },
+        )
+        .is_err()
+    );
+    // Congestion tuning must be ordered.
+    assert!(
+        WebrtcTransport::with_options(
+            WebrtcTransportRole::Host,
+            WebrtcTransportOptions {
+                congestion: Some(CongestionOptions {
+                    initial_bps: 5_000_000,
+                    min_bps: 6_000_000,
+                    max_bps: 8_000_000,
+                }),
+                ..Default::default()
+            },
+        )
+        .is_err(),
+        "min>initial must be rejected"
+    );
+}
+
+/// The product (WAN) configuration — public STUN + all-interface sockets +
+/// sender-side congestion control — still connects over loopback (host
+/// candidates), never through a relay, and the selected pair surfaces in
+/// stats. Works offline (srflx gathering simply fails) and online (srflx
+/// appears; the dedicated internet-gated test pins that).
+#[test]
+fn wan_stun_configuration_loopback_still_connects() {
+    let mut controller = WebrtcTransport::with_options(
+        WebrtcTransportRole::Controller,
+        WebrtcTransportOptions {
+            ice_servers: transport_webrtc::DEFAULT_STUN_SERVERS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            bind_all_interfaces: true,
+            ..Default::default()
+        },
+    )
+    .expect("controller transport");
+    let mut host =
+        WebrtcTransport::with_options(WebrtcTransportRole::Host, WebrtcTransportOptions::wan())
+            .expect("host transport");
+
+    let (elapsed, _, _) = connect_pair(&mut controller, &mut host, Duration::from_secs(30));
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "STUN-configured loopback connect must stay inside the 5 s budget, took {elapsed:?}"
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let stats = host.stats().expect("host stats");
+    assert!(
+        !stats.relay_in_use,
+        "invariant 4: relay must never be in use, even with ICE servers configured"
+    );
+    let pair = stats.selected_pair.expect("selected pair");
+    println!(
+        "wan-config loopback selected pair: local {} ({}), remote {} ({})",
+        pair.local_address,
+        pair.local_candidate_type,
+        pair.remote_address,
+        pair.remote_candidate_type
+    );
+    // The host (sender) was built with congestion control: the estimate
+    // surface exists even before media flows (initial rate).
+    assert!(
+        stats.available_bandwidth_bps.is_some(),
+        "sender-side estimate must surface in stats"
+    );
+    controller.close();
+    host.close();
+}
+
+/// Internet-gated srflx evidence (run explicitly on a connected machine):
+/// with public STUN configured, a server-reflexive candidate must be
+/// gathered on the WAN-bound transport. `#[ignore]` so the offline gate
+/// stays deterministic.
+#[test]
+#[ignore = "needs internet access to the public STUN servers"]
+fn stun_gathers_srflx_when_online() {
+    use transport_webrtc::TransportEvent;
+
+    let mut controller = WebrtcTransport::with_options(
+        WebrtcTransportRole::Controller,
+        WebrtcTransportOptions {
+            ice_servers: transport_webrtc::DEFAULT_STUN_SERVERS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            bind_all_interfaces: true,
+            ..Default::default()
+        },
+    )
+    .expect("controller transport");
+    let _ = controller.compose_offer().expect("offer");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut srflx = 0;
+    let mut candidates = 0;
+    while Instant::now() < deadline {
+        while let Some(event) = controller.poll() {
+            if let TransportEvent::IceCandidate { candidate, .. } = event {
+                candidates += 1;
+                if candidate.contains(" typ srflx") {
+                    srflx += 1;
+                }
+            }
+        }
+        if srflx > 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    println!("gathered {candidates} candidates, {srflx} srflx");
+    assert!(
+        srflx > 0,
+        "public STUN must produce srflx candidates online"
+    );
+    controller.close();
+}
+
+/// Netem shapes the RTP path: a 100%-loss profile delivers nothing (and
+/// the drops surface in the bounded shaper's counters), then removing the
+/// loss recovers delivery — the mid-stream blackout/recovery cell.
+#[test]
+fn netem_blackhole_then_recovery() {
+    use transport_webrtc::chaos::NetemProfile;
+
+    let mut controller = WebrtcTransport::new(WebrtcTransportRole::Controller).expect("controller");
+    let mut host = WebrtcTransport::with_options(
+        WebrtcTransportRole::Host,
+        WebrtcTransportOptions {
+            video_netem: Some(NetemProfile::parse("loss=100").unwrap()),
+            ..Default::default()
+        },
+    )
+    .expect("host with netem");
+    let handle = host.netem_handle().expect("netem handle");
+    connect_pair(&mut controller, &mut host, Duration::from_secs(30));
+
+    // Warm up with delivery ON first (SRTP path ready), then blackhole.
+    handle.set_profile(NetemProfile::default());
+    let warmup = Instant::now();
+    while warmup.elapsed() < Duration::from_secs(5) {
+        let _ = host.send_video(VideoFrame {
+            frame_id: 1,
+            timestamp_ns: 0,
+            is_keyframe: true,
+            bytes: synthetic_access_unit(0, true),
+        });
+        if controller.poll_video().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        warmup.elapsed() < Duration::from_secs(5),
+        "unshaped frames must flow before the blackhole"
+    );
+
+    handle.set_profile(NetemProfile::parse("loss=100").unwrap());
+    let mut sent_blackout = 0u64;
+    let blackout = Instant::now();
+    while blackout.elapsed() < Duration::from_secs(2) {
+        let _ = host.send_video(VideoFrame {
+            frame_id: 2 + sent_blackout,
+            timestamp_ns: (sent_blackout + 1) * 16_666_667,
+            is_keyframe: false,
+            bytes: synthetic_access_unit(1, false),
+        });
+        sent_blackout += 1;
+        // Drain anything the receiver still has queued.
+        let _ = controller.poll_video();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let mut leaked = 0;
+    while controller.poll_video().is_some() {
+        leaked += 1;
+    }
+    assert_eq!(leaked, 0, "no shaped packet may cross a 100% blackhole");
+    let stats = host.stats().expect("host stats");
+    let netem = stats.netem_queue.expect("netem gauges");
+    assert!(
+        netem.dropped >= sent_blackout,
+        "drops must be counted: {} dropped for {sent_blackout} sent",
+        netem.dropped
+    );
+    assert_eq!(netem.capacity, 300);
+
+    // Recovery: clear the loss; frames must flow again.
+    handle.set_profile(NetemProfile::default());
+    let recovered = Instant::now();
+    let mut got = false;
+    while recovered.elapsed() < Duration::from_secs(5) {
+        let _ = host.send_video(VideoFrame {
+            frame_id: 9000,
+            timestamp_ns: 90_000_000_000,
+            is_keyframe: true,
+            bytes: synthetic_access_unit(2, true),
+        });
+        if let Some(frame) = controller.poll_video() {
+            assert_eq!(frame.frame_id, Some(9000));
+            got = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(got, "delivery must recover after the blackhole lifts");
+    controller.close();
+    host.close();
+}
+
+/// Netem delay lands in the receiver's first-packet arrival: +300 ms
+/// one-way must show up between send and `recv_instant` (matrix RTT
+/// cell mechanism; ICE RTT deliberately stays loopback-fast — see the
+/// chaos module docs).
+#[test]
+fn netem_delay_adds_one_way_latency() {
+    use transport_webrtc::chaos::NetemProfile;
+
+    let mut controller = WebrtcTransport::new(WebrtcTransportRole::Controller).expect("controller");
+    let mut host = WebrtcTransport::with_options(
+        WebrtcTransportRole::Host,
+        WebrtcTransportOptions {
+            video_netem: Some(NetemProfile::parse("delay_ms=300").unwrap()),
+            ..Default::default()
+        },
+    )
+    .expect("host with netem");
+    connect_pair(&mut controller, &mut host, Duration::from_secs(30));
+
+    let sent_at = Instant::now();
+    host.send_video(VideoFrame {
+        frame_id: 7,
+        timestamp_ns: 0,
+        is_keyframe: true,
+        bytes: synthetic_access_unit(0, true),
+    })
+    .expect("send");
+    let deadline = sent_at + Duration::from_secs(5);
+    let mut arrival: Option<Instant> = None;
+    while Instant::now() < deadline {
+        if let Some(frame) = controller.poll_video() {
+            assert_eq!(frame.frame_id, Some(7));
+            arrival = frame.recv_instant;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let arrival = arrival.expect("delayed frame must still arrive");
+    let one_way = arrival.saturating_duration_since(sent_at);
+    assert!(
+        one_way >= Duration::from_millis(250),
+        "one-way must include the +300 ms shaping, measured {one_way:?}"
+    );
+    assert!(
+        one_way < Duration::from_secs(2),
+        "shaping must not become a blackhole, measured {one_way:?}"
+    );
+    controller.close();
+    host.close();
+}
+
+/// With sender-side congestion control configured and a few seconds of
+/// flowing media + RTCP feedback, the estimate surface reports the GCC
+/// target and the receiver-report projection (remote loss/RTT) appears.
+#[test]
+fn congestion_estimate_and_remote_report_surface() {
+    let mut controller = WebrtcTransport::new(WebrtcTransportRole::Controller).expect("controller");
+    let mut host = WebrtcTransport::with_options(
+        WebrtcTransportRole::Host,
+        WebrtcTransportOptions {
+            congestion: Some(CongestionOptions {
+                initial_bps: 2_000_000,
+                min_bps: 300_000,
+                max_bps: 8_000_000,
+            }),
+            ..Default::default()
+        },
+    )
+    .expect("host with congestion");
+    connect_pair(&mut controller, &mut host, Duration::from_secs(30));
+
+    let started = Instant::now();
+    let mut frame = 0u64;
+    while started.elapsed() < Duration::from_secs(5) {
+        let keyframe = frame.is_multiple_of(30);
+        let _ = host.send_video(VideoFrame {
+            frame_id: frame,
+            timestamp_ns: frame * 16_666_667,
+            is_keyframe: keyframe,
+            bytes: synthetic_access_unit(frame % 256, keyframe),
+        });
+        while controller.poll_video().is_some() {}
+        frame += 1;
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let stats = host.stats().expect("host stats");
+    let estimate = stats
+        .available_bandwidth_bps
+        .expect("estimate must be published");
+    assert!(
+        (300_000..=8_000_000).contains(&estimate),
+        "estimate must stay within the configured band: {estimate}"
+    );
+    let congestion = stats.congestion_stats.expect("congestion stats");
+    println!(
+        "estimate={estimate} bps delay_based={:?} loss_based={:?} updates={}",
+        congestion.delay_based_bps, congestion.loss_based_bps, congestion.updates
+    );
+    // The controller's RTCP RRs feed remote-inbound-rtp on the sender.
+    assert!(
+        stats.remote_rtt_ms.is_some(),
+        "receiver-report RTT must reach the sender within 5 s of media"
+    );
+    let _ = stats.remote_loss_percent.expect("fraction lost present");
+    controller.close();
+    host.close();
+}

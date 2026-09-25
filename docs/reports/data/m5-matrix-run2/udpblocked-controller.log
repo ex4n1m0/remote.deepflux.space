@@ -1,0 +1,133 @@
+[rig-controller] m2_rig role=controller scenario=soak dir=C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-t7Do3F stream=15s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: docs/reports/data/m5-matrix\m5-udpblocked-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m5-matrix/.cell-t7Do3F out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] --blackhole-candidates: remote candidate ports -> 9 (UDP-blocked emulation)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] transport failure: add_remote_candidate failed: failed to parse address
+[rig-controller] session ended: Peer
+[rig-controller] controller -> Disconnected
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": null,
+    "moves_sent": 0,
+    "reliable_send_errors": 0,
+    "reliable_sent": 0,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 0.0,
+    "frame_id_gaps": 0,
+    "frames_decoded": 0,
+    "frames_missing_packets": 0,
+    "frames_presented": 0,
+    "frames_received": 0,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 0,
+    "keyframe_requests_sent": 0,
+    "render_secs": 0.001
+  },
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 31.1045907,
+  "failed": true,
+  "failures": [
+    "connect timeout",
+    "no session established"
+  ],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "docs/reports/data/m5-matrix\\m5-udpblocked-rig-controller.jsonl",
+    "records": 185
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 4,
+    "envelopes_sent": 5,
+    "heartbeats_raised": 1,
+    "ice_forward_errors": 1,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 0
+  },
+  "proc": {
+    "final": {
+      "handles": 437,
+      "private_mib": 53.890625,
+      "threads": 36,
+      "ws_mib": 40.375
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 450,
+        "private_mib": 65.11328125,
+        "threads": 39,
+        "ws_mib": 50.37109375
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "Peer"
+    ],
+    "established": [],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 1,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 0,
+    "loss_percent": null,
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": null,
+    "selected_pair": null,
+    "send_bitrate_kbps": null
+  }
+}

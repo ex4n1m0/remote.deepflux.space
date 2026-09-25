@@ -607,6 +607,10 @@ struct Engine {
     session_end_handled: bool,
     selected_monitor: Option<String>,
     selected_plan: Option<quality::QualityPlan>,
+    /// M5: live congestion policy while the `Auto` preset owns the host
+    /// pipeline (manual presets pin targets and clear this).
+    congestion: Option<node_runtime::congestion::CongestionController>,
+    congestion_res_stepped: bool,
     fast_seq: u64,
     reliable_seq: u64,
     all_keys_up_sent: u64,
@@ -745,6 +749,8 @@ fn run(
         session_end_handled: false,
         selected_monitor: None,
         selected_plan: None,
+        congestion: None,
+        congestion_res_stepped: false,
         fast_seq: 0,
         reliable_seq: 0,
         all_keys_up_sent: 0,
@@ -981,11 +987,15 @@ impl Engine {
                 self.info(format!("quality preset set to {}", preset_name(preset)));
             }
             _ => {
-                // Host-side default while sharing: apply on rebuild.
+                // Host-side default while not sharing.
+                if preset == QualityPreset::Auto && self.current_quality() == QualityPreset::Auto {
+                    self.info("host quality preset already auto (congestion-controlled)");
+                    return;
+                }
                 let plan = plan_for(preset);
-                self.selected_plan = Some(plan);
+                self.selected_plan = Some(plan.clone());
                 self.agg.bump_encoder_rebuild();
-                self.flags_mut().want_reconfig = Some(plan_for(preset));
+                self.flags_mut().want_reconfig = Some(plan);
                 self.info(format!(
                     "host quality preset set to {} (applies at next pipeline rebuild)",
                     preset_name(preset)
@@ -1460,8 +1470,14 @@ impl Engine {
             recv_bitrate_kbps: stats.recv_bitrate_kbps.map(|v| v as u32),
             rtt_ms: stats.rtt_ms.map(|v| v as f32),
             loss_percent: stats.loss_percent.map(|v| v as f32),
+            available_bandwidth_kbps: stats.available_bandwidth_bps.map(|v| (v / 1000) as u32),
+            remote_loss_percent: stats.remote_loss_percent.map(|v| v as f32),
+            remote_rtt_ms: stats.remote_rtt_ms.map(|v| v as f32),
             at_ns: self.clock.now_ns(),
         }));
+        // M5: drive the congestion policy while the Auto preset is active
+        // on a live host pipeline (manual presets pin their targets).
+        self.drive_congestion(&stats);
         if let Some(gauges) = self.node.channel_queue_gauges() {
             for (index, kind) in [
                 diagnostics::QueueKind::ChannelControl,
@@ -1487,6 +1503,80 @@ impl Engine {
     }
 
     // -- helpers ------------------------------------------------------------
+
+    /// M5: feed the `Auto`-preset congestion policy from the 1 Hz stats
+    /// tick and apply its decision to the live pipeline. Manual presets
+    /// pin targets (the controller is dropped); `Auto` adapts.
+    fn drive_congestion(&mut self, stats: &transport_webrtc::TransportStats) {
+        use node_runtime::congestion::{CongestionController, CongestionParams, CongestionSample};
+
+        if self.current_quality() != QualityPreset::Auto
+            || !matches!(self.node.host_state(), session::HostState::Connected { .. })
+        {
+            self.congestion = None;
+            return;
+        }
+        let Some(pipeline) = self.host_pipeline.as_ref() else {
+            return;
+        };
+        if self.congestion.is_none() {
+            let start_kbps = self
+                .selected_plan
+                .as_ref()
+                .map(|plan| plan.bitrate_kbps)
+                .unwrap_or(6_000);
+            self.congestion = Some(CongestionController::new(CongestionParams {
+                start_bps: u64::from(start_kbps) * 1000,
+                ..Default::default()
+            }));
+            self.info("auto quality: congestion controller active (STUN path estimate)");
+        }
+        let Some(mut ctl) = self.congestion.take() else {
+            return;
+        };
+        let decision = ctl.sample(CongestionSample {
+            at_ms: self.clock.now_ms(),
+            estimate_bps: stats.available_bandwidth_bps,
+            remote_loss_percent: stats.remote_loss_percent,
+            remote_rtt_ms: stats.remote_rtt_ms,
+            ice_rtt_ms: stats.rtt_ms,
+            send_bitrate_kbps: stats.send_bitrate_kbps,
+        });
+        self.congestion = Some(ctl.clone());
+        let target_kbps = self
+            .congestion
+            .as_ref()
+            .map(|c| c.bitrate_bps() / 1000)
+            .unwrap_or(0);
+        if decision.bitrate_bps.is_some() || decision.fps_cap.is_some() {
+            self.info(format!(
+                "auto quality: {} (target {target_kbps} kbps, fps cap {:?})",
+                decision.reason, decision.fps_cap
+            ));
+        }
+        if let Some(bps) = decision.bitrate_bps {
+            *pipeline.ctl.want_params.lock().expect("want params") =
+                Some(codec_windows::EncoderParams {
+                    bitrate_bps: Some(bps.min(u32::MAX as u64) as u32),
+                    ..Default::default()
+                });
+        }
+        if let Some(fps) = decision.fps_cap {
+            *pipeline.ctl.want_fps.lock().expect("want fps") = Some(fps);
+        }
+        if decision.resolution_step_down && !self.congestion_res_stepped {
+            self.congestion_res_stepped = true;
+            self.info(
+                "auto quality: sustained starvation - stepping resolution down (one rebuild)",
+            );
+            let mut plan = quality::plan_for(QualityPreset::Auto);
+            plan.encode_width = 1280;
+            plan.encode_height = 720;
+            self.selected_plan = Some(plan.clone());
+            self.agg.bump_encoder_rebuild();
+            self.flags_mut().want_reconfig = Some(plan);
+        }
+    }
 
     fn flags_mut(&mut self) -> std::sync::MutexGuard<'_, observer::ObserverFlags> {
         self.observer.flags.lock().expect("observer flags")
@@ -1656,7 +1746,15 @@ impl Engine {
         } else {
             WebrtcTransportRole::Controller
         };
-        match WebrtcTransport::new(role) {
+        // M5: the product (WAN) configuration — public STUN, all-interface
+        // sockets (srflx gathering), sender-side GCC estimate on the host
+        // (the `Auto` preset's input). Loopback still works through host
+        // candidates; TURN stays rejected at the config layer (invariant 4).
+        let mut options = transport_webrtc::WebrtcTransportOptions::wan();
+        if role == WebrtcTransportRole::Controller {
+            options.congestion = None; // controller sends no media
+        }
+        match WebrtcTransport::with_options(role, options) {
             Ok(transport) => {
                 self.node.attach_transport(Box::new(transport));
                 self.node.set_transport_owner(owner);
