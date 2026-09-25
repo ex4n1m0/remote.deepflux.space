@@ -130,6 +130,27 @@ has reviewed it.
 Post-MVP (source phase 7 — hardening, service mode, signing, TURN decision): out of scope for
 this plan; revisited after M6.
 
+**Post-MVP feature commitment (user, 2026-09-25): trusted-device roster with optional accounts.**
+Username/password identity so a user can collect their usual machines as pre-approved remote
+links — connect without the one-time consent prompt each time. Deferred until the current plan
+(M5/M6) completes; design considerations to carry into that work:
+
+- **Opt-in layer, not a replacement:** the anonymous connection-code flow stays the default;
+  accounts exist only to sync/roster trusted devices. The "no accounts, ever" landing-page copy
+  and MVP invariants describe the base product and will need rewording when this ships.
+- **Pre-approval should be pairing-key trust, not a weaker consent:** each roster entry is a
+  device the user explicitly paired once (e.g., per-device keypair exchanged during that first
+  consent), so "pre-approved" means cryptographic recognition of the paired device — not merely
+  "same username". One-time session secrets remain for transport; pairing replaces the repeated
+  human prompt.
+- **Reversible per device:** the roster must support revoking a device (host side: unpair →
+  future connections from it fall back to the consent prompt).
+- **Hosting implications:** auth + roster storage extends the signaling service (still control
+  plane only — never frame/input bytes); password hashing (argon2/bcrypt-class), rate limiting
+  (the M3 audit's missing token-bucket), and the CR-4 presence-query op become prerequisites.
+- **Windows credential surface:** username/password sign-in in the M4 shell; token storage in
+  Windows Credential Manager, never plaintext in the local favorites JSON.
+
 ## 5. Orchestration model
 
 - **Main session (me):** integrator and only merger of cross-module change. Dispatches subagents,
