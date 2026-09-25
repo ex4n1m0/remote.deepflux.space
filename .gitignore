@@ -3,3 +3,5 @@
 .env
 .vercel
 node_modules/
+# M4 shell build output (vite)
+apps/desktop/dist/

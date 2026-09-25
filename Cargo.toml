@@ -11,6 +11,10 @@ members = [
     "crates/input-windows",
     "crates/render-windows",
     "crates/node-runtime",
+    # M4 product shell (RD-011/RD-012). Its dependency pins (tauri tree)
+    # live in apps/desktop/src-tauri/Cargo.toml; the integrator
+    # consolidates them into [workspace.dependencies] later.
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

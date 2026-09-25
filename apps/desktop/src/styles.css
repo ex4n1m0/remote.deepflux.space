@@ -1,0 +1,426 @@
+/* Remote Desktop shell — dark, compact, keyboard-friendly. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0b1120;
+  --panel: #111a2e;
+  --panel-2: #16213a;
+  --line: #24334f;
+  --text: #e2e8f0;
+  --muted: #8fa1bd;
+  --accent: #38bdf8;
+  --good: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --progress: #818cf8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 20px 48px;
+}
+
+.app-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-head h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.chip-good .chip-dot {
+  background: var(--good);
+}
+.chip-warn .chip-dot {
+  background: var(--warn);
+}
+.chip-bad .chip-dot {
+  background: var(--bad);
+}
+.chip-progress .chip-dot {
+  background: var(--progress);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.chip-label {
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 1000px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.section-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 6px 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.code {
+  font-family: Consolas, monospace;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.identity div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.identity dt {
+  color: var(--muted);
+}
+
+.identity dd {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.radio input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #06283a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+button.ghost {
+  background: transparent;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  color: var(--muted);
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+input:focus {
+  color: var(--text);
+}
+
+.connect-form,
+.favorites-form,
+.settings-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.connect-form button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.favorites {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.favorite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.favorite-name {
+  min-width: 90px;
+}
+
+.favorite-code {
+  font-size: 12px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.dot-on {
+  background: var(--good);
+}
+
+.rename-form {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  align-items: center;
+}
+
+.form-error {
+  color: var(--bad);
+  margin: 6px 0 0;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.banner p {
+  margin: 4px 0;
+}
+
+.banner-error {
+  border-color: var(--bad);
+}
+
+.banner-info {
+  border-color: var(--line);
+}
+
+.consent {
+  border: 1px solid var(--warn);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+}
+
+legend {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.info-line {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.diag {
+  position: fixed;
+  right: 16px;
+  top: 72px;
+  width: 360px;
+  max-height: 70vh;
+  overflow: auto;
+  background: rgba(11, 17, 32, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  z-index: 10;
+}
+
+.diag h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.diag-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+}
+
+.diag-table th,
+.diag-table td {
+  text-align: left;
+  padding: 2px 6px 2px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.diag-table td.num,
+.diag-table th.num {
+  text-align: right;
+}
+
+.diag-kv {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.diag-kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.diag-kv dt {
+  color: var(--muted);
+}
+
+.diag-kv dd {
+  margin: 0;
+  font-family: Consolas, monospace;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

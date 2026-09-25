@@ -1,0 +1,58 @@
+[package]
+name = "remote-desktop-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "P2P Remote Desktop product shell (M4, RD-011/RD-012)"
+default-run = "remote-desktop-app"
+
+[lints]
+workspace = true
+
+[lib]
+name = "remote_desktop_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# The engine modules under src/engine/ are deliberately tauri-free: they are
+# reused by the E2E child binary and the in-crate tests, which drive the
+# exact code path the typed Tauri commands call (command-layer drive).
+[[bin]]
+name = "remote-desktop-app"
+path = "src/main.rs"
+
+[[bin]]
+name = "e2e-child"
+path = "src/bin/e2e_child.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Shell (tauri tree; pinned here per the M4 work package — root
+# [workspace.dependencies] stays untouched for the integrator to consolidate).
+tauri = { version = "2", features = [] }
+
+# The engine (source of truth; the shell is a thin veneer over it).
+node-runtime = { path = "../../../crates/node-runtime" }
+protocol = { path = "../../../crates/protocol" }
+diagnostics = { path = "../../../crates/diagnostics" }
+session = { path = "../../../crates/session" }
+transport-webrtc = { path = "../../../crates/transport-webrtc" }
+capture-windows = { path = "../../../crates/capture-windows" }
+codec-windows = { path = "../../../crates/codec-windows" }
+render-windows = { path = "../../../crates/render-windows" }
+input-windows = { path = "../../../crates/input-windows" }
+frame-surface = { path = "../../../crates/frame-surface" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+# CSPRNG for device ids and the one-time session secret (same source the
+# signaling client uses for tokens).
+getrandom = { workspace = true }
+
