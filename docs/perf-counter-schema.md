@@ -157,6 +157,34 @@ Soak and WAN-matrix evidence beyond frame timing (all fields `Option`;
   sender's media-path loss/RTT signals, distinct from the ICE pair's
   `rtt_ms`). Additive within the version per the policy above.
 
+**2026-09-26 (M6 soak F74/F79, additive optional fields; no
+`CounterRecord` changes):** three surfaces that existed only internally
+are now exported. All names are additive; existing consumers ignore
+unknown keys.
+
+- `TransportStats.netem_queue` (netem shaper gauges, `stats()`) gains
+  `high_water` (max pre-shaper queue depth), `heap_capacity`, and
+  `heap_high_water` (the F69 due-heap bound evidence) alongside the
+  existing `depth`/`capacity`/`dropped`/`delivered`.
+- `ChannelQueues` (channel-queue gauges, both `stats()` and
+  `channel_queue_gauges()`) gains `trail_overflow[4]`: entries the F63
+  depth-trail rings dropped oldest-first between drains (0 in healthy
+  runs; growth means the trail consumer drains too slowly).
+- The rig run **summary** gains host-side congestion counters and the
+  two gauge surfaces above: `congestion.congestion_decisions` (policy
+  decisions that changed something), `congestion.congestion_reconfigs`
+  (live encoder reconfigurations), `congestion.encoder_rebuilds`
+  (rebuilt reconfigures + resolution step-down rebuilds — the priced
+  path the M6 gate wants at 0), plus `reconfig_errors`,
+  `fps_retargets`, `resolution_step_down_rebuilds`, and `events`
+  (previously controller-side only, i.e. always empty on the host that
+  actually runs the policy); and `transport_stats.netem_queue` +
+  `transport_stats.channel_queues.<label>` (per-channel
+  depth/capacity/high_water/dropped/replaced/enqueued/dequeued/
+  trail_overflow). The summary `metrics` block gains `disabled`
+  (bool) for the F79 sink-off mode (`--no-sink` / `RD_RIG_NO_SINK`:
+  no JSONL file at all, zero records).
+
 ## CounterRecord
 
 ```json

@@ -83,6 +83,27 @@ impl PerfSink for JsonlSinkHandle {
 }
 
 impl JsonlReport {
+    /// M6 soak F79 (sink-off mode): a report that writes nothing — no
+    /// file is created, no writer thread spawns, zero metrics IO. Every
+    /// `record` through its sink handles is a no-op: the channel's
+    /// receiver is dropped at construction, so `try_send` reports
+    /// `Disconnected`, which [`JsonlSinkHandle`] already treats as
+    /// "writer gone, drop" (never backpressure). Exists so short rig/soak
+    /// runs can skip the JSONL entirely while every call site keeps a
+    /// single type; the default (`create`) path is unchanged.
+    pub fn disabled() -> Self {
+        let (tx, rx) = std::sync::mpsc::sync_channel(SINK_BOUND);
+        drop(rx);
+        Self {
+            path: PathBuf::new(),
+            stop: Arc::new(AtomicBool::new(false)),
+            join: None,
+            records_written: Arc::new(AtomicU64::new(0)),
+            backpressure_events: Arc::new(AtomicU64::new(0)),
+            tx,
+        }
+    }
+
     /// Create `<dir>/<stem>.jsonl` (suffixing `-1`, `-2`, ... if taken).
     pub fn create(dir: &std::path::Path, stem: &str) -> std::io::Result<Self> {
         std::fs::create_dir_all(dir)?;
@@ -490,6 +511,41 @@ mod tests {
         assert!(q.push(2).is_err());
         let (hw, cap, dropped, replaced) = q.counters();
         assert_eq!((hw, cap, dropped, replaced), (1, 1, 1, 0));
+    }
+
+    /// F79: the sink-off report is silent — no file, no records, no
+    /// backpressure accounting, and the hot path never blocks.
+    #[test]
+    fn disabled_report_is_a_silent_noop_sink() {
+        let report = JsonlReport::disabled();
+        let session = Arc::new(SessionSlot::new("test"));
+        let mut sink = report.sink_handle(session);
+        for i in 0..10_000u64 {
+            sink.record(CounterRecord::QueueSample(QueueSample {
+                session_id: "s".to_owned(),
+                queue: QueueKind::ChannelControl,
+                depth: 1,
+                capacity: 2,
+                high_water: 1,
+                dropped: 0,
+                replaced: 0,
+                at_ns: i,
+            }));
+        }
+        assert_eq!(
+            report
+                .backpressure_events
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "a disconnected channel is a no-op, not backpressure"
+        );
+        let (path, records, backpressure) = report.close();
+        assert_eq!(records, 0, "nothing was written");
+        assert_eq!(backpressure, 0);
+        assert!(
+            path.as_os_str().is_empty(),
+            "sink-off mode owns no file path"
+        );
     }
 
     #[test]

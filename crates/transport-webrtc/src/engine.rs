@@ -424,6 +424,7 @@ impl ChannelSlot {
         out.replaced[self.channel as usize] = self.replaced.load(Ordering::Relaxed);
         out.enqueued[self.channel as usize] = self.enqueued.load(Ordering::Relaxed);
         out.dequeued[self.channel as usize] = self.dequeued.load(Ordering::Relaxed);
+        out.trail_overflow[self.channel as usize] = self.trail_overflow.load(Ordering::Relaxed);
         out
     }
 }
@@ -576,9 +577,33 @@ struct NetemGauges {
     dropped: AtomicU64,
     /// Shaper queue capacity (the mpsc channel bound).
     capacity: u32,
+    /// M6 F74a: max pre-shaper queue depth observed (updated at enqueue).
+    high_water: AtomicU32,
+    /// M6 F74a: the due-heap cap (F69), informational.
+    heap_capacity: u32,
+    /// M6 F74a: max due-heap occupancy observed (updated on heap push).
+    heap_high_water: AtomicU32,
 }
 
 impl NetemGauges {
+    /// F74a: fold the post-enqueue depth into the high-water gauge.
+    /// Called right after `queued` increments (the only depth-growing
+    /// mutation; writes only shrink the queued-minus-written depth).
+    fn note_queued(&self) {
+        let depth = self
+            .queued
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.written.load(Ordering::Relaxed))
+            .min(u64::from(u32::MAX)) as u32;
+        self.high_water.fetch_max(depth, Ordering::Relaxed);
+    }
+
+    /// F74a: fold the post-push heap length into its high-water gauge.
+    fn note_heap_len(&self, len: usize) {
+        self.heap_high_water
+            .fetch_max(len.min(u32::MAX as usize) as u32, Ordering::Relaxed);
+    }
+
     fn stats(&self) -> NetemQueueStats {
         let queued = self.queued.load(Ordering::Relaxed);
         let written = self.written.load(Ordering::Relaxed);
@@ -587,6 +612,9 @@ impl NetemGauges {
             capacity: self.capacity,
             dropped: self.dropped.load(Ordering::Relaxed),
             delivered: written,
+            high_water: self.high_water.load(Ordering::Relaxed),
+            heap_capacity: self.heap_capacity,
+            heap_high_water: self.heap_high_water.load(Ordering::Relaxed),
         }
     }
 }
@@ -673,6 +701,7 @@ async fn netem_shaper_loop(
         match recv {
             Ok(Some(shaped)) => {
                 gauges.queued.fetch_add(1, Ordering::Relaxed);
+                gauges.note_queued(); // F74a depth high-water
                 seq += 1;
                 // F69: explicit heap cap — drop the newest on overflow
                 // (scheduled departures keep draining) and count it.
@@ -686,6 +715,7 @@ async fn netem_shaper_loop(
                     frame_id: shaped.frame_id,
                     packet: shaped.packet,
                 });
+                gauges.note_heap_len(heap.len()); // F74a heap high-water
             }
             Ok(None) => {
                 // Sender gone (transport dropped): drain what is due, then stop.
@@ -883,6 +913,7 @@ impl WebrtcTransport {
                 let (tx, rx) = tokio::sync::mpsc::channel(NETEM_QUEUE_CAPACITY);
                 let gauges = Arc::new(NetemGauges {
                     capacity: NETEM_QUEUE_CAPACITY as u32,
+                    heap_capacity: NETEM_HEAP_CAPACITY as u32,
                     ..Default::default()
                 });
                 let state = Arc::new(NetemShared {
@@ -1798,6 +1829,7 @@ impl Transport for WebrtcTransport {
             channel_queue.replaced[index] = replaced;
             channel_queue.enqueued[index] = slot.enqueued.load(Ordering::Relaxed);
             channel_queue.dequeued[index] = slot.dequeued.load(Ordering::Relaxed);
+            channel_queue.trail_overflow[index] = slot.trail_overflow.load(Ordering::Relaxed);
         }
 
         let loss_percent = inbound.map(|(_, received, lost, _)| {
@@ -1873,6 +1905,7 @@ impl Transport for WebrtcTransport {
             merged.replaced[index] = quick.replaced[index];
             merged.enqueued[index] = quick.enqueued[index];
             merged.dequeued[index] = quick.dequeued[index];
+            merged.trail_overflow[index] = quick.trail_overflow[index];
         }
         Some(merged)
     }
@@ -2020,6 +2053,15 @@ mod tests {
     /// high_water hit 30/32).
     #[test]
     fn channel_slot_depth_trail_records_bursts() {
+        // F75: the whole burst can complete inside the FIRST QPC tick of
+        // the process-wide `OnceLock` uptime anchor, stamping every entry
+        // 0 and flaking the `> 0` assert ~1/10 standalone runs. Advance
+        // past the anchor's first tick before recording: uptime is
+        // monotone, so once a reading is > 0 every later stamp is too and
+        // the assert is deterministic (QPC advances within ~100 ns).
+        while transport_uptime_ns() == 0 {
+            std::hint::spin_loop();
+        }
         let slot = ChannelSlot::new(Channel::InputFast);
         for i in 0..5 {
             slot.enqueue(vec![i as u8]).expect("lossy never rejects");
@@ -2044,6 +2086,84 @@ mod tests {
             after.iter().all(|s| s.depth == FAST_QUEUE_CAPACITY as u32),
             "a replace does not change the depth ({} entries)",
             after.len()
+        );
+    }
+
+    /// F63/F74b: overflowing the bounded depth trail drops the OLDEST
+    /// entries, counts every dropped entry in `trail_overflow`, and keeps
+    /// the newest depths — and the overflow is visible through the
+    /// exported gauge surface (`quick_gauges`).
+    #[test]
+    fn channel_slot_depth_trail_overflow_is_counted() {
+        let slot = ChannelSlot::new(Channel::Control);
+        // One depth change per enqueue, no drain in between: the trail
+        // (capacity 64) overflows after the first 64 changes.
+        let total = DEPTH_TRAIL_CAPACITY + 5;
+        for i in 0..total {
+            slot.enqueue(vec![i as u8]).expect("within capacity");
+        }
+        let trail = slot.take_trail();
+        assert_eq!(trail.len(), DEPTH_TRAIL_CAPACITY, "trail is bounded");
+        assert_eq!(
+            slot.trail_overflow.load(Ordering::Relaxed),
+            5,
+            "every dropped entry is counted"
+        );
+        let depths: Vec<u32> = trail.iter().map(|s| s.depth).collect();
+        let expected: Vec<u32> = (6..=total as u32).collect();
+        assert_eq!(depths, expected, "the NEWEST depths survive");
+        // The export surface carries the counter (F74b).
+        assert_eq!(
+            slot.quick_gauges().trail_overflow[Channel::Control as usize],
+            5
+        );
+        // Draining resets nothing (cumulative), but a fresh burst below
+        // capacity adds no overflow.
+        let _ = slot.take_trail();
+        slot.enqueue(vec![0xFF]).expect("enqueue");
+        assert_eq!(slot.trail_overflow.load(Ordering::Relaxed), 5);
+    }
+
+    /// F74a: the netem shaper gauges track queue-depth high-water and the
+    /// F69 heap bound (the bounded-queue evidence the M6 gate watches).
+    #[test]
+    fn netem_gauges_track_depth_high_water_and_heap_cap() {
+        let gauges = NetemGauges {
+            capacity: NETEM_QUEUE_CAPACITY as u32,
+            heap_capacity: NETEM_HEAP_CAPACITY as u32,
+            ..Default::default()
+        };
+        // Queue fills to 7, drains 3, refills to 5: depth is the
+        // queued-minus-written difference; high-water keeps 7.
+        for _ in 0..7 {
+            gauges.queued.fetch_add(1, Ordering::Relaxed);
+            gauges.note_queued();
+        }
+        gauges.written.fetch_add(3, Ordering::Relaxed);
+        for _ in 0..1 {
+            gauges.queued.fetch_add(1, Ordering::Relaxed);
+            gauges.note_queued();
+        }
+        gauges.note_heap_len(2_048);
+        gauges.note_heap_len(512); // drain: never lowers the high-water
+        let stats = gauges.stats();
+        assert_eq!(stats.depth, 5, "queued(8) - written(3)");
+        assert_eq!(stats.capacity, NETEM_QUEUE_CAPACITY as u32);
+        assert_eq!(stats.high_water, 7, "monotone depth high-water");
+        assert_eq!(stats.heap_capacity, NETEM_HEAP_CAPACITY as u32);
+        assert_eq!(stats.heap_high_water, 2_048, "monotone heap high-water");
+        assert_eq!(stats.dropped, 0);
+        assert_eq!(stats.delivered, 3);
+        // A fresh gauge (no traffic yet) reports zeros, not garbage.
+        let fresh = NetemGauges::default().stats();
+        assert_eq!(
+            (
+                fresh.depth,
+                fresh.high_water,
+                fresh.heap_high_water,
+                fresh.dropped
+            ),
+            (0, 0, 0, 0)
         );
     }
 

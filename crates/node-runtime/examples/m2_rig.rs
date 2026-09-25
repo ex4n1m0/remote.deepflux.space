@@ -74,8 +74,8 @@ use render_windows::{
 use session::{ControllerState, DisconnectCause, HostState, SessionConfig};
 use transport_webrtc::chaos::ChaosInjector;
 use transport_webrtc::{
-    Channel, ReceivedFrame, Transport, TransportError, TransportEvent, TransportStats, VideoFrame,
-    WebrtcTransport, WebrtcTransportRole,
+    CHANNEL_LABELS, Channel, ReceivedFrame, Transport, TransportError, TransportEvent,
+    TransportStats, VideoFrame, WebrtcTransport, WebrtcTransportRole,
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +106,10 @@ struct Args {
     metrics_dir: Option<PathBuf>,
     summary: PathBuf,
     report_stem: Option<String>,
+    /// M6 soak F79 (sink-off mode): skip the JSONL metrics report entirely
+    /// (no file, no writer thread, zero metrics IO). Default off; can also
+    /// be set via the environment (`RD_RIG_NO_SINK=1`).
+    no_sink: bool,
     idle_timeout_secs: u64,
     /// LAN-checkpoint mode (scope addendum to the M2 QA fix package): the
     /// host injects scripted input through the REAL `SendInputSink`
@@ -227,6 +231,7 @@ fn parse_args() -> Result<Args, String> {
         metrics_dir: None,
         summary: std::env::temp_dir().join("rd-m2-summary.json"),
         report_stem: None,
+        no_sink: false,
         idle_timeout_secs: 300,
         real_input: false,
         netem: None,
@@ -387,6 +392,10 @@ fn parse_args() -> Result<Args, String> {
                 args.metrics_dir = Some(PathBuf::from(need("--metrics-dir")?));
                 i += 2;
             }
+            "--no-sink" => {
+                args.no_sink = true;
+                i += 1;
+            }
             "--summary" => {
                 args.summary = PathBuf::from(need("--summary")?);
                 i += 2;
@@ -407,7 +416,7 @@ fn parse_args() -> Result<Args, String> {
                      [--stream-secs N] [--cycles N] [--cycle-stream-secs N] [--fps 60] [--encode-size WxH]\n\
                      [--bitrate-kbps N] [--monitor primary] [--window-size WxH] [--no-stimulus]\n\
                      [--drop-fast-pct N] [--reorder-fast-pct N] [--drop-reliable-nth N] [--seed N]\n\
-                     [--mouse-moves N] [--metrics-dir DIR] [--summary FILE] [--report-stem NAME]\n\
+                     [--mouse-moves N] [--metrics-dir DIR] [--no-sink] [--summary FILE] [--report-stem NAME]\n\
                      [--idle-timeout-secs N] [--real-input]\n\
                      [M5] [--netem 'loss=N|delay_ms=N|rate_kbps=N|udp_blocked=B']\n\
                      [M5] [--netem-schedule 'secs:spec;secs:spec'] [--congestion on|off]\n\
@@ -423,6 +432,16 @@ fn parse_args() -> Result<Args, String> {
     }
     if args.scenario == "soak" && args.stream_secs == 60 {
         args.stream_secs = 600;
+    }
+    // F79: soak wrappers that cannot add a flag get the same switch from
+    // the environment. Any value except ""/0/false (case-insensitive)
+    // enables it; the default path stays sink-on.
+    if !args.no_sink
+        && std::env::var("RD_RIG_NO_SINK").is_ok_and(|v| {
+            !v.is_empty() && !v.eq_ignore_ascii_case("0") && !v.eq_ignore_ascii_case("false")
+        })
+    {
+        args.no_sink = true;
     }
     Ok(args)
 }
@@ -1817,23 +1836,29 @@ fn run(args: Args) -> i32 {
     // Desktop attachment (capture + windows must see the input desktop).
     attach_thread_to_input_desktop().expect("input desktop");
 
-    // ---- metrics ----
-    let report_dir: PathBuf = match (&args.report_stem, &args.metrics_dir) {
-        (_, Some(dir)) => dir.clone(),
-        (Some(_), None) => std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("docs/reports/data")
-            .canonicalize()
-            .expect("repo root"),
-        (None, None) => std::env::temp_dir().join("rd-m2-metrics"),
+    // ---- metrics (F79: --no-sink / RD_RIG_NO_SINK skips JSONL entirely) ----
+    let report = if args.no_sink {
+        eprintln!("[{device}] metrics: sink disabled (--no-sink): no JSONL file, no records");
+        JsonlReport::disabled()
+    } else {
+        let report_dir: PathBuf = match (&args.report_stem, &args.metrics_dir) {
+            (_, Some(dir)) => dir.clone(),
+            (Some(_), None) => std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("docs/reports/data")
+                .canonicalize()
+                .expect("repo root"),
+            (None, None) => std::env::temp_dir().join("rd-m2-metrics"),
+        };
+        let stem = args
+            .report_stem
+            .clone()
+            .unwrap_or_else(|| format!("m2-rig-{}", date_string()));
+        let report =
+            JsonlReport::create(&report_dir, &format!("{stem}-{device}")).expect("metrics report");
+        eprintln!("[{device}] metrics: {}", report.path.display());
+        report
     };
-    let stem = args
-        .report_stem
-        .clone()
-        .unwrap_or_else(|| format!("m2-rig-{}", date_string()));
-    let report =
-        JsonlReport::create(&report_dir, &format!("{stem}-{device}")).expect("metrics report");
-    eprintln!("[{device}] metrics: {}", report.path.display());
     let session_slot = Arc::new(SessionSlot::new(&format!("{device}-pre-session")));
 
     // ---- clock + resource sampler ----
@@ -2028,9 +2053,11 @@ fn run(args: Args) -> i32 {
     let mut chaos = ChaosInjector::new(args.seed, args.drop_fast_pct, args.reorder_fast_pct)
         .with_drop_every_nth(args.drop_reliable_nth);
     // M5: mutable pipeline args (the congestion last resort rewrites the
-    // encode geometry once) + the step-down edge flag.
+    // encode geometry once) + the step-down edge flag. F74c: rebuilds the
+    // last resort actually performed (summed into `encoder_rebuilds`).
     let mut rig_args = args.clone();
     let mut congestion_step_down_720p = false;
+    let mut congestion_rebuilds_stepdown = 0u64;
     let mut moves_sent: u64 = 0;
     let mut reliable_sent: u64 = 0;
     let mut reliable_send_errors: u64 = 0;
@@ -2433,6 +2460,7 @@ fn run(args: Args) -> i32 {
             rig_args.encode_w = 1280;
             rig_args.encode_h = 720;
             if let Some(pipeline) = observer.host_pipeline.take() {
+                congestion_rebuilds_stepdown += 1;
                 if let Some(started) = observer.stream_started_at.take() {
                     observer.stream_secs_accum += started.elapsed().as_secs_f64();
                 }
@@ -3023,6 +3051,7 @@ fn run(args: Args) -> i32 {
         },
         "input": input_summary,
         "metrics": {
+            "disabled": args.no_sink,
             "path": metrics_path.display().to_string(),
             "records": records,
             "backpressure_events": backpressure,
@@ -3090,6 +3119,22 @@ fn run(args: Args) -> i32 {
             },
             "device_lost": device_lost_host,
         });
+        // M6 F74c: host-side congestion evidence as counters, not stderr
+        // lines — the decisions the policy made, the live reconfigs the
+        // encoder took, and every rebuild (the priced path the M6 gate
+        // wants at zero). Previously this block was written only on the
+        // controller (which never runs the policy), so `events` was
+        // always empty and the soak had to parse engine log strings.
+        summary["congestion"] = serde_json::json!({
+            "enabled": args.congestion,
+            "congestion_decisions": congestion_events.len() as u64,
+            "congestion_reconfigs": reconfig_live,
+            "encoder_rebuilds": reconfig_rebuilt + congestion_rebuilds_stepdown,
+            "reconfig_errors": reconfig_errors,
+            "fps_retargets": fps_retargets,
+            "resolution_step_down_rebuilds": congestion_rebuilds_stepdown,
+            "events": congestion_events,
+        });
     } else {
         let (
             received,
@@ -3156,6 +3201,31 @@ fn run(args: Args) -> i32 {
         });
     }
     if let Some(stats) = final_transport_stats {
+        // F74a/F74b: shaper + channel-queue gauges in the summary —
+        // previously `netem_queue` was dropped by the summary entirely and
+        // the depth-trail overflow had no export path, so the M6 gate's
+        // bounded-queue evidence for those two surfaces required raw-JSONL
+        // digging.
+        let channel_queues: serde_json::Map<String, serde_json::Value> = CHANNEL_LABELS
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let cq = stats.channel_queue;
+                (
+                    (*label).to_owned(),
+                    serde_json::json!({
+                        "depth": cq.depth[index],
+                        "capacity": cq.capacity[index],
+                        "high_water": cq.high_water[index],
+                        "dropped": cq.dropped[index],
+                        "replaced": cq.replaced[index],
+                        "enqueued": cq.enqueued[index],
+                        "dequeued": cq.dequeued[index],
+                        "trail_overflow": cq.trail_overflow[index],
+                    }),
+                )
+            })
+            .collect();
         summary["transport_stats"] = serde_json::json!({
             "rtt_ms": stats.rtt_ms,
             "send_bitrate_kbps": stats.send_bitrate_kbps,
@@ -3169,6 +3239,16 @@ fn run(args: Args) -> i32 {
             "frames_dropped_rx_queue": stats.frames_dropped,
             "events_dropped_drain_queue": stats.events_dropped,
             "relay_in_use": stats.relay_in_use,
+            "netem_queue": stats.netem_queue.map(|q| serde_json::json!({
+                "depth": q.depth,
+                "capacity": q.capacity,
+                "high_water": q.high_water,
+                "dropped": q.dropped,
+                "delivered": q.delivered,
+                "heap_capacity": q.heap_capacity,
+                "heap_high_water": q.heap_high_water,
+            })),
+            "channel_queues": serde_json::Value::Object(channel_queues),
             "selected_pair": stats.selected_pair.as_ref().map(|p| serde_json::json!({
                 "local": p.local_address,
                 "local_type": p.local_candidate_type,

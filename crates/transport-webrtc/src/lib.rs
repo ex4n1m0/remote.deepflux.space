@@ -200,6 +200,15 @@ pub struct NetemQueueStats {
     pub dropped: u64,
     /// Packets released to the wire so far.
     pub delivered: u64,
+    /// M6 soak F74a: highest pre-shaper queue depth observed (the
+    /// high-water of `depth`). 0 when nothing was ever queued.
+    pub high_water: u32,
+    /// M6 soak F74a: the explicit due-heap cap (F69). Packets above it
+    /// are dropped newest-first and counted in `dropped`.
+    pub heap_capacity: u32,
+    /// M6 soak F74a: highest due-heap occupancy observed (F69 evidence —
+    /// the heap's share of the shaper's bounded buffering).
+    pub heap_high_water: u32,
 }
 
 /// Per-channel send-queue gauges (depth/capacity plus cumulative counters).
@@ -221,6 +230,12 @@ pub struct ChannelQueues {
     pub enqueued: [u64; 4],
     /// Cumulative dequeues (handed to SCTP) per channel.
     pub dequeued: [u64; 4],
+    /// M6 soak F74b: depth-trail overflows per channel (F63): entries the
+    /// bounded per-slot trail dropped oldest-first because more depth
+    /// changes accumulated between drains than the trail holds. Zero in
+    /// healthy runs; growth means the consumer drains the trail slower
+    /// than the queues change depth.
+    pub trail_overflow: [u64; 4],
 }
 
 /// One depth-change entry from a channel queue's bounded trail (M6 QA
