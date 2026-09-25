@@ -25,6 +25,17 @@
 //! * Injected loss is **NACK-invisible** (the packet never entered the
 //!   sender's NACK-responder history), so recovery exercises the app-level
 //!   keyframe path — the harsher of the two, and the one the product owns.
+//! * Injected loss and shaped queueing are **GCC-invisible by construction**
+//!   (M6 F59 finding): the shaper sits above the interceptor chain, so a
+//!   dropped packet is never stamped with a transport-wide sequence and
+//!   never enters the congestion controller's send history (it cannot be
+//!   reported missing), and a shaped delay shifts the sender-side departure
+//!   stamp and the receiver-side arrival stamp equally (the delay gradient
+//!   cancels). `loss`/`rate_kbps` profiles therefore move the *policy*
+//!   signals (`remote_loss_percent` counts the RTP sequence holes the
+//!   receiver's RTCP RR reports) but never the GCC estimate. A real
+//!   bottleneck between the peers does move it — wire-side queueing delays
+//!   arrivals relative to paced departures.
 //! * The ICE/STUN consent traffic does **not** cross the shaper, so
 //!   `TransportStats::rtt_ms` (ICE pair) stays at loopback levels under a
 //!   +RTT profile; the media-path delay shows up in `recv_ns`/`recv_instant`

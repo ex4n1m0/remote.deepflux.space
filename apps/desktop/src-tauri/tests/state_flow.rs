@@ -30,6 +30,7 @@ fn spawn_engine(
         viewer_title: "test".to_owned(),
         initial_quality: protocol::wire::QualityPreset::Low,
         initial_scale: render_windows::ScaleMode::Fit,
+        blackhole_remote_candidates: false,
     };
     engine::spawn(cfg)
 }

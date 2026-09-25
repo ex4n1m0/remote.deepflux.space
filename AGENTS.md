@@ -168,8 +168,12 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
   `apps/desktop`/`engine/viewer.rs` into `input-windows::capture` behind
   the narrow `PresenterInput` trait; the fullscreen window-style toggle
   moved into `render-windows::PresenterWindow::toggle_borderless_fullscreen`.
-  `apps/desktop` is unsafe-free again; the placement split is documented in
-  `input-windows/src/capture.rs`'s module docs.
+  Scope note (M6 QA F66): `engine/viewer.rs` itself is unsafe-free, but
+  `apps/desktop` is **not** a blanket unsafe-free zone —
+  `engine/displays.rs` (monitor enumeration; CR-3, still open) and the
+  `bin/e2e_child.rs` test binary still contain reviewed Win32 unsafe.
+  The placement split is documented in `input-windows/src/capture.rs`'s
+  module docs.
 
 ## Workflow for agents
 

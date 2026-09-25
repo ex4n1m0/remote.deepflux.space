@@ -820,59 +820,154 @@ fn netem_delay_adds_one_way_latency() {
     host.close();
 }
 
-/// With sender-side congestion control configured and a few seconds of
-/// flowing media + RTCP feedback, the estimate surface reports the GCC
-/// target and the receiver-report projection (remote loss/RTT) appears.
+/// F59 regression (M6): the sender-side GCC feedback loop is LIVE end to
+/// end. The M5 version of this test asserted `.is_some()` and passed while
+/// the loop was dead (remote fields were `Some(0.0)` placeholders, the
+/// estimate frozen at its initial value). This version asserts behavior
+/// that only real RTCP/TWCC feedback through the interceptor chain can
+/// produce:
+///
+/// 1. **The estimate moves UP above its configured initial** under flowing
+///    media — GCC's additive increase runs on arrival reports; with a dead
+///    ingest the target never leaves the initial value (the frozen M5
+///    repro).
+/// 2. **`remote_rtt_ms` is a real measurement** (> 0), derived from the
+///    receiver's RTCP RR LSR/DLSR fields — not the dead `Some(0.0)`.
+/// 3. **`remote_loss_percent` tracks injected loss**: 5% netem loss shows
+///    up as receiver-reported loss ≥ 2% (the RR counts the RTP sequence
+///    holes), and clears below 1% once the loss is removed.
+///
+/// Documented limit (chaos module docs): app-layer netem sits above the
+/// interceptor chain, so it cannot move the estimate itself — shaped
+/// queueing shifts departure and arrival stamps equally and pre-chain drops
+/// never enter the send history. Estimate *movement* is therefore asserted
+/// via feedback-driven AIMD, loss *tracking* via the RR projection; both
+/// were dead before the F59 fix.
 #[test]
 fn congestion_estimate_and_remote_report_surface() {
+    use transport_webrtc::chaos::NetemProfile;
+
+    let initial_bps = 2_000_000u64;
     let mut controller = WebrtcTransport::new(WebrtcTransportRole::Controller).expect("controller");
     let mut host = WebrtcTransport::with_options(
         WebrtcTransportRole::Host,
         WebrtcTransportOptions {
             congestion: Some(CongestionOptions {
-                initial_bps: 2_000_000,
+                initial_bps,
                 min_bps: 300_000,
                 max_bps: 8_000_000,
             }),
+            // Netem armed with a no-op profile so the test can shape mid-run.
+            video_netem: Some(NetemProfile::default()),
             ..Default::default()
         },
     )
     .expect("host with congestion");
+    let netem = host.netem_handle().expect("netem handle");
     connect_pair(&mut controller, &mut host, Duration::from_secs(30));
 
-    let started = Instant::now();
-    let mut frame = 0u64;
-    while started.elapsed() < Duration::from_secs(5) {
-        let keyframe = frame.is_multiple_of(30);
-        let _ = host.send_video(VideoFrame {
-            frame_id: frame,
-            timestamp_ns: frame * 16_666_667,
-            is_keyframe: keyframe,
-            bytes: synthetic_access_unit(frame % 256, keyframe),
-        });
-        while controller.poll_video().is_some() {}
-        frame += 1;
-        std::thread::sleep(Duration::from_millis(16));
+    // Stream `secs` of media at ~60 fps, recording a stats sample every
+    // ~500 ms (estimate, remote loss, remote RTT).
+    fn send_for(
+        controller: &mut WebrtcTransport,
+        host: &mut WebrtcTransport,
+        frame: &mut u64,
+        secs: u64,
+        samples: &mut Vec<(Option<u64>, Option<f64>, Option<f64>)>,
+    ) {
+        let started = Instant::now();
+        let mut next_sample = Instant::now();
+        while started.elapsed() < Duration::from_secs(secs) {
+            let keyframe = frame.is_multiple_of(30);
+            let _ = host.send_video(VideoFrame {
+                frame_id: *frame,
+                timestamp_ns: *frame * 16_666_667,
+                is_keyframe: keyframe,
+                bytes: synthetic_access_unit(*frame % 256, keyframe),
+            });
+            while controller.poll_video().is_some() {}
+            *frame += 1;
+            if Instant::now() >= next_sample {
+                let s = host.stats().expect("stats");
+                samples.push((
+                    s.available_bandwidth_bps,
+                    s.remote_loss_percent,
+                    s.remote_rtt_ms,
+                ));
+                next_sample = Instant::now() + Duration::from_millis(500);
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
     }
-    let stats = host.stats().expect("host stats");
-    let estimate = stats
-        .available_bandwidth_bps
-        .expect("estimate must be published");
-    assert!(
-        (300_000..=8_000_000).contains(&estimate),
-        "estimate must stay within the configured band: {estimate}"
-    );
-    let congestion = stats.congestion_stats.expect("congestion stats");
+
+    let mut frame = 0u64;
+    let mut samples: Vec<(Option<u64>, Option<f64>, Option<f64>)> = Vec::new();
+
+    // Phase 1: clean path, ~5 s of media.
+    send_for(&mut controller, &mut host, &mut frame, 5, &mut samples);
+    let congestion = host
+        .stats()
+        .expect("stats")
+        .congestion_stats
+        .expect("stats");
     println!(
-        "estimate={estimate} bps delay_based={:?} loss_based={:?} updates={}",
-        congestion.delay_based_bps, congestion.loss_based_bps, congestion.updates
+        "phase1 last={:?} delay_based={:?} loss_based={:?} updates={}",
+        samples.last().unwrap().0,
+        congestion.delay_based_bps,
+        congestion.loss_based_bps,
+        congestion.updates
     );
-    // The controller's RTCP RRs feed remote-inbound-rtp on the sender.
+    // (1) The estimate moved above its initial value via feedback-driven
+    // additive increase. A timer-only (dead-ingest) estimator holds the
+    // initial rate forever — the M5 repro.
+    let moved_above_initial = samples
+        .iter()
+        .any(|(est, _, _)| est.is_some_and(|e| e > initial_bps));
     assert!(
-        stats.remote_rtt_ms.is_some(),
-        "receiver-report RTT must reach the sender within 5 s of media"
+        moved_above_initial,
+        "estimate must rise above the {initial_bps} initial under flowing media \
+         (feedback-driven AIMD); samples: {:?}",
+        samples.iter().map(|s| s.0).collect::<Vec<_>>()
     );
-    let _ = stats.remote_loss_percent.expect("fraction lost present");
+    // (2) Real RR RTT arrived (LSR/DLSR correlation; dead fields read 0.0/None).
+    let rtt_sample = samples
+        .iter()
+        .filter_map(|(_, _, rtt)| *rtt)
+        .fold(f64::MIN, f64::max);
+    assert!(
+        rtt_sample > 0.0,
+        "receiver-report RTT must be a real measurement, got max {rtt_sample}"
+    );
+
+    // Phase 2: 5% injected loss + an 800 kbps cap, ~8 s. The RR projection
+    // must track the injected loss (RTP sequence holes).
+    netem.set_profile(NetemProfile::parse("loss=5,rate_kbps=800").expect("profile"));
+    samples.clear();
+    send_for(&mut controller, &mut host, &mut frame, 8, &mut samples);
+    let tracked_loss = samples
+        .iter()
+        .filter_map(|(_, loss, _)| *loss)
+        .fold(f64::MIN, f64::max);
+    println!("phase2 max tracked remote loss: {tracked_loss}%");
+    assert!(
+        tracked_loss >= 2.0,
+        "remote_loss_percent must track injected 5% loss (max seen {tracked_loss}); \
+         samples: {:?}",
+        samples.iter().map(|s| s.1).collect::<Vec<_>>()
+    );
+
+    // Phase 3: loss removed — the gate must clear again.
+    netem.set_profile(NetemProfile::default());
+    samples.clear();
+    send_for(&mut controller, &mut host, &mut frame, 6, &mut samples);
+    let last_clean = samples
+        .last()
+        .and_then(|(_, loss, _)| *loss)
+        .expect("loss sample in phase 3");
+    assert!(
+        last_clean < 1.0,
+        "remote loss must clear after shaping stops, last {last_clean}%"
+    );
     controller.close();
     host.close();
 }

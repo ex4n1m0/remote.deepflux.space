@@ -39,6 +39,20 @@ struct Args {
     metrics_dir: Option<PathBuf>,
     quality: String,
     stream_secs: u64,
+    /// Test-only chaos: remote candidate ports -> discard (M6 E2E
+    /// connect-failure case; see engine::blackhole).
+    blackhole_candidates: bool,
+    /// Script the connect-failure expectation: wait for the typed
+    /// timeout SessionEnded (with the DIRECT_ONLY hint) instead of a
+    /// Connected session.
+    expect_connect_failure: bool,
+    /// Host side of that scenario: the peer's connect cannot succeed
+    /// (its candidates are blackholed on ITS side) and nothing in the
+    /// signaling protocol notifies the host — the host stops sharing
+    /// through the normal command after a bounded wait instead of
+    /// hanging until the test deadline (clean teardown, no consent-
+    /// timeout linger).
+    expect_no_session: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -51,6 +65,9 @@ fn parse_args() -> Result<Args, String> {
         metrics_dir: None,
         quality: "high".to_owned(),
         stream_secs: 12,
+        blackhole_candidates: false,
+        expect_connect_failure: false,
+        expect_no_session: false,
     };
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -95,6 +112,18 @@ fn parse_args() -> Result<Args, String> {
                     .map_err(|e| format!("stream-secs: {e}"))?;
                 i += 2;
             }
+            "--blackhole-candidates" => {
+                args.blackhole_candidates = true;
+                i += 1;
+            }
+            "--expect-connect-failure" => {
+                args.expect_connect_failure = true;
+                i += 1;
+            }
+            "--expect-no-session" => {
+                args.expect_no_session = true;
+                i += 1;
+            }
             other => return Err(format!("unknown flag {other:?}")),
         }
     }
@@ -119,6 +148,13 @@ struct Verdict {
     resize_ok: bool,
     /// F50: the session ended via the viewer-close path (WM_CLOSE).
     closed_viewer: bool,
+    /// M6 connect-failure case: the typed timeout verdict.
+    connect_fail_code: Option<String>,
+    connect_fail_hint_ok: bool,
+    connect_fail_secs: Option<f64>,
+    /// M6 connect-failure case (host): sharing stopped through the normal
+    /// command after a bounded no-session wait.
+    no_session_bailed: bool,
 }
 
 fn main() {
@@ -146,12 +182,15 @@ fn main() {
         viewer_title: "M4 E2E viewer (real desktop)".to_owned(),
         initial_quality: QualityPreset::Balanced,
         initial_scale: render_windows::ScaleMode::Fit,
+        blackhole_remote_candidates: args.blackhole_candidates,
     };
     let (handle, events) = engine::spawn(cfg);
     let mut verdict = Verdict::default();
     let deadline = Instant::now() + Duration::from_secs(150);
     let code = if is_host {
         run_host(&handle, &args, events, &mut verdict, deadline)
+    } else if args.expect_connect_failure {
+        run_controller_expect_connect_failure(&handle, &args, events, &mut verdict, deadline)
     } else {
         run_controller(&handle, &args, events, &mut verdict, deadline)
     };
@@ -205,7 +244,7 @@ fn host_status_state(path: &std::path::Path) -> Option<String> {
 
 fn run_host(
     handle: &remote_desktop_app_lib::engine::EngineHandle,
-    _args: &Args,
+    args: &Args,
     events: std::sync::mpsc::Receiver<EngineEvent>,
     verdict: &mut Verdict,
     deadline: Instant,
@@ -228,13 +267,48 @@ fn run_host(
     let mut accepted = false;
     let mut reonline_after_end = false;
     let mut saw_end = false;
+    let mut accepted_at: Option<Instant> = None;
+    let mut stopped_sharing = false;
     while Instant::now() < deadline {
         pump_events(&events, verdict, |_| {});
         if verdict.consent_prompted && !accepted {
             std::thread::sleep(Duration::from_millis(400));
             handle.send(EngineCmd::ConsentAccept).expect("accept");
             accepted = true;
+            accepted_at = Some(Instant::now());
             eprintln!("[e2e-host] consent accepted");
+        }
+        // M6 connect-failure scenario: the peer's connect cannot succeed
+        // and the signaling protocol carries no notification to the
+        // answerer — stop sharing through the normal command after a
+        // bounded wait (the controller's 10 s connect window + slack)
+        // instead of hanging until the harness deadline.
+        if args.expect_no_session
+            && accepted
+            && verdict.established == 0
+            && !stopped_sharing
+            && accepted_at.is_some_and(|at| at.elapsed() > Duration::from_secs(25))
+        {
+            stopped_sharing = true;
+            verdict.no_session_bailed = true;
+            handle.send(EngineCmd::HostStop).expect("host stop");
+            eprintln!("[e2e-host] no session within the bounded window; stopped sharing");
+        }
+        // The bounded stop ends the attempt without a session, so no
+        // `SessionEnded` ever fires on this path (there is no session to
+        // end) — complete on the machine reaching a resting state
+        // instead of waiting for a cause that cannot arrive.
+        if stopped_sharing {
+            let state = handle.status();
+            if state.host_state == "Online" || state.host_state == "Idle" {
+                eprintln!(
+                    "[e2e-host] resting at {} after the bounded stop",
+                    state.host_state
+                );
+                verdict.final_note =
+                    "host: consent->no-session bounded stop (clean teardown)".into();
+                return 0;
+            }
         }
         if !verdict.ended_causes.is_empty() && !saw_end {
             saw_end = true;
@@ -407,6 +481,88 @@ fn run_controller(
     1
 }
 
+/// M6 E2E connect-failure case: connect while every remote candidate is
+/// blackholed (UDP-blocked emulation). The controller must NOT reach
+/// Connected; the session must end with the typed `Timeout` cause, the
+/// error surface must carry `code: "timeout"` and the DIRECT_ONLY hint,
+/// everything inside the 10 s connect window + slack, and the process
+/// tears down cleanly (exit 0 — a typed failure is a handled outcome,
+/// never a hang).
+fn run_controller_expect_connect_failure(
+    handle: &remote_desktop_app_lib::engine::EngineHandle,
+    args: &Args,
+    events: std::sync::mpsc::Receiver<EngineEvent>,
+    verdict: &mut Verdict,
+    deadline: Instant,
+) -> i32 {
+    use remote_desktop_app_lib::engine::DIRECT_ONLY_HINT;
+    handle
+        .send(EngineCmd::ControllerStart)
+        .expect("controller start");
+    let mut host_device = None;
+    while Instant::now() < deadline {
+        pump_events(&events, verdict, |_| {});
+        if verdict.online_reached
+            && host_status_state(&args.host_status_file).as_deref() == Some("Online")
+        {
+            host_device = host_device_from_status(&args.host_status_file);
+            if host_device.is_some() {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let Some(host_device) = host_device else {
+        verdict.final_note = "host status file missing device id".into();
+        return 1;
+    };
+    eprintln!("[e2e-ctrl-fail] connecting to {host_device} (candidates blackholed)");
+    let connected_at = Instant::now();
+    handle
+        .send(EngineCmd::Connect { code: host_device })
+        .expect("connect");
+    let mut ended = None;
+    while Instant::now() < deadline {
+        // Collect through a local (the pump holds `&mut verdict`).
+        let mut session_ended: Option<(String, String, Option<String>)> = None;
+        pump_events(&events, verdict, |event| {
+            if let EngineEvent::SessionEnded {
+                cause, code, hint, ..
+            } = event
+            {
+                session_ended = Some((cause.clone(), code.clone(), hint.clone()));
+            }
+        });
+        if let Some((cause, code, hint)) = session_ended {
+            verdict.connect_fail_code = Some(code);
+            verdict.connect_fail_hint_ok = hint.as_deref() == Some(DIRECT_ONLY_HINT);
+            ended = Some(cause);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let Some(cause) = ended else {
+        verdict.final_note = "connect failure never surfaced (HANG)".into();
+        return 1;
+    };
+    verdict.connect_fail_secs = Some(connected_at.elapsed().as_secs_f64());
+    eprintln!(
+        "[e2e-ctrl-fail] session ended cause={cause} code={:?} hint_ok={} after {:?}s",
+        verdict.connect_fail_code, verdict.connect_fail_hint_ok, verdict.connect_fail_secs
+    );
+    let ok = !verdict.connected_reached
+        && cause == "Timeout"
+        && verdict.connect_fail_code.as_deref() == Some("timeout")
+        && verdict.connect_fail_hint_ok;
+    verdict.final_note = format!(
+        "connect-failure: cause={cause}, code={:?}, hint_ok={} (connected_reached={})",
+        verdict.connect_fail_code, verdict.connect_fail_hint_ok, verdict.connected_reached
+    );
+    // One status-write cadence so the harness reads the final state.
+    std::thread::sleep(Duration::from_millis(400));
+    if ok { 0 } else { 1 }
+}
+
 fn host_device_from_status(path: &std::path::Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
@@ -435,6 +591,10 @@ fn write_verdict(args: &Args, verdict: Verdict) {
         "final_note": verdict.final_note,
         "resize_ok": verdict.resize_ok,
         "closed_viewer": verdict.closed_viewer,
+        "connect_fail_code": verdict.connect_fail_code,
+        "connect_fail_hint_ok": verdict.connect_fail_hint_ok,
+        "connect_fail_secs": verdict.connect_fail_secs,
+        "no_session_bailed": verdict.no_session_bailed,
     });
     let tmp = args.status_file.with_extension("tmp");
     if std::fs::write(

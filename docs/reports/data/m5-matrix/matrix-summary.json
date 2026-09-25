@@ -57,19 +57,33 @@
    "keyframe_requests": 126,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -165,19 +179,33 @@
    "keyframe_requests": 200,
    "frames_missing_packets": 2,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -273,19 +301,33 @@
    "keyframe_requests": 268,
    "frames_missing_packets": 24,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -381,19 +423,33 @@
    "keyframe_requests": 315,
    "frames_missing_packets": 65,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -489,19 +545,33 @@
    "keyframe_requests": 470,
    "frames_missing_packets": 217,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -597,19 +667,33 @@
    "keyframe_requests": 130,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -705,19 +789,33 @@
    "keyframe_requests": 130,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -813,19 +911,33 @@
    "keyframe_requests": 131,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 215
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 215
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -921,19 +1033,33 @@
    "keyframe_requests": 168,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 3,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 3,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 86
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -1029,19 +1155,33 @@
    "keyframe_requests": 464,
    "frames_missing_packets": 212,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 61
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 66
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 61
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -1137,19 +1277,33 @@
    "keyframe_requests": 212,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 1,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [
-     3600000
-    ],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 1,
+     "reconfig_live": 1,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [
+      3600000
+     ],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 4000,
+      "p95": 4000,
+      "p99": 4000,
+      "max": 4000
+     },
+     "estimate_sampled": 111
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [
@@ -1250,17 +1404,31 @@
    "keyframe_requests": 0,
    "frames_missing_packets": 0,
    "congestion": {
-    "enabled": false,
-    "decision_count": 0,
-    "bitrate_targets_kbps": [],
-    "reconfig_live": 0,
-    "reconfig_rebuilt": 0,
-    "reconfig_errors": 0,
-    "fps_retargets": 0,
-    "live_bitrate_steps_bps": [],
-    "netem_schedule_swaps": 0,
-    "resolution_step_downs": 0,
-    "input_delay_dropped": 0
+    "host": {
+     "source": "m5-<cell>-host.log + host link samples",
+     "decision_count": 0,
+     "reconfig_live": 0,
+     "reconfig_rebuilt": 0,
+     "reconfig_errors": 0,
+     "fps_retargets": 0,
+     "live_bitrate_steps_bps": [],
+     "netem_schedule_swaps": 0,
+     "estimate_kbps": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+     },
+     "estimate_sampled": 311
+    },
+    "controller_side_summary": {
+     "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+     "enabled": false,
+     "decision_count": 0,
+     "bitrate_targets_kbps": [],
+     "resolution_step_downs": 0,
+     "input_delay_dropped": 0
+    }
    },
    "recovery": {
     "connect_attempts_ms": [],

@@ -49,6 +49,9 @@ pub struct EngineObserver {
     pub input_pump: Option<Arc<Mutex<node_runtime::input::InputPump<super::SinkBox>>>>,
     /// Controller cursor slot (loop fills from observer).
     pub cursor_slot: Option<Arc<node_runtime::metrics::LatestSlot<protocol::wire::CursorMessage>>>,
+    /// Last wire `SetQuality` preset the host applied (F70): returning to
+    /// `Auto` from a manual preset restores the default geometry once.
+    pub last_wire_quality: Option<protocol::wire::QualityPreset>,
 }
 
 impl EngineObserver {
@@ -233,14 +236,26 @@ impl NodeObserver for EngineObserver {
             }
             (Channel::Control, WireMessage::SetQuality { preset }) => {
                 self.shared.set_quality(*preset);
-                // M5: `Auto` never rebuilds on the wire path either — it
-                // engages the congestion controller against the current
-                // pipeline (the engine loop owns it); manual presets pin
-                // their targets through the rebuild path.
+                // M5: `Auto` never rebuilds on the wire path to *engage* the
+                // congestion controller — it runs against the current
+                // pipeline; manual presets pin their targets through the
+                // rebuild path. M6 F70 exception: returning to `Auto` from a
+                // manual preset that stepped the geometry down (e.g. Low's
+                // 720p) restores the default Auto geometry once — otherwise
+                // the session keeps the manual geometry until the
+                // starvation step-down, which only ever steps *down*.
                 if *preset != QualityPreset::Auto {
                     let plan = plan_for(*preset);
                     self.flags.lock().expect("observer flags").want_reconfig = Some(plan);
+                } else if self
+                    .last_wire_quality
+                    .take()
+                    .is_some_and(|prev| prev != QualityPreset::Auto)
+                {
+                    self.flags.lock().expect("observer flags").want_reconfig =
+                        Some(plan_for(QualityPreset::Auto));
                 }
+                self.last_wire_quality = Some(*preset);
             }
             (Channel::Control, WireMessage::SelectMonitor { monitor_id }) => {
                 self.shared.set_active_monitor(Some(monitor_id.clone()));

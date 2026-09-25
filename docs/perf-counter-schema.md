@@ -102,7 +102,13 @@ Cumulative counters are difference-able into any reporting window offline.
   per queue per second; a 1 Hz snapshot would hide exactly the 0→2→0
   oscillation the "depth ≤ 1 steady state" gate exists to catch.
 - The four **channel queues** are sampled at ≥1 Hz plus on every depth change
-  while any of them is non-empty.
+  while any of them is non-empty. (M6 F63: since an enqueue→drain burst
+  routinely completes inside one poll interval — the M5 matrix polled at
+  ~2–5 ms and still recorded `depth: 0` everywhere while high-water hit
+  30/32 — the depth changes are recorded INSIDE the transport's bounded
+  queues (`Transport::take_channel_depth_trail`, a per-slot ring) and the
+  engine/rig loops drain that trail every iteration, so every change
+  becomes a sample at its true depth.)
 - `depth == capacity` sustained, or monotonic growth of `dropped`/`replaced`
   on the frame queues during steady state, is the visible symptom of a
   backpressure failure and is a release blocker in M6.

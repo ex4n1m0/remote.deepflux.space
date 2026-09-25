@@ -39,7 +39,9 @@
 //! * **Increase**: additive (`up_step_bps`, ≥ 250 kbps, ~5%), only when
 //!   loss < 1%, RTT not trending away, ≥ `down_to_up_cooldown_ms` (3 s)
 //!   after the last decrease and ≥ `up_cooldown_ms` (1 s) after the last
-//!   increase, and always capped at estimate × 0.95.
+//!   increase, and always capped at estimate × `estimate_safety` (0.9 — the
+//!   same factor as the down-follow: a 0.95 ceiling measurably flapped
+//!   3.6M↔3.8M, M5 evidence).
 //! * **fps cap**: 60→30 below `fps30_bps` (2.5 Mbps), 30→15 below
 //!   `fps15_bps` (1.2 Mbps); recovery requires 1.2× the threshold
 //!   (hysteresis band) plus a 5 s dwell. `Auto` only — manual presets pin
@@ -72,8 +74,15 @@ pub struct CongestionSample {
 
 impl CongestionSample {
     /// The RTT this policy considers (media path preferred).
+    ///
+    /// F61 semantics: a `Some(0.0)` remote RTT is a dead field, not a
+    /// measurement — the transport publishes `None` for those, but the
+    /// policy defends itself anyway: zero never blocks the ICE fallback the
+    /// way a real 0 ms RTT (impossible on any path) would.
     fn rtt_ms(&self) -> Option<f64> {
-        self.remote_rtt_ms.or(self.ice_rtt_ms)
+        self.remote_rtt_ms
+            .filter(|r| *r > 0.0)
+            .or(self.ice_rtt_ms.filter(|r| *r > 0.0))
     }
 }
 
@@ -115,6 +124,11 @@ pub struct CongestionParams {
     pub up_cooldown_ms: u64,
     /// Additive increase step, bps (floored at 5% of current).
     pub up_step_bps: u64,
+    /// Window over which the RTT trend baseline is the minimum, ms (F65:
+    /// a session-lifetime min permanently blocked increases on paths whose
+    /// RTT floor legitimately rose; the window lets the baseline track a
+    /// *sustained* shift while still ignoring short dips).
+    pub rtt_baseline_window_ms: u64,
     /// fps caps and their bitrate thresholds (hysteresis ×1.2 on recovery,
     /// 5 s dwell between fps changes).
     pub fps30_bps: u64,
@@ -140,6 +154,7 @@ impl Default for CongestionParams {
             down_to_up_cooldown_ms: 3_000,
             up_cooldown_ms: 1_000,
             up_step_bps: 300_000,
+            rtt_baseline_window_ms: 60_000,
             fps30_bps: 2_500_000,
             fps15_bps: 1_200_000,
             base_fps: 60,
@@ -161,8 +176,11 @@ pub struct CongestionController {
     last_increase_ms: Option<u64>,
     /// Consecutive loss-down samples (need 2).
     loss_down_streak: u32,
-    /// Minimum RTT observed (baseline for the trend guard).
-    rtt_baseline_ms: Option<f64>,
+    /// RTT samples (at_ms, rtt) inside the trend-baseline window (F65);
+    /// the baseline is the window minimum, so a sustained rise in the
+    /// path's RTT floor is eventually adopted instead of blocking
+    /// increases for the rest of the session.
+    rtt_window: std::collections::VecDeque<(u64, f64)>,
     /// Consecutive samples with loss below `loss_up_percent` — increases
     /// additionally require a 3-sample recovery dwell so a flapping loss
     /// signal cannot probe up between loss bursts (unit-tested).
@@ -189,7 +207,7 @@ impl CongestionController {
             last_direction_down_ms: None,
             last_increase_ms: None,
             loss_down_streak: 0,
-            rtt_baseline_ms: None,
+            rtt_window: std::collections::VecDeque::new(),
             clean_streak: 0,
             last_fps_change_ms: None,
             starved_since_ms: None,
@@ -217,20 +235,31 @@ impl CongestionController {
         let resolution_down_bps = self.params.resolution_down_bps;
         let resolution_sustain_ms = self.params.resolution_sustain_ms;
 
-        // RTT baseline bookkeeping (trend guard).
+        // RTT baseline bookkeeping (trend guard): windowed minimum (F65).
         if let Some(rtt) = sample.rtt_ms().filter(|r| *r > 0.0) {
-            self.rtt_baseline_ms = Some(match self.rtt_baseline_ms {
-                Some(base) => base.min(rtt),
-                None => rtt,
-            });
+            let window = self.params.rtt_baseline_window_ms;
+            self.rtt_window.push_back((sample.at_ms, rtt));
+            while let Some((at, _)) = self.rtt_window.front()
+                && sample.at_ms.saturating_sub(*at) > window
+            {
+                self.rtt_window.pop_front();
+            }
         }
-        let rtt_trending_away = match (self.rtt_baseline_ms, sample.rtt_ms()) {
-            (Some(base), Some(rtt)) => rtt > base * 2.5,
-            _ => false,
+        let rtt_baseline_ms = self
+            .rtt_window
+            .iter()
+            .map(|(_, rtt)| *rtt)
+            .fold(f64::INFINITY, f64::min);
+        let rtt_trending_away = match sample.rtt_ms() {
+            Some(rtt) => rtt > rtt_baseline_ms * 2.5,
+            None => false,
         };
 
         let loss = sample.remote_loss_percent;
-        let estimate = sample.estimate_bps;
+        // F60: `Some(0)` is not an estimate (a pre-first-publish zero raced
+        // Auto's cold-start to the floor in M5) — treat it as absent, same
+        // as `None`.
+        let estimate = sample.estimate_bps.filter(|est| *est > 0);
 
         // --- starvation bookkeeping (resolution last resort) ---
         match estimate {
@@ -436,6 +465,7 @@ mod tests {
             down_to_up_cooldown_ms: 3_000,
             up_cooldown_ms: 1_000,
             up_step_bps: 300_000,
+            rtt_baseline_window_ms: 60_000,
             fps30_bps: 2_500_000,
             fps15_bps: 1_200_000,
             base_fps: 60,
@@ -727,6 +757,80 @@ mod tests {
         assert!(
             d.bitrate_bps.is_none(),
             "RTT trend blocks additive increases (GCC owns the decrease)"
+        );
+    }
+
+    /// F60/F61 policy semantics: a `Some(0)` estimate is absent (it must
+    /// not clamp the target to the floor), and a dead `Some(0.0)` remote
+    /// RTT falls back to the ICE pair RTT instead of counting as a real
+    /// 0 ms baseline (which would make every later RTT "trend away").
+    #[test]
+    fn zero_estimate_and_dead_rr_fields_are_treated_as_absent() {
+        let mut ctl = CongestionController::new(params());
+        // Estimate Some(0): no down-follow to the 500 kbps floor.
+        let d = ctl.sample(sample(0, Some(0), None));
+        assert!(
+            d.bitrate_bps.is_none(),
+            "a zero estimate is absent, not a collapse to the floor"
+        );
+        // Remote RTT Some(0.0) with a live ICE RTT: the ICE value is the
+        // baseline. Then a real 50 ms remote RTT against a 20 ms ICE
+        // baseline is 2.5x (not trending *away*, boundary is >) — and
+        // crucially 0.0 itself never enters the window.
+        let mut s = sample(1000, Some(HEALTHY), Some(0.0));
+        s.remote_rtt_ms = Some(0.0);
+        ctl.sample(s);
+        let mut s = sample(2000, Some(12_000_000), Some(0.0));
+        s.remote_rtt_ms = Some(0.0);
+        s.ice_rtt_ms = Some(20.0);
+        let d = ctl.sample(s);
+        assert!(
+            d.bitrate_bps.is_some(),
+            "increase proceeds once the clean dwell + cooldowns are met: the dead \
+             0.0 remote RTT did not poison the baseline"
+        );
+    }
+
+    /// F65: the RTT baseline is a windowed minimum, so a path whose RTT
+    /// floor legitimately rises does not block increases forever.
+    #[test]
+    fn rtt_baseline_window_adopts_a_sustained_shift() {
+        let mut p = params();
+        p.rtt_baseline_window_ms = 10_000; // 10 s window for a fast test
+        let mut ctl = CongestionController::new(p);
+        // 20 ms baseline for 5 s, clean, fat estimate.
+        for t in 0..5u64 {
+            let mut s = sample(t * 1000, Some(12_000_000), Some(0.0));
+            s.remote_rtt_ms = Some(20.0);
+            ctl.sample(s);
+        }
+        // The floor rises to 60 ms (3x the old baseline) and STAYS. While
+        // the 20 ms samples are still inside the 10 s window (t=5..=14),
+        // the trend guard blocks every increase.
+        for t in 5..15u64 {
+            let mut s = sample(t * 1000, Some(12_000_000), Some(0.0));
+            s.remote_rtt_ms = Some(60.0);
+            let d = ctl.sample(s);
+            assert!(
+                d.bitrate_bps.is_none(),
+                "t={t}: the 20 ms history still anchors the baseline (trend guard)"
+            );
+        }
+        // After the window (t > 15 s), 60 ms IS the baseline: increases resume.
+        let mut resumed = false;
+        for t in 16..40u64 {
+            let mut s = sample(t * 1000, Some(12_000_000), Some(0.0));
+            s.remote_rtt_ms = Some(60.0);
+            let before = ctl.bitrate_bps();
+            ctl.sample(s);
+            if ctl.bitrate_bps() > before {
+                resumed = true;
+                break;
+            }
+        }
+        assert!(
+            resumed,
+            "a sustained RTT floor shift is adopted after the window (F65)"
         );
     }
 }

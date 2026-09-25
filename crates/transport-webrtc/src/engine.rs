@@ -14,6 +14,7 @@
 //! | `control`/`input-reliable` send | 256   | `Err` (never grow)        |
 //! | `input-fast` send               | 32    | drop oldest (newest wins) |
 //! | `cursor` send                   | 8     | drop oldest (newest wins) |
+//! | channel depth trail (F63)       | 64/slot | drop oldest (counted)   |
 //! | received-video frames           | 4     | drop oldest (counted)     |
 //! | remote-candidate dedupe set     | 128   | clear (re-add lazily)     |
 //!
@@ -60,9 +61,9 @@ use crate::rtp::{
     parse_frame_id_ext, rtp_timestamp_from_ns,
 };
 use crate::{
-    Channel, ChannelQueues, CongestionStats, ConnectionState, FRAME_ID_EXTENSION_URI,
-    NetemQueueStats, ReceivedFrame, SelectedIcePair, Transport, TransportError, TransportEvent,
-    TransportStats, VideoFrame,
+    Channel, ChannelDepthSample, ChannelQueues, CongestionStats, ConnectionState,
+    FRAME_ID_EXTENSION_URI, NetemQueueStats, ReceivedFrame, SelectedIcePair, Transport,
+    TransportError, TransportEvent, TransportStats, VideoFrame,
 };
 
 /// Upper bound for any trait-method bridge into the private runtime.
@@ -91,6 +92,15 @@ const DATA_CHANNEL_SEND_BUFFER_LIMIT: usize = 256 * 1024;
 /// producing the queue-overflow loss a real shallow-buffered bottleneck
 /// shows (counted, invariant 3).
 const NETEM_QUEUE_CAPACITY: usize = 300;
+
+/// Explicit cap on the shaper's due-heap (M6 F69): the channel bound
+/// above caps only the *pre-shaper* queue; the heap is bounded in
+/// practice by profile physics (one-way delay × packet rate) but a
+/// pathological `delay_ms` would grow it without this. Overflow drops
+/// the NEWEST packet (the heap's scheduled departures keep draining) and
+/// counts it in the netem drop gauge. Test-only surface (product options
+/// set `video_netem: None`).
+const NETEM_HEAP_CAPACITY: usize = 4_096;
 
 /// The product's STUN configuration (M5, RD-013): two independent public
 /// servers so one being unreachable does not degrade gathering to
@@ -286,6 +296,12 @@ impl Shared {
     }
 }
 
+/// Bound of the per-slot depth trail (M6 F63): ~64 changes per drain
+/// interval is far above any real burst (the matrix's worst input burst
+/// was 30 enqueues); overflow drops the OLDEST entry and counts it, so the
+/// newest depths always survive.
+const DEPTH_TRAIL_CAPACITY: usize = 64;
+
 /// One data channel's bounded send queue plus its webrtc-rs handle.
 struct ChannelSlot {
     channel: Channel,
@@ -298,6 +314,10 @@ struct ChannelSlot {
     /// Cumulative activity counters (F32 change detection).
     enqueued: AtomicU64,
     dequeued: AtomicU64,
+    /// Depth-change trail (F63): (uptime ns, depth), recorded at the
+    /// mutation so sub-poll bursts are not invisible to sampled depth.
+    trail: StdMutex<VecDeque<(u64, u32)>>,
+    trail_overflow: AtomicU64,
     dc: tokio::sync::Mutex<Option<Arc<dyn DataChannel>>>,
     notify: Arc<tokio::sync::Notify>,
 }
@@ -319,9 +339,39 @@ impl ChannelSlot {
             replaced: AtomicU64::new(0),
             enqueued: AtomicU64::new(0),
             dequeued: AtomicU64::new(0),
+            trail: StdMutex::new(VecDeque::with_capacity(DEPTH_TRAIL_CAPACITY)),
+            trail_overflow: AtomicU64::new(0),
             dc: tokio::sync::Mutex::new(None),
             notify: Arc::new(tokio::sync::Notify::new()),
         }
+    }
+
+    /// Record a depth change into the bounded trail (F63). Called with the
+    /// queue lock held by the caller (enqueue) or from the pump (dequeue);
+    /// the trail lock is only ever taken for a push_back.
+    fn note_depth(&self, depth: u32) {
+        let mut trail = self.trail.lock().expect("depth trail poisoned");
+        if trail.back().is_some_and(|(_, last)| *last == depth) {
+            return; // not a change
+        }
+        trail.push_back((transport_uptime_ns(), depth));
+        while trail.len() > DEPTH_TRAIL_CAPACITY {
+            trail.pop_front();
+            self.trail_overflow.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Drain the trail (F63); empty when nothing changed since last drain.
+    fn take_trail(&self) -> Vec<ChannelDepthSample> {
+        let mut trail = self.trail.lock().expect("depth trail poisoned");
+        trail
+            .drain(..)
+            .map(|(at_uptime_ns, depth)| ChannelDepthSample {
+                channel: self.channel,
+                at_uptime_ns,
+                depth,
+            })
+            .collect()
     }
 
     /// Enqueue per the channel's policy: reliable → `Err` when full; lossy →
@@ -344,6 +394,7 @@ impl ChannelSlot {
         }
         queue.push_back(bytes);
         let depth = queue.len() as u32;
+        self.note_depth(depth);
         drop(queue);
         self.enqueued.fetch_add(1, Ordering::Relaxed);
         self.high_water.fetch_max(depth, Ordering::Relaxed);
@@ -422,6 +473,11 @@ struct VideoSend {
 #[derive(Debug, Default)]
 struct CongestionPublish {
     target_bps: AtomicU64,
+    /// Set on the first estimator publication (F60): before it, no estimate
+    /// exists and `stats()` must report `None`, never `Some(0)` — a zero
+    /// estimate published pre-first-value races Auto's cold-start into the
+    /// 500 kbps floor.
+    has_estimate: AtomicBool,
     stats: StdMutex<EstimatorStats>,
     updates: AtomicU64,
 }
@@ -431,7 +487,15 @@ impl CongestionPublish {
         let stats = *self.stats.lock().expect("gcc stats poisoned");
         let conv = |v: Option<f64>| v.filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u64);
         (
-            Some(self.target_bps.load(Ordering::Relaxed)),
+            (|| {
+                if !self.has_estimate.load(Ordering::Acquire) {
+                    return None;
+                }
+                // A published zero is not a usable estimate either (the clamp
+                // minimum is 300 kbps, so 0 can only be a degenerate write).
+                let bps = self.target_bps.load(Ordering::Relaxed);
+                (bps > 0).then_some(bps)
+            })(),
             CongestionStats {
                 delay_based_bps: conv(stats.delay_based_bitrate),
                 loss_based_bps: conv(stats.loss_based_bitrate),
@@ -468,6 +532,7 @@ impl ReportingGcc {
             self.inner.target_bitrate().max(0.0) as u64,
             Ordering::Relaxed,
         );
+        self.publish.has_estimate.store(true, Ordering::Release);
         *self.publish.stats.lock().expect("gcc stats poisoned") = self.inner.stats();
         self.publish.updates.fetch_add(1, Ordering::Relaxed);
     }
@@ -609,6 +674,12 @@ async fn netem_shaper_loop(
             Ok(Some(shaped)) => {
                 gauges.queued.fetch_add(1, Ordering::Relaxed);
                 seq += 1;
+                // F69: explicit heap cap — drop the newest on overflow
+                // (scheduled departures keep draining) and count it.
+                if heap.len() >= NETEM_HEAP_CAPACITY {
+                    gauges.dropped.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 heap.push(DuePacket {
                     due: shaped.due,
                     seq,
@@ -727,15 +798,7 @@ impl WebrtcTransport {
 
         let mut media = MediaEngine::default();
         let h264 = RTCRtpCodecParameters {
-            rtp_codec: rtc::rtp_transceiver::rtp_sender::RTCRtpCodec {
-                mime_type: "video/H264".to_owned(),
-                clock_rate: 90000,
-                channels: 0,
-                sdp_fmtp_line:
-                    "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
-                        .to_owned(),
-                rtcp_feedback: vec![],
-            },
+            rtp_codec: registered_h264_codec(),
             payload_type: 102,
         };
         media
@@ -1088,6 +1151,15 @@ async fn attach_data_channel(
                 };
                 let Some(bytes) = next else { break };
                 slot_pump.dequeued.fetch_add(1, Ordering::Relaxed);
+                // F63: the drain side of the depth trail (depth change on
+                // dequeue, including the return to 0 that ends a burst).
+                slot_pump.note_depth(
+                    slot_pump
+                        .queue
+                        .lock()
+                        .expect("channel queue poisoned")
+                        .len() as u32,
+                );
                 match dc_tx.try_send(BytesMut::from(&bytes[..])).await {
                     Ok(()) => {}
                     Err(WrError::ErrSendBufferFull) => {
@@ -1316,6 +1388,15 @@ impl Transport for WebrtcTransport {
 
                 // Host sends video: bind a static RTP track to the offer's
                 // video m-line (recvonly from the controller's view).
+                // The encoding MUST carry the registered codec, not the default
+                // (empty mime_type): rtc's sender-side interceptor bind
+                // (`interceptor_local_streams_op`) silently skips any coding
+                // whose codec fuzzy-matches nothing, and an empty codec matches
+                // nothing — the M5 F59 root cause: TWCC sender never stamped
+                // the transport-wide sequence and the congestion-control send
+                // history never tracked the SSRC, so the receiver's feedback
+                // found nothing to acknowledge and the estimate stayed frozen
+                // at its initial value.
                 let ssrc = session_ssrc();
                 let track = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
                     "rd-video-stream".to_owned(),
@@ -1327,6 +1408,7 @@ impl Transport for WebrtcTransport {
                             ssrc: Some(ssrc),
                             ..Default::default()
                         },
+                        codec: registered_h264_codec(),
                         ..Default::default()
                     }],
                 )));
@@ -1580,7 +1662,7 @@ impl Transport for WebrtcTransport {
             Option<f64>,
             Option<(u64, u64, i64, f64)>,
             Option<(u64, u64)>,
-            Option<(f64, f64)>,
+            Option<(f64, f64, u64)>,
             Option<SelectedIcePair>,
             bool,
         );
@@ -1626,7 +1708,11 @@ impl Transport for WebrtcTransport {
                             ));
                         }
                         RTCStatsReportEntry::RemoteInboundRtp(r) => {
-                            remote_inbound = Some((r.fraction_lost, r.round_trip_time));
+                            remote_inbound = Some((
+                                r.fraction_lost,
+                                r.round_trip_time,
+                                r.round_trip_time_measurements,
+                            ));
                         }
                         _ => {}
                     }
@@ -1728,12 +1814,20 @@ impl Transport for WebrtcTransport {
             .as_ref()
             .map(|publish| publish.snapshot())
             .unwrap_or((None, CongestionStats::default()));
+        // F61: a remote-inbound entry with zero RTT measurements has never
+        // been fed a receiver report — its zeros are dead fields, not
+        // "perfectly clean" reception, and must surface as `None`. Zero
+        // measurements also means the fraction-lost field is unset for the
+        // same reason (both latch only in `on_rtcp_rr_received`). An RTT of
+        // exactly 0.0 with measurements > 0 means the LSR/DLSR correlation
+        // was unavailable for that report (first RR preceding the first SR
+        // echo) — also `None`, never a fake 0 ms.
         let (remote_loss_percent, remote_rtt_ms) = match remote_inbound {
-            Some((fraction_lost, rtt_secs)) => (
+            Some((fraction_lost, rtt_secs, measurements)) if measurements > 0 => (
                 Some(fraction_lost.clamp(0.0, 1.0) * 100.0),
-                Some(rtt_secs.max(0.0) * 1000.0),
+                (rtt_secs > 0.0).then_some(rtt_secs.max(0.0) * 1000.0),
             ),
-            None => (None, None),
+            _ => (None, None),
         };
 
         Ok(TransportStats {
@@ -1783,6 +1877,19 @@ impl Transport for WebrtcTransport {
         Some(merged)
     }
 
+    fn take_channel_depth_trail(&mut self) -> Vec<ChannelDepthSample> {
+        // F63: drain each slot's bounded trail; lock-only, ordered by slot.
+        let mut out = Vec::new();
+        for slot in self.channels.slots.iter() {
+            out.extend(slot.take_trail());
+        }
+        out
+    }
+
+    fn uptime_ns(&self) -> u64 {
+        transport_uptime_ns()
+    }
+
     fn restart_ice(&mut self) -> Result<(), TransportError> {
         let pc = self.require_pc()?;
         let result: Result<Result<(), String>, String> = self.bridge("restart_ice", async move {
@@ -1814,11 +1921,37 @@ fn session_ssrc() -> u32 {
     (hash >> 32) as u32 | 1
 }
 
+/// The one video codec this transport registers (single-format H.264, PT 102).
+/// Shared by `MediaEngine` registration and the send track's encoding — the
+/// encoding must fuzzy-match a negotiated codec or rtc's sender-side
+/// interceptor bind silently skips the stream (M5 F59; see `compose_answer`).
+fn registered_h264_codec() -> rtc::rtp_transceiver::rtp_sender::RTCRtpCodec {
+    rtc::rtp_transceiver::rtp_sender::RTCRtpCodec {
+        mime_type: "video/H264".to_owned(),
+        clock_rate: 90000,
+        channels: 0,
+        sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+            .to_owned(),
+        rtcp_feedback: vec![],
+    }
+}
+
 /// Deterministic millisecond feed for the netem verdicts (process uptime).
 fn netem_now_ms(now: Instant) -> u64 {
     static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
     let start = START.get_or_init(Instant::now);
     now.saturating_duration_since(*start).as_millis() as u64
+}
+
+/// Process-uptime nanoseconds — the clock the F63 depth trail is stamped
+/// on. One OnceLock start shared by every transport in the process, so a
+/// consumer anchoring trail timestamps against a fresh `uptime_ns()`
+/// reading gets a consistent domain regardless of which slot recorded the
+/// entry.
+fn transport_uptime_ns() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    Instant::now().saturating_duration_since(*start).as_nanos() as u64
 }
 
 /// Find the negotiated extmap id for `FRAME_ID_EXTENSION_URI` in an SDP
@@ -1855,6 +1988,64 @@ fn candidate_type_name(t: RTCIceCandidateType) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F60: the estimate surface is `None` until a real estimator value has
+    /// been published, and a degenerate zero publication stays `None` — a
+    /// pre-first-value `Some(0)` raced Auto's cold-start to the 500 kbps
+    /// floor (observed as `available_bandwidth_kbps: 0` at t≈1–2 s in every
+    /// M5 matrix cell's JSONL).
+    #[test]
+    fn congestion_publish_is_none_until_a_real_estimate_exists() {
+        let publish = CongestionPublish::default();
+        assert_eq!(publish.snapshot().0, None, "zero-initialized atomic");
+        publish.target_bps.store(4_000_000, Ordering::Relaxed);
+        assert_eq!(
+            publish.snapshot().0,
+            None,
+            "a stored value without a publication is still not an estimate"
+        );
+        publish.has_estimate.store(true, Ordering::Release);
+        assert_eq!(publish.snapshot().0, Some(4_000_000));
+        publish.target_bps.store(0, Ordering::Relaxed);
+        assert_eq!(
+            publish.snapshot().0,
+            None,
+            "a zero publication is absent, not a 0 bps estimate (clamp min is 300k)"
+        );
+    }
+
+    /// F63: the depth trail records every depth change at mutation time —
+    /// a burst that enqueues and drains between two polls still leaves
+    /// samples (the M5 matrix recorded depth 0 on every sample while
+    /// high_water hit 30/32).
+    #[test]
+    fn channel_slot_depth_trail_records_bursts() {
+        let slot = ChannelSlot::new(Channel::InputFast);
+        for i in 0..5 {
+            slot.enqueue(vec![i as u8]).expect("lossy never rejects");
+        }
+        let trail = slot.take_trail();
+        let depths: Vec<u32> = trail.iter().map(|s| s.depth).collect();
+        assert_eq!(depths, vec![1, 2, 3, 4, 5], "one entry per change");
+        assert!(trail.iter().all(|s| s.channel == Channel::InputFast));
+        assert!(
+            trail.iter().all(|s| s.at_uptime_ns > 0),
+            "trail entries carry uptime stamps"
+        );
+        assert!(slot.take_trail().is_empty(), "drain empties the trail");
+        // A no-change enqueue (replace at capacity) adds nothing.
+        for i in 0..FAST_QUEUE_CAPACITY {
+            slot.enqueue(vec![i as u8]).expect("fill to capacity");
+        }
+        let _ = slot.take_trail();
+        slot.enqueue(vec![0xFF]).expect("replace oldest");
+        let after = slot.take_trail();
+        assert!(
+            after.iter().all(|s| s.depth == FAST_QUEUE_CAPACITY as u32),
+            "a replace does not change the depth ({} entries)",
+            after.len()
+        );
+    }
 
     /// Invariant 3 at the queue layer: reliable channels reject with a
     /// typed error when the bounded queue is full, and the drop is counted;

@@ -55,6 +55,11 @@ ureq = { version = "=2.12.1", default-features = false, features = ["native-tls"
 # node-runtime free of new `unsafe` beyond the AGENTS.md sanctioned list).
 getrandom = "=0.3.3"
 
+# M6 F59 fork pins (see ADR-002 "M6 fork" section): local, patched copies of
+# the exact upstream versions. `[patch.crates-io]` applies workspace-wide.
+[patch.crates-io]
+rtc = { path = "fork/rtc" }
+
 # Every crate in this workspace:
 #   [package] version/edition/rust-version from workspace.package,
 #   lints.workspace = true,

@@ -2258,20 +2258,51 @@ fn run(args: Args) -> i32 {
             }
         }
 
-        // ---- channel-queue per-change sampling (F32: on every change
-        // plus ≥1 Hz; the gauges call is lock-only, no async bridge) ----
+        // ---- channel-queue sampling (F32 + F63): the depth TRAIL carries
+        // every depth change recorded at mutation time (sub-poll bursts
+        // included — the M5 matrix's high_water 30/32 was invisible to
+        // polled depth), and the ≥1 Hz / nonzero-depth snapshot below
+        // provides the periodic baseline. ----
+        {
+            let (trail, uptime_now) = node.channel_depth_trail();
+            if !trail.is_empty() {
+                let now_ns = clock.now_ns();
+                let mut sink = report.sink_handle(Arc::clone(&session_slot));
+                for entry in &trail {
+                    let kind = match entry.channel {
+                        Channel::Control => QueueKind::ChannelControl,
+                        Channel::InputFast => QueueKind::ChannelInputFast,
+                        Channel::InputReliable => QueueKind::ChannelInputReliable,
+                        Channel::Cursor => QueueKind::ChannelCursor,
+                    };
+                    let at_ns =
+                        now_ns.saturating_sub(uptime_now.saturating_sub(entry.at_uptime_ns));
+                    // Capacity/counters from the previous poll's snapshot
+                    // (≤ one loop iteration old; capacity is static).
+                    let prev = last_channel_gauges.as_ref();
+                    sink.record(CounterRecord::QueueSample(diagnostics::QueueSample {
+                        session_id: session_slot.get(),
+                        queue: kind,
+                        depth: entry.depth,
+                        capacity: prev
+                            .map(|g| g.capacity[entry.channel as usize])
+                            .unwrap_or(0),
+                        high_water: prev
+                            .map(|g| g.high_water[entry.channel as usize])
+                            .unwrap_or(0),
+                        dropped: prev.map(|g| g.dropped[entry.channel as usize]).unwrap_or(0),
+                        replaced: prev
+                            .map(|g| g.replaced[entry.channel as usize])
+                            .unwrap_or(0),
+                        at_ns,
+                    }));
+                }
+            }
+        }
         if let Some(gauges) = node.channel_queue_gauges() {
-            let changed = last_channel_gauges.as_ref().is_none_or(|last| {
-                (0..4).any(|i| {
-                    gauges.depth[i] != last.depth[i]
-                        || gauges.enqueued[i] != last.enqueued[i]
-                        || gauges.dequeued[i] != last.dequeued[i]
-                        || gauges.dropped[i] != last.dropped[i]
-                        || gauges.replaced[i] != last.replaced[i]
-                })
-            });
+            let any_nonzero = (0..4).any(|i| gauges.depth[i] > 0);
             let tick_due = now.duration_since(last_channel_tick) >= Duration::from_secs(1);
-            if changed || tick_due {
+            if any_nonzero || tick_due {
                 last_channel_tick = now;
                 last_channel_gauges = Some(gauges);
                 let mut sink = report.sink_handle(Arc::clone(&session_slot));

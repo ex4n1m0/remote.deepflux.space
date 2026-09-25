@@ -13,6 +13,7 @@
 //! counters); TURN never configured; every queue bounded with a counted
 //! drop policy; SDP secrets and input payloads never logged.
 
+pub mod blackhole;
 pub mod controller;
 pub mod diag;
 pub mod displays;
@@ -479,6 +480,12 @@ pub struct EngineConfig {
     pub viewer_title: String,
     pub initial_quality: QualityPreset,
     pub initial_scale: ScaleMode,
+    /// Test-only chaos (M6 E2E connect-failure case, mirrors the m5 rig's
+    /// `--blackhole-candidates`): rewrite every REMOTE candidate's port to
+    /// the discard port before the ICE agent sees it, emulating "UDP
+    /// blocked toward the peer" — signaling works, ICE cannot. Never set
+    /// by the product shell.
+    pub blackhole_remote_candidates: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -581,6 +588,7 @@ struct Engine {
     status_file: Option<PathBuf>,
     viewer_title: String,
     initial_quality: QualityPreset,
+    blackhole_remote_candidates: bool,
     node: Node,
     clock: Arc<MonotonicClock>,
     session_slot: Arc<SessionSlot>,
@@ -654,6 +662,7 @@ fn run(
         viewer_title,
         initial_quality,
         initial_scale: _,
+        blackhole_remote_candidates,
     } = cfg;
     let node = Node::new(
         &device_id,
@@ -715,6 +724,7 @@ fn run(
         shared: Arc::clone(&shared),
         input_pump: None,
         cursor_slot: None,
+        last_wire_quality: None,
     };
 
     let mut engine = Engine {
@@ -723,6 +733,7 @@ fn run(
         status_file,
         viewer_title,
         initial_quality,
+        blackhole_remote_candidates,
         node,
         clock,
         session_slot,
@@ -800,6 +811,11 @@ fn run(
         engine.drain_host_output();
         engine.drain_controller_input();
         engine.drain_viewer_input();
+
+        // ---- channel depth trail (F63): every depth change leaves a
+        // sample even when the burst enqueues and drains between polls
+        // (M5 matrix: high_water 30/32 with all sampled depths 0). ----
+        engine.sample_channel_depth_trail();
 
         // ---- periodic ----
         let now = Instant::now();
@@ -1502,6 +1518,53 @@ impl Engine {
         }
     }
 
+    /// F63: drain the transport's channel depth-change trail and emit one
+    /// `QueueSample` per entry, timestamped on the session clock by
+    /// anchoring the transport's uptime reading. Called every engine-loop
+    /// iteration (~2 ms); lock-only on the transport side.
+    fn sample_channel_depth_trail(&mut self) {
+        if !self.node.has_transport() {
+            return;
+        }
+        let (samples, uptime_now) = self.node.channel_depth_trail();
+        if samples.is_empty() {
+            return;
+        }
+        let now_ns = self.clock.now_ns();
+        let gauges = self.node.channel_queue_gauges();
+        let mut sink = self.make_loop_sink();
+        for entry in samples {
+            let kind = match entry.channel {
+                transport_webrtc::Channel::Control => diagnostics::QueueKind::ChannelControl,
+                transport_webrtc::Channel::InputFast => diagnostics::QueueKind::ChannelInputFast,
+                transport_webrtc::Channel::InputReliable => {
+                    diagnostics::QueueKind::ChannelInputReliable
+                }
+                transport_webrtc::Channel::Cursor => diagnostics::QueueKind::ChannelCursor,
+            };
+            let at_ns = now_ns.saturating_sub(uptime_now.saturating_sub(entry.at_uptime_ns));
+            let (capacity, high_water, dropped, replaced) = match gauges.as_ref() {
+                Some(g) => (
+                    g.capacity[entry.channel as usize],
+                    g.high_water[entry.channel as usize],
+                    g.dropped[entry.channel as usize],
+                    g.replaced[entry.channel as usize],
+                ),
+                None => (0, 0, 0, 0),
+            };
+            sink.record(CounterRecord::QueueSample(diagnostics::QueueSample {
+                session_id: self.session_slot.get(),
+                queue: kind,
+                depth: entry.depth,
+                capacity,
+                high_water,
+                dropped,
+                replaced,
+                at_ns,
+            }));
+        }
+    }
+
     // -- helpers ------------------------------------------------------------
 
     /// M5: feed the `Auto`-preset congestion policy from the 1 Hz stats
@@ -1756,7 +1819,16 @@ impl Engine {
         }
         match WebrtcTransport::with_options(role, options) {
             Ok(transport) => {
-                self.node.attach_transport(Box::new(transport));
+                let boxed: Box<dyn transport_webrtc::Transport> =
+                    if self.blackhole_remote_candidates {
+                        // Test-only chaos (E2E connect-failure): every
+                        // remote candidate port -> discard. See
+                        // engine::blackhole's module docs.
+                        Box::new(blackhole::BlackholeCandidates::new(transport))
+                    } else {
+                        Box::new(transport)
+                    };
+                self.node.attach_transport(boxed);
                 self.node.set_transport_owner(owner);
                 self.transport_owner = owner;
             }

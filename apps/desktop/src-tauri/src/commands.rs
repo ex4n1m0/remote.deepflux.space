@@ -92,6 +92,8 @@ pub fn engine_start(app: AppHandle) -> CmdResult<EngineStatusDto> {
         viewer_title: "Remote Desktop".to_owned(),
         initial_quality: quality,
         initial_scale: scale,
+        // Test-only chaos is never set by the product shell (E2E only).
+        blackhole_remote_candidates: false,
     };
     let (handle, events) = engine::spawn(cfg);
     // Forwarder: engine events → webview events (metadata only).

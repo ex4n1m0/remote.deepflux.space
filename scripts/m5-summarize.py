@@ -59,7 +59,8 @@ def parse_host_log(name):
     retargets, congestion decision trace, netem schedule swaps."""
     log = MATRIX / f"{name}-host.log"
     out = {"reconfig_live": 0, "reconfig_rebuilt": 0, "reconfig_errors": 0,
-           "fps_retargets": 0, "bitrate_steps": [], "netem_swaps": 0}
+           "fps_retargets": 0, "bitrate_steps": [], "netem_swaps": 0,
+           "decision_lines": 0}
     if not log.exists():
         return out
     for line in open(log, encoding="utf-8", errors="replace"):
@@ -73,6 +74,8 @@ def parse_host_log(name):
             out["reconfig_rebuilt"] += 1
         elif "reconfigure failed" in line:
             out["reconfig_errors"] += 1
+        elif "congestion decision:" in line:
+            out["decision_lines"] += 1
         elif "fps cap" in line:
             out["fps_retargets"] += 1
         elif "netem schedule @" in line:
@@ -182,22 +185,37 @@ def summarize_cell(name):
         "queue_high_water": queue_hw,
         "keyframe_requests": ctlr.get("keyframe_requests_sent"),
         "frames_missing_packets": ctlr.get("frames_missing_packets"),
+        # F62 (M6): the congestion block is self-contained host-side
+        # evidence. The controller-side rig summary's congestion fields
+        # (always enabled:false/empty — the controller sends no media) stay
+        # available but under an explicitly-labeled provenance key, so an
+        # auditor reading this JSON alone sees the host controller was ON
+        # and acting without cross-referencing the cell logs.
         "congestion": {
-            "enabled": congestion.get("enabled"),
-            "decision_count": len(events),
-            "bitrate_targets_kbps": [
-                e["encoder_bitrate_bps"] // 1000 for e in events if e.get("encoder_bitrate_bps")
-            ],
-            "reconfig_live": host_log["reconfig_live"],
-            "reconfig_rebuilt": host_log["reconfig_rebuilt"],
-            "reconfig_errors": host_log["reconfig_errors"],
-            "fps_retargets": host_log["fps_retargets"],
-            "live_bitrate_steps_bps": host_log["bitrate_steps"],
-            "netem_schedule_swaps": host_log["netem_swaps"],
-            "resolution_step_downs": sum(
-                1 for e in events if e.get("resolution_step_down")
-            ),
-            "input_delay_dropped": congestion.get("input_delay_dropped"),
+            "host": {
+                "source": "m5-<cell>-host.log + host link samples",
+                "decision_count": host_log["decision_lines"],
+                "reconfig_live": host_log["reconfig_live"],
+                "reconfig_rebuilt": host_log["reconfig_rebuilt"],
+                "reconfig_errors": host_log["reconfig_errors"],
+                "fps_retargets": host_log["fps_retargets"],
+                "live_bitrate_steps_bps": host_log["bitrate_steps"],
+                "netem_schedule_swaps": host_log["netem_swaps"],
+                "estimate_kbps": percentiles(est),
+                "estimate_sampled": len(est),
+            },
+            "controller_side_summary": {
+                "source": "controller rig summary; the controller sends no media, so its congestion controller is correctly absent (enabled:false here is NOT evidence about the host)",
+                "enabled": congestion.get("enabled"),
+                "decision_count": len(events),
+                "bitrate_targets_kbps": [
+                    e["encoder_bitrate_bps"] // 1000 for e in events if e.get("encoder_bitrate_bps")
+                ],
+                "resolution_step_downs": sum(
+                    1 for e in events if e.get("resolution_step_down")
+                ),
+                "input_delay_dropped": congestion.get("input_delay_dropped"),
+            },
         },
         "recovery": summary.get("sessions"),
         "transport_stats": summary.get("transport_stats"),

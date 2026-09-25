@@ -19,8 +19,9 @@
 //! clamped), `WM_KILLFOCUS` enqueues `AllKeysUp{FocusLost}`, `F11` is a
 //! local fullscreen toggle never forwarded, text coalescing into UTF-16
 //! surrogates happens at the app's wire-conversion layer. Input payloads
-//! are never logged (invariant 6; `ViewerInputEvent` carries coordinates,
-//! which `Debug`-print only inside this crate's tests).
+//! are never logged (invariant 6; `ViewerInputEvent`'s `Debug` is
+//! redacted to the variant name — M6/F58d — so coordinates, scan codes,
+//! and text units can never reach a log line).
 //!
 //! Queues are bounded (invariant 3): the proc's queue drops the *oldest*
 //! event when full (the freshest always lands; the window thread can never
@@ -43,7 +44,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const INPUT_QUEUE_CAP: usize = 256;
 
 /// A captured input occurrence before the engine assigns wire seq numbers.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Debug` is hand-written and redacted (F58d, invariant 6): input payloads
+/// are never printable — coordinates, scan codes, and text units stay out
+/// of any log line, matching `protocol::wire::InputEvent`'s redaction.
+#[derive(Clone, PartialEq)]
 pub enum ViewerInputEvent {
     Move {
         x: u16,
@@ -68,6 +73,21 @@ pub enum ViewerInputEvent {
     AllKeysUp {
         trigger: AllKeysUpTrigger,
     },
+}
+
+impl std::fmt::Debug for ViewerInputEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Variant only: no coordinates, no scan codes, no text units.
+        let name = match self {
+            ViewerInputEvent::Move { .. } => "Move",
+            ViewerInputEvent::Button { .. } => "Button",
+            ViewerInputEvent::Wheel { .. } => "Wheel",
+            ViewerInputEvent::Key { .. } => "Key",
+            ViewerInputEvent::Text { .. } => "Text",
+            ViewerInputEvent::AllKeysUp { .. } => "AllKeysUp",
+        };
+        f.write_str(name)
+    }
 }
 
 /// Narrow boundary (invariant 7): everything the embedding viewer needs
@@ -175,6 +195,16 @@ impl Drop for WindowInputCapture {
         // Unsubclass before the presenter destroys the window. Best-effort
         // restore; a failed window-long write means the window is already
         // gone (teardown race tolerated, logged by the caller's Drop order).
+        //
+        // Thread-affinity tolerance (F67c, documented): `SetWindowLongPtrW`
+        // is documented for the window's owning thread. The documented
+        // lifecycle is: the presenter destroys the window BEFORE the engine
+        // loop drops this capture (viewer teardown order), so the call runs
+        // against an already-destroyed hwnd and fails harmlessly on the
+        // engine thread. The intolerable alternative — the subclass proc
+        // running after this Arc's queue freed — cannot happen because the
+        // subclass is removed here while the window is still alive in the
+        // documented order, and a window destroyed first can never call it.
         SUBCLASS.with(|slot| {
             if let Some((orig, _)) = slot.borrow_mut().take() {
                 let _ = unsafe { SetWindowLongPtrW(self.hwnd, GWLP_WNDPROC, orig) };
@@ -229,11 +259,13 @@ unsafe extern "system" fn presenter_proc(
         match msg {
             WM_SETFOCUS => {
                 ctl.focused.store(true, Ordering::Release);
-                // Focus freshly gained: any queued release (from the
-                // preceding kill-focus) is stale.
-                let mut q = ctl.queue.lock().expect("viewer queue");
-                q.retain(|e| !matches!(e, ViewerInputEvent::AllKeysUp { .. }));
-                drop(q);
+                // F58d/F67a (M6): a queued `AllKeysUp` from the preceding
+                // kill-focus is DELIVERED, not discarded. The old discard
+                // covered the kill+refocus blur window (~2 ms, faster than
+                // the engine loop's drain), and in exactly that window keys
+                // held across the blur stayed held on the host until their
+                // next release — the release is always safe to send (it is
+                // idempotent on the host side) and never safe to drop.
                 LRESULT(0)
             }
             WM_KILLFOCUS => {
@@ -414,6 +446,36 @@ pub fn map_into_dest(x: i32, y: i32, rect: Option<(i32, i32, u32, u32)>) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F58d (invariant 6): `ViewerInputEvent`'s Debug never carries a
+    /// payload — coordinates, scan codes, and text units must not be
+    /// printable. Feed representative values and require the formatted
+    /// output to be exactly the variant name.
+    #[test]
+    fn viewer_input_event_debug_is_redacted() {
+        let events = [
+            ViewerInputEvent::Move { x: 48879, y: 1310 },
+            ViewerInputEvent::Key {
+                scan_code: 0x1E,
+                extended: true,
+                state: ButtonState::Pressed,
+            },
+            ViewerInputEvent::Text { code_unit: 0x0041 },
+            ViewerInputEvent::AllKeysUp {
+                trigger: AllKeysUpTrigger::FocusLost,
+            },
+        ];
+        for event in &events {
+            let printed = format!("{event:?}");
+            assert!(
+                ["Move", "Button", "Wheel", "Key", "Text", "AllKeysUp"].contains(&printed.as_str()),
+                "Debug must print only the variant name, got {printed:?}"
+            );
+        }
+        // And the payload actually cannot appear.
+        assert!(!format!("{:?}", events[0]).contains("48879"));
+        assert!(!format!("{:?}", events[2]).contains("65"));
+    }
 
     /// The rect under test always comes from the renderer's own pure
     /// geometry helper, so mapping and compositing cannot drift apart

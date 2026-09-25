@@ -223,6 +223,20 @@ pub struct ChannelQueues {
     pub dequeued: [u64; 4],
 }
 
+/// One depth-change entry from a channel queue's bounded trail (M6 QA
+/// F63): the queue's depth at the instant it changed, on the transport's
+/// uptime clock. See [`Transport::take_channel_depth_trail`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelDepthSample {
+    /// Which channel's queue changed depth.
+    pub channel: Channel,
+    /// Transport uptime at the change, ns (anchor via
+    /// [`Transport::uptime_ns`]).
+    pub at_uptime_ns: u64,
+    /// The new depth.
+    pub depth: u32,
+}
+
 /// Channel labels in the fixed order used by [`ChannelQueues`] arrays.
 pub const CHANNEL_LABELS: [&str; 4] = ["control", "input-fast", "input-reliable", "cursor"];
 
@@ -342,6 +356,29 @@ pub trait Transport: Send {
     /// queues.
     fn channel_queue_gauges(&mut self) -> Option<ChannelQueues> {
         None
+    }
+
+    /// Drain the channel depth-change trail recorded INSIDE the bounded
+    /// queues (M6 QA F63): one entry per depth change, stamped on the
+    /// transport's monotonic uptime clock ([`Transport::uptime_ns`]).
+    ///
+    /// Why a trail and not faster polling: an enqueue→pump-drain burst
+    /// routinely completes inside a single poll interval (the M5 matrix
+    /// polled at ~2–5 ms and still recorded `depth: 0` on every sample
+    /// while `high_water` hit 30/32 — the burst lived and died between
+    /// polls). The trail is bounded (per-slot ring; overflow drops oldest
+    /// and is counted), so draining it every loop iteration turns those
+    /// bursts into real samples at their true depth.
+    fn take_channel_depth_trail(&mut self) -> Vec<ChannelDepthSample> {
+        Vec::new()
+    }
+
+    /// The transport's monotonic uptime in nanoseconds — the clock the
+    /// depth-trail entries are stamped on. Consumers anchor trail
+    /// timestamps onto their own session clock by differencing against a
+    /// fresh `uptime_ns()` reading.
+    fn uptime_ns(&self) -> u64 {
+        0
     }
 
     /// Request an ICE restart on the next offer/answer round (network-change

@@ -1013,6 +1013,20 @@ impl Node {
             .and_then(|transport| transport.channel_queue_gauges())
     }
 
+    /// Drain the channel depth-change trail (M6 QA F63) plus the transport
+    /// uptime its entries are stamped on — consumers anchor the entries
+    /// onto their own session clock by differencing.
+    pub fn channel_depth_trail(&mut self) -> (Vec<transport_webrtc::ChannelDepthSample>, u64) {
+        match self.transport.as_mut() {
+            Some(transport) => {
+                let samples = transport.take_channel_depth_trail();
+                let uptime = transport.uptime_ns();
+                (samples, uptime)
+            }
+            None => (Vec::new(), 0),
+        }
+    }
+
     /// Close the transport without touching the machines (clean end of
     /// run; the machines should already be `Disconnected`).
     pub fn close_transport(&mut self) {

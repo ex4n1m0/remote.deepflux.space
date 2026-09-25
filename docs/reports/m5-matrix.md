@@ -151,8 +151,15 @@ module docs):
 - **ICE/STUN consent traffic does not cross the shaper**: `rtt_ms` (ICE
   pair) stays ~0.2 ms in RTT cells; the added delay shows in the
   receiver-side percentiles (`recv_ns`-anchored) and the netem queue
-  gauges, not in `rtt_ms`. The GCC delay-gradient *does* see it (TWCC
-  records arrivals of shaped packets).
+  gauges, not in `rtt_ms`. ~~The GCC delay-gradient *does* see it (TWCC
+  records arrivals of shaped packets).~~ **M6 erratum (F59 diagnosis)**:
+  this claim was wrong — the shaper sits above the interceptor chain, so
+  a shaped delay shifts the sender-side departure stamp and the
+  receiver-side arrival stamp equally (the gradient cancels) and a
+  pre-chain drop never enters the congestion controller's send history
+  (it cannot be reported missing). App-layer `loss`/`rate_kbps` profiles
+  move the policy's RR-based loss signal but never the GCC estimate; see
+  ADR-002's M6 fork amendment and `chaos.rs`'s documented limits.
 - UDP-blocked at *connect time* is emulated by pointing both sides'
   candidates at the discard port (`--blackhole-candidates` rewrites the
   port before the ICE agent sees it) — a socket-level block needs a WFP

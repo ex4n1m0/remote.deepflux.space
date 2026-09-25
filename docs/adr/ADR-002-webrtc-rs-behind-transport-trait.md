@@ -1,6 +1,6 @@
 # ADR-002: `webrtc-rs` behind the `Transport` trait, with a libwebrtc fallback seam
 
-- Status: Accepted (M0, 2026-09-24); amended by the M2 transport spike (2026-09-24 — version pin, frame-id verdict, trait extension)
+- Status: Accepted (M0, 2026-09-24); amended by the M2 transport spike (2026-09-24 — version pin, frame-id verdict, trait extension); amended by the M6 GCC-ingest fix (2026-09-26 — `[patch]` fork of `rtc`)
 - Deciders: rd-architecture-owner
 - Sources: source plan §Transport decision ("Recommended spike"), §Key decisions to freeze ("Fallback")
 
@@ -156,6 +156,96 @@ The M0 method set is unchanged.
 - **`DataChannel::poll()` is the only receive path** (no callbacks), so
   channel reads live in spawned tasks; teardown relies on the `closing`
   flag + `Notify`, plus `shutdown_timeout` on drop.
+
+## M6 fork amendment (2026-09-26): `[patch]` fork of `rtc` 0.21.0 — the F59 GCC-ingest fix
+
+### Diagnosis (what swallowed the feedback)
+
+The M5 matrix froze the GCC estimate at its initial value in every cell and
+reported the receiver's RTCP RR projection (`remote-inbound-rtp`) as exact
+zeros. Tracing a live loopback pair with probes through the stack found the
+ingest broken in **three** places (two upstream defects, one integration
+defect in our layer):
+
+1. **Send-track encoding without a codec silently disables the sender-side
+   interceptor bind** (our layer, `transport-webrtc/src/engine.rs`).
+   `RTCPeerConnection::start_rtp_senders` binds local streams to the
+   interceptor chain via `interceptor_local_streams_op`, which skips any
+   track coding whose `codec` fuzzy-matches nothing against the negotiated
+   codec list. `TrackLocalStaticRTP` built with an encoding that carries
+   only the SSRC (our `compose_answer`, and arguably the least-surprising
+   API use) leaves `codec` at `RTCRtpCodec::default()` — empty
+   `mime_type` → `CodecMatch::None` → **no bind, silently**. Consequences:
+   the TWCC sender never stamped transport-wide sequence numbers (so the
+   receiver's TWCC recorder never armed and no congestion feedback was
+   ever generated), and the congestion-control send history never tracked
+   the outbound SSRC (so even feedback that arrived found nothing to
+   acknowledge). rtc's own examples set `codec: video_codec.rtp_codec`
+   explicitly; upstream did not treat the omission as an error.
+   **Fix (our layer):** the encoding now carries the registered H.264
+   codec (`registered_h264_codec()` in `engine.rs`).
+2. **`rtc` 0.21.0 defines `process_read_rtcp_for_stats` but never calls
+   it** (upstream dead code). Receiver Reports that arrive and traverse
+   the chain never update the `remote-inbound-rtp` accumulator — fraction
+   lost and RTT read as exact zeros however lossy the path is. The write
+   leg (`process_write_rtcp_for_stats`) is wired; the read leg is not.
+   **Fix (fork):** the read-leg ingest is called in
+   `InterceptorHandler::handle_read` as RTCP enters the chain. It cannot
+   live in `poll_read`: the chain's terminus (`NoopInterceptor`)
+   deliberately ends the inbound RTCP path — only packets marked
+   `DeliverToApplication` surface — so the application-ward poll never
+   sees an RR.
+3. **RR round-trip time hardcoded to `0.0`** (upstream): the RR ingest
+   called `on_rtcp_rr_received(..., 0.0 /* "RTT calculation would require
+   additional tracking" */)`. **Fix (fork):** RFC 3550 §6.4.1 LSR/DLSR
+   correlation — the middle 32 bits + local send instant of each Sender
+   Report are recorded on the write leg (a 4-deep ring per SSRC, because
+   a report typically echoes the *previous* SR), and each RR block's
+   `last_sender_report`/`delay` resolve to a real measurement. An
+   uncorrelatable report passes 0.0, which the transport maps to `None`
+   (a matched measurement is always strictly positive).
+
+### Fork mechanics
+
+- `fork/rtc/` is a copy of `rtc` 0.21.0 (unmodified package version) with
+  exactly the two upstream fixes above, confined to
+  `src/peer_connection/handler/interceptor.rs`.
+- Pinned workspace-wide in the root `Cargo.toml`:
+  `[patch.crates-io] rtc = { path = "fork/rtc" }`. The `webrtc` 0.21.0
+  facade itself needs no fork — it re-exports `rtc` wholesale, so the
+  patch reaches both.
+- Upgrade policy (extends decision 3): a future `rtc`/`webrtc` bump must
+  either include these fixes upstream (drop the patch) or rebase it; the
+  F59 regression test (`congestion_estimate_and_remote_report_surface`
+  in `crates/transport-webrtc/tests/loopback.rs`) is the tripwire — it
+  asserts the estimate *moves* above its initial under flowing media and
+  that RR loss/RTT are live, which a dead ingest cannot satisfy.
+
+### Verified live (loopback, after the fix)
+
+- GCC estimate moves under feedback-driven AIMD (initial 2 Mbps → 2.8–8
+  Mbps on a clean path; delay-based and loss-based halves diverge),
+  instead of holding the initial value with timer-only updates.
+- `remote_rtt_ms` is a real LSR/DLSR measurement (≈0.5 ms loopback).
+- `remote_loss_percent` tracks injected loss (5% netem → RR-reported
+  1–10% per report interval) and clears when the loss is removed.
+
+### Fidelity note discovered by the fix (rig semantics, not a defect)
+
+The M5 report's §2 claim that "the GCC delay-gradient does see [shaped
+delay] (TWCC records arrivals of shaped packets)" is **wrong**: the netem
+shaper sits above the interceptor chain, so a shaped delay shifts the
+sender-side departure stamp and the receiver-side arrival stamp equally
+(the gradient cancels), and a pre-chain drop is never stamped with a
+transport-wide sequence — it cannot be reported missing against a send
+history that never recorded it. Application-layer `loss`/`rate_kbps`
+profiles therefore move the *policy's* signals (`remote_loss_percent`
+counts the RTP sequence holes the RR reports) but never the GCC estimate.
+A real inter-path bottleneck still moves the estimate (wire-side queueing
+delays arrivals relative to paced departures). Consequence for the M6
+soak: the loss axis exercises the policy's severe/sustained-loss steps
+live; the estimate axis runs its own AIMD dynamics rather than reacting
+to the shaper. Documented in `crates/transport-webrtc/src/chaos.rs`.
 
 ## Consequences
 
