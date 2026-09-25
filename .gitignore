@@ -2,3 +2,4 @@
 *.local
 .env
 .vercel
+node_modules/

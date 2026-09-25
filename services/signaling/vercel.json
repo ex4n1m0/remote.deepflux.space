@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "functions": {
+    "api/signal.ts": {
+      "runtime": "@vercel/node@15.0.0",
+      "maxDuration": 300,
+      "memory": 256
+    },
+    "api/health.ts": {
+      "runtime": "@vercel/node@15.0.0",
+      "maxDuration": 10,
+      "memory": 128
+    }
+  }
+}

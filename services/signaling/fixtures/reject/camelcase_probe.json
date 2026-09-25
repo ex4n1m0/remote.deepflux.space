@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "messageId": "rogue-2",
+  "sessionId": null,
+  "fromDeviceId": "rogue",
+  "toDeviceId": "signaling",
+  "timestampMs": 1000,
+  "type": "heartbeat"
+}

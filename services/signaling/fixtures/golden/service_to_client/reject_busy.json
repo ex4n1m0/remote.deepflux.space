@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-host-host-5",
+  "session_id": "rig-ctrl-ctrl-2",
+  "from_device_id": "rig-host",
+  "to_device_id": "rig-ctrl",
+  "timestamp_ms": 1760000000000,
+  "type": "reject",
+  "reason": "busy"
+}

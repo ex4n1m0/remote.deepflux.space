@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-host-rt-3",
+  "session_id": "rig-ctrl-ctrl-1",
+  "from_device_id": "rig-host",
+  "to_device_id": "rig-ctrl",
+  "timestamp_ms": 1760000000000,
+  "type": "ice_complete"
+}

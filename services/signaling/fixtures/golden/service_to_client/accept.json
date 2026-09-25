@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-host-host-4",
+  "session_id": "rig-ctrl-ctrl-1",
+  "from_device_id": "rig-host",
+  "to_device_id": "rig-ctrl",
+  "timestamp_ms": 1760000000000,
+  "type": "accept",
+  "session_secret": "fixture-one-time-secret"
+}

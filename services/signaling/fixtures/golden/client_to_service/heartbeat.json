@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-host-host-2",
+  "session_id": null,
+  "from_device_id": "rig-host",
+  "to_device_id": "signaling",
+  "timestamp_ms": 1760000000000,
+  "type": "heartbeat"
+}

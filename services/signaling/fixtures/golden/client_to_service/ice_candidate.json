@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-ctrl-rt-1",
+  "session_id": "rig-ctrl-ctrl-1",
+  "from_device_id": "rig-ctrl",
+  "to_device_id": "rig-host",
+  "timestamp_ms": 1760000000000,
+  "type": "ice_candidate",
+  "candidate": "candidate:1 1 UDP 2130706431 192.168.1.10 54321 typ host",
+  "sdp_mid": "0",
+  "sdp_mline_index": 0
+}

@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "message_id": "legacy-host-2",
+  "session_id": null,
+  "from_device_id": "legacy-host",
+  "to_device_id": "legacy-ctrl",
+  "timestamp_ms": 1000,
+  "type": "ice_candidate",
+  "candidate": "candidate:1 1 UDP 1 10.0.0.1 5000 typ host",
+  "sdp_mid": 0,
+  "sdp_mline_index": 0
+}

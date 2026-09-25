@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "message_id": "rig-ctrl-ctrl-3",
+  "session_id": "rig-ctrl-ctrl-1",
+  "from_device_id": "rig-ctrl",
+  "to_device_id": "rig-host",
+  "timestamp_ms": 1760000000000,
+  "type": "offer",
+  "sdp": "v=0\r\no=- 4611731400430051336 2 IN IP4 127.0.0.1\r\n"
+}
