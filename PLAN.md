@@ -2,8 +2,15 @@
 
 Derived from `C:\Users\igorc\Downloads\P2P Remote Desktop Development Plan.md` (the "source plan").
 This is the operational plan the main GLM 5.3 session will follow. Where it differs from the
-source plan, the difference and its reason are stated in §3. Backlog IDs (`RD-0xx`) and phase
+source plan, the difference and its reason is stated in §3. Backlog IDs (`RD-0xx`) and phase
 numbers from the source plan are kept for traceability.
+
+> **Execution status (2026-09-26): MVP engineering COMPLETE — SHIP-WITH-CONDITIONS**
+> (`docs/reports/m6-soak.md` §10). Tags: `m0-contract`, `m1-local-loop`, `m2-direct-transport`,
+> `m5-wan-matrix`, `m6-perf-soak`. M3's tag awaits deployed-service verification (needs Upstash
+> env vars; README has the steps); M4's awaits the user's UX acceptance. Audit trail: 79 findings
+> (F1–F79) across six milestone audits, all discharged or documented as ship conditions C1–C5.
+> Post-MVP queue opens with the trusted-device roster (§ below).
 
 ---
 
