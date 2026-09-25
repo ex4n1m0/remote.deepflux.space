@@ -1,0 +1,3 @@
+=== m6 soak: stream=3600s loss=4% congestion=on start=2026-09-25T15:33:04+08:00
+=== m6 soak done ctrl_rc=0 watchdog_rc=0 end=2026-09-25T16:33:56+08:00
+SOAK RESULT: PASS

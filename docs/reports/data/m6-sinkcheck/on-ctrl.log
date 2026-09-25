@@ -1,0 +1,161 @@
+[rig-controller] m2_rig role=controller scenario=soak dir=C:/Remote.deepflux.space/docs/reports/data/m6-sinkcheck/.sig-on-yRxsHC stream=70s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: C:/Remote.deepflux.space/docs/reports/data/m6-sinkcheck\sink-on-ctrl-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m6-sinkcheck/.sig-on-yRxsHC out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1181 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": null,
+    "moves_sent": 0,
+    "reliable_send_errors": 0,
+    "reliable_sent": 0,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 1.9978100434405954,
+    "frame_id_gaps": 3,
+    "frames_decoded": 140,
+    "frames_missing_packets": 0,
+    "frames_presented": 140,
+    "frames_received": 150,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 10,
+    "keyframe_requests_sent": 3,
+    "render_secs": 70.0767325
+  },
+  "cursor": {
+    "overlays_received": 5,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 72.5518604,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-sinkcheck\\sink-on-ctrl-rig-controller.jsonl",
+    "records": 1174
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 3,
+    "envelopes_sent": 8,
+    "heartbeats_raised": 4,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 5
+  },
+  "proc": {
+    "final": {
+      "handles": 608,
+      "private_mib": 104.42578125,
+      "threads": 40,
+      "ws_mib": 76.28515625
+    },
+    "per_session": [
+      {
+        "handles": 642,
+        "private_mib": 115.81640625,
+        "session": "rig-controller-ctrl-2",
+        "threads": 45,
+        "ws_mib": 86.41796875
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 625,
+        "private_mib": 115.70703125,
+        "threads": 44,
+        "ws_mib": 86.60546875
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1181
+      ]
+    ],
+    "ends": [
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 149,
+    "frames_sent": 0,
+    "loss_percent": 0.0,
+    "packets_lost": 0,
+    "packets_received": 816,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 169.86078874479296,
+    "relay_in_use": false,
+    "rtt_ms": 0.24509999999999998,
+    "selected_pair": {
+      "local": "127.0.0.1:54354",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:54353",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

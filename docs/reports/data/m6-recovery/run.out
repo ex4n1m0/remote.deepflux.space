@@ -1,0 +1,15 @@
+=== (a) cycles x12 under load start=2026-09-25T17:09:06+08:00
+=== (a) done rc=0
+=== (b) full x10 (interface change each) start=2026-09-25T17:14:40+08:00
+--- full#1 rc=0
+--- full#2 rc=0
+--- full#3 rc=0
+--- full#4 rc=0
+--- full#5 rc=0
+--- full#6 rc=0
+--- full#7 rc=0
+--- full#8 rc=0
+--- full#9 rc=0
+--- full#10 rc=0
+=== (b) done rc=0
+RECOVERY RESULT: PASS

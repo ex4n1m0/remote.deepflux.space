@@ -1,0 +1,137 @@
+{
+  "all_keys_up_disconnect": 4,
+  "channel_open_order": [
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control"
+  ],
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 80.973079,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "cursor_only_updates": 2,
+    "cursor_positions_available": 3,
+    "device_lost": 0,
+    "encode_deferred": 1,
+    "encode_size": "1920x1080",
+    "fps_effective": 2.6616547884443915,
+    "fps_retargets": 4,
+    "fps_target": 60,
+    "frames_captured": 224,
+    "frames_encoded": 200,
+    "keyframe_forced": 29,
+    "keyframes": 60,
+    "pacer": {
+      "fps_tick_rate": 28.386548318759434,
+      "skipped": 3108,
+      "ticks": 2133
+    },
+    "reconfig_errors": 1,
+    "reconfig_live": 31,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 75.14122449999999
+  },
+  "input": {
+    "all_keys_up": 4,
+    "final_position": [
+      46500,
+      55500
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 1500,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 50,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-recovery\\m6-full3-host-rig-host.jsonl",
+    "records": 1516
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 12,
+    "heartbeats_raised": 5,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 7
+  },
+  "proc": {
+    "final": {
+      "handles": 620,
+      "private_mib": 284.859375,
+      "threads": 39,
+      "ws_mib": 103.515625
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 629,
+        "private_mib": 294.44921875,
+        "threads": 43,
+        "ws_mib": 112.0234375
+      },
+      {
+        "handles": 645,
+        "private_mib": 295.9609375,
+        "threads": 43,
+        "ws_mib": 113.49609375
+      }
+    ]
+  },
+  "prompts": 2,
+  "real_input": false,
+  "role": "host",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "TransportError",
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 116,
+    "loss_percent": null,
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 513,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.3231,
+    "selected_pair": {
+      "local": "127.0.0.1:62486",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:62487",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 117.75348577624443
+  }
+}

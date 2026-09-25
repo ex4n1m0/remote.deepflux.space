@@ -1,0 +1,4 @@
+hammer: n=100 host=m6-hammer-host-1790325521 work=/c/Remote.deepflux.space/docs/reports/data/m6-hammer/.work-U5t1qm start=2026-09-25T16:38:41+08:00
+docs/reports/data/m6-hammer/run-hammer.sh: line 96: failures: unbound variable
+hammer: post-fix verdict from csv — iterations=100 fails=0 quality_applied=100 held_violations=0
+HAMMER RESULT: PASS (csv evidence; summary-echo naming bug fixed post-run)

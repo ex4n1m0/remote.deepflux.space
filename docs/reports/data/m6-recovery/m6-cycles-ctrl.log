@@ -1,0 +1,651 @@
+[rig-controller] m2_rig role=controller scenario=cycles dir=C:/Remote.deepflux.space/docs/reports/data/m6-recovery/.sigA-F5gUhU stream=60s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: C:/Remote.deepflux.space/docs/reports/data/m6-recovery\m6-cyc-ctrl-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m6-recovery/.sigA-F5gUhU out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1184 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-8
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1163 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-14
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1169 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-20
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1185 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-26
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1162 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-32
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1169 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-38
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1169 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-44
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1161 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-50
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1177 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-56
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1209 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-62
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1175 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-68
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1175 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      46500,
+      55500
+    ],
+    "moves_sent": 1500,
+    "reliable_send_errors": 0,
+    "reliable_sent": 50,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 80,
+    "device_lost": 0,
+    "fps_presented": 26.82633096356263,
+    "frame_id_gaps": 1211,
+    "frames_decoded": 8062,
+    "frames_missing_packets": 25,
+    "frames_presented": 8062,
+    "frames_received": 14018,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 5876,
+    "keyframe_requests_sent": 917,
+    "render_secs": 300.5256295
+  },
+  "cursor": {
+    "overlays_received": 2,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 327.8242958,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-recovery\\m6-cyc-ctrl-rig-controller.jsonl",
+    "records": 61665
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 36,
+    "envelopes_sent": 60,
+    "heartbeats_raised": 12,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 12,
+    "ice_minted": 12,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 12,
+    "wire_sent": 2491
+  },
+  "proc": {
+    "final": {
+      "handles": 609,
+      "private_mib": 117.546875,
+      "threads": 38,
+      "ws_mib": 91.60546875
+    },
+    "per_session": [
+      {
+        "handles": 659,
+        "private_mib": 115.71875,
+        "session": "rig-controller-ctrl-2",
+        "threads": 48,
+        "ws_mib": 87.21875
+      },
+      {
+        "handles": 641,
+        "private_mib": 116.65234375,
+        "session": "rig-controller-ctrl-8",
+        "threads": 49,
+        "ws_mib": 90.30859375
+      },
+      {
+        "handles": 643,
+        "private_mib": 127.01953125,
+        "session": "rig-controller-ctrl-14",
+        "threads": 46,
+        "ws_mib": 100.54296875
+      },
+      {
+        "handles": 646,
+        "private_mib": 127.70703125,
+        "session": "rig-controller-ctrl-20",
+        "threads": 46,
+        "ws_mib": 101.36328125
+      },
+      {
+        "handles": 637,
+        "private_mib": 128.6875,
+        "session": "rig-controller-ctrl-26",
+        "threads": 43,
+        "ws_mib": 102.34375
+      },
+      {
+        "handles": 643,
+        "private_mib": 129.59375,
+        "session": "rig-controller-ctrl-32",
+        "threads": 45,
+        "ws_mib": 103.1875
+      },
+      {
+        "handles": 644,
+        "private_mib": 129.91796875,
+        "session": "rig-controller-ctrl-38",
+        "threads": 45,
+        "ws_mib": 103.53125
+      },
+      {
+        "handles": 645,
+        "private_mib": 130.47265625,
+        "session": "rig-controller-ctrl-44",
+        "threads": 45,
+        "ws_mib": 104.01171875
+      },
+      {
+        "handles": 646,
+        "private_mib": 127.796875,
+        "session": "rig-controller-ctrl-50",
+        "threads": 45,
+        "ws_mib": 101.375
+      },
+      {
+        "handles": 631,
+        "private_mib": 130.99609375,
+        "session": "rig-controller-ctrl-56",
+        "threads": 41,
+        "ws_mib": 104.66015625
+      },
+      {
+        "handles": 638,
+        "private_mib": 128.578125,
+        "session": "rig-controller-ctrl-62",
+        "threads": 44,
+        "ws_mib": 102.40234375
+      },
+      {
+        "handles": 639,
+        "private_mib": 128.9765625,
+        "session": "rig-controller-ctrl-68",
+        "threads": 44,
+        "ws_mib": 102.83203125
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 626,
+        "private_mib": 115.58984375,
+        "threads": 47,
+        "ws_mib": 87.40234375
+      },
+      {
+        "handles": 628,
+        "private_mib": 116.5078125,
+        "threads": 47,
+        "ws_mib": 90.21875
+      },
+      {
+        "handles": 630,
+        "private_mib": 126.875,
+        "threads": 44,
+        "ws_mib": 100.453125
+      },
+      {
+        "handles": 633,
+        "private_mib": 127.5625,
+        "threads": 44,
+        "ws_mib": 101.26953125
+      },
+      {
+        "handles": 624,
+        "private_mib": 128.5390625,
+        "threads": 41,
+        "ws_mib": 102.25
+      },
+      {
+        "handles": 630,
+        "private_mib": 129.44921875,
+        "threads": 43,
+        "ws_mib": 103.09375
+      },
+      {
+        "handles": 631,
+        "private_mib": 129.76953125,
+        "threads": 43,
+        "ws_mib": 103.4375
+      },
+      {
+        "handles": 632,
+        "private_mib": 130.328125,
+        "threads": 43,
+        "ws_mib": 103.91796875
+      },
+      {
+        "handles": 633,
+        "private_mib": 127.6484375,
+        "threads": 43,
+        "ws_mib": 101.28125
+      },
+      {
+        "handles": 618,
+        "private_mib": 130.84765625,
+        "threads": 39,
+        "ws_mib": 104.56640625
+      },
+      {
+        "handles": 625,
+        "private_mib": 128.43359375,
+        "threads": 42,
+        "ws_mib": 102.30859375
+      },
+      {
+        "handles": 626,
+        "private_mib": 128.828125,
+        "threads": 42,
+        "ws_mib": 102.73828125
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "cycles",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1184
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1163
+      ],
+      [
+        "rig-controller-ctrl-14",
+        1169
+      ],
+      [
+        "rig-controller-ctrl-20",
+        1185
+      ],
+      [
+        "rig-controller-ctrl-26",
+        1162
+      ],
+      [
+        "rig-controller-ctrl-32",
+        1169
+      ],
+      [
+        "rig-controller-ctrl-38",
+        1169
+      ],
+      [
+        "rig-controller-ctrl-44",
+        1161
+      ],
+      [
+        "rig-controller-ctrl-50",
+        1177
+      ],
+      [
+        "rig-controller-ctrl-56",
+        1209
+      ],
+      [
+        "rig-controller-ctrl-62",
+        1175
+      ],
+      [
+        "rig-controller-ctrl-68",
+        1175
+      ]
+    ],
+    "ends": [
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8",
+      "rig-controller-ctrl-14",
+      "rig-controller-ctrl-20",
+      "rig-controller-ctrl-26",
+      "rig-controller-ctrl-32",
+      "rig-controller-ctrl-38",
+      "rig-controller-ctrl-44",
+      "rig-controller-ctrl-50",
+      "rig-controller-ctrl-56",
+      "rig-controller-ctrl-62",
+      "rig-controller-ctrl-68"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 32,
+    "frames_received": 1319,
+    "frames_sent": 0,
+    "loss_percent": 4.397039616891598,
+    "packets_lost": 101,
+    "packets_received": 2196,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 425.4092446835823,
+    "relay_in_use": false,
+    "rtt_ms": 0.2264,
+    "selected_pair": {
+      "local": "127.0.0.1:57876",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:57875",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

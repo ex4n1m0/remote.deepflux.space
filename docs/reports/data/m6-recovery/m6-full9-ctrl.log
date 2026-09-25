@@ -1,0 +1,193 @@
+[rig-controller] m2_rig role=controller scenario=full dir=C:/Remote.deepflux.space/docs/reports/data/m6-recovery/.sigB-PBqFxO stream=45s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: C:/Remote.deepflux.space/docs/reports/data/m6-recovery\m6-full9-ctrl-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m6-recovery/.sigB-PBqFxO out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1184 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[rig-controller] network change: restart_ice probe + goodbye + hard teardown
+[rig-controller] restart_ice ok
+[rig-controller] rendering stopped
+[rig-controller] session ended: Peer
+[rig-controller] controller -> Disconnected
+[rig-controller] host observed the network change (51 ms); waiting for self to re-register
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] re-establishing after network change (576 ms after host-down)
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-8
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] re-established in 1161 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      46500,
+      55500
+    ],
+    "moves_sent": 1500,
+    "reliable_send_errors": 0,
+    "reliable_sent": 50,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 0,
+    "device_lost": 0,
+    "fps_presented": 1.5704946036115142,
+    "frame_id_gaps": 28,
+    "frames_decoded": 118,
+    "frames_missing_packets": 0,
+    "frames_presented": 118,
+    "frames_received": 168,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 50,
+    "keyframe_requests_sent": 26,
+    "render_secs": 75.1355654
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 80.0210346,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-recovery\\m6-full9-ctrl-rig-controller.jsonl",
+    "records": 4386
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 12,
+    "heartbeats_raised": 5,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 1580
+  },
+  "proc": {
+    "final": {
+      "handles": 609,
+      "private_mib": 107.02734375,
+      "threads": 40,
+      "ws_mib": 76.890625
+    },
+    "per_session": [
+      {
+        "handles": 639,
+        "private_mib": 118.46484375,
+        "session": "rig-controller-ctrl-8",
+        "threads": 46,
+        "ws_mib": 87.88671875
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 621,
+        "private_mib": 117.84765625,
+        "threads": 45,
+        "ws_mib": 86.9765625
+      },
+      {
+        "handles": 626,
+        "private_mib": 118.31640625,
+        "threads": 44,
+        "ws_mib": 87.79296875
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1184
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1161
+      ]
+    ],
+    "ends": [
+      "Peer",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 30.0000579
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 9,
+    "frames_received": 109,
+    "frames_sent": 0,
+    "loss_percent": 2.8795811518324608,
+    "packets_lost": 11,
+    "packets_received": 371,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 14.01241269532529,
+    "relay_in_use": false,
+    "rtt_ms": 0.2639,
+    "selected_pair": {
+      "local": "127.0.0.1:63700",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:63699",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}
