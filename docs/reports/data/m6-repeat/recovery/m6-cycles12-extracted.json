@@ -1,0 +1,60 @@
+{
+ "note": "Extracted from m6-cycles-host-summary.json at 22:29 before run-plateau.sh (summary-path bug) overwrote it with the 30-cycle plateau run. Raw per-record evidence: m6-cyc-host-rig-host.jsonl (intact).",
+ "ws_mib": [
+  98.3,
+  100.3,
+  102.2,
+  103.7,
+  105.6,
+  107.0,
+  108.4,
+  109.6,
+  110.8,
+  111.8,
+  113.3,
+  114.9
+ ],
+ "private_mib": [
+  265.9,
+  267.2,
+  269.3,
+  270.9,
+  272.9,
+  274.2,
+  275.8,
+  276.9,
+  278.1,
+  279.1,
+  280.4,
+  282.2
+ ],
+ "slope_per_session": {
+  "ws": 1.51,
+  "private": 1.48
+ },
+ "final_after_teardown": {
+  "ws_mib": 104.2,
+  "private_mib": 271.0
+ },
+ "ends": [
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer",
+  "Peer"
+ ],
+ "reconfig_live": 11,
+ "rebuilt": 0,
+ "errors": 0,
+ "connect_ms_range": [
+  1155,
+  1195
+ ]
+}

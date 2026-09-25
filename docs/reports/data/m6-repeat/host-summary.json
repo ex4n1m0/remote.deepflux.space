@@ -1,0 +1,4199 @@
+{
+  "all_keys_up_disconnect": 2,
+  "channel_open_order": [
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor"
+  ],
+  "congestion": {
+    "congestion_decisions": 400,
+    "congestion_reconfigs": 396,
+    "enabled": true,
+    "encoder_rebuilds": 0,
+    "events": [
+      {
+        "at_ms": 3180,
+        "bitrate_bps": 3600000,
+        "encoder_bitrate_bps": 3600000,
+        "estimate_bps": 4000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 6182,
+        "bitrate_bps": 2700000,
+        "encoder_bitrate_bps": 2700000,
+        "estimate_bps": 4942808,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 7183,
+        "bitrate_bps": 2025000,
+        "encoder_bitrate_bps": 2025000,
+        "estimate_bps": 5367004,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 8184,
+        "bitrate_bps": 1518750,
+        "encoder_bitrate_bps": 1518750,
+        "estimate_bps": 5732581,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 9185,
+        "bitrate_bps": 1139062,
+        "encoder_bitrate_bps": 1139062,
+        "estimate_bps": 6207920,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 10186,
+        "bitrate_bps": 854296,
+        "encoder_bitrate_bps": 854296,
+        "estimate_bps": 6711677,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 11187,
+        "bitrate_bps": 640722,
+        "encoder_bitrate_bps": 640722,
+        "estimate_bps": 7276690,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 12190,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 640722,
+        "estimate_bps": 7905249,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 1.953125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 14192,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 9174307,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 70272,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 72275,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.984375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 82505,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 95568,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 97572,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 101575,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 139633,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 140633,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 144640,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 145643,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 149646,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 177687,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 179690,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 184695,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.984375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 232765,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 234767,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 237769,
+        "bitrate_bps": 900000,
+        "encoder_bitrate_bps": 900000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 243778,
+        "bitrate_bps": 675000,
+        "encoder_bitrate_bps": 675000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.59375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 244778,
+        "bitrate_bps": 506250,
+        "encoder_bitrate_bps": 506250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 286835,
+        "bitrate_bps": 806250,
+        "encoder_bitrate_bps": 806250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 287837,
+        "bitrate_bps": 1106250,
+        "encoder_bitrate_bps": 1106250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 289841,
+        "bitrate_bps": 829687,
+        "encoder_bitrate_bps": 829687,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 290842,
+        "bitrate_bps": 622265,
+        "encoder_bitrate_bps": 622265,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 296850,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 359955,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 360957,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 362958,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 363960,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 369978,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 376999,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 379001,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 405071,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 407084,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 408085,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.9375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 422119,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 424126,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 425128,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 431152,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 432155,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 434159,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 435163,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 436171,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 513386,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 514390,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 516394,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 517397,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 518399,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 521407,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 528438,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 529439,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 568554,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 569556,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 570561,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 575576,
+        "bitrate_bps": 1050000,
+        "encoder_bitrate_bps": 1050000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 578587,
+        "bitrate_bps": 1350000,
+        "encoder_bitrate_bps": 1350000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 586618,
+        "bitrate_bps": 1012500,
+        "encoder_bitrate_bps": 1012500,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 587621,
+        "bitrate_bps": 759375,
+        "encoder_bitrate_bps": 759375,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 588622,
+        "bitrate_bps": 569531,
+        "encoder_bitrate_bps": 569531,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 598638,
+        "bitrate_bps": 869531,
+        "encoder_bitrate_bps": 869531,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 600645,
+        "bitrate_bps": 652148,
+        "encoder_bitrate_bps": 652148,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 601649,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 661827,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 665839,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 666842,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 670856,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 672859,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 673862,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 677880,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 681895,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 683900,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 684901,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 688914,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 697935,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 701944,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 703948,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.546875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 735037,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 737049,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 738051,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 756116,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 757117,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 758118,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 765141,
+        "bitrate_bps": 1050000,
+        "encoder_bitrate_bps": 1050000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 768152,
+        "bitrate_bps": 787500,
+        "encoder_bitrate_bps": 787500,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 771156,
+        "bitrate_bps": 590625,
+        "encoder_bitrate_bps": 590625,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 806252,
+        "bitrate_bps": 890625,
+        "encoder_bitrate_bps": 890625,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 807257,
+        "bitrate_bps": 1190625,
+        "encoder_bitrate_bps": 1190625,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 811270,
+        "bitrate_bps": 892968,
+        "encoder_bitrate_bps": 892968,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 812279,
+        "bitrate_bps": 669726,
+        "encoder_bitrate_bps": 669726,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 813281,
+        "bitrate_bps": 502294,
+        "encoder_bitrate_bps": 502294,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 829325,
+        "bitrate_bps": 802294,
+        "encoder_bitrate_bps": 802294,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 835337,
+        "bitrate_bps": 1102294,
+        "encoder_bitrate_bps": 1102294,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 836340,
+        "bitrate_bps": 1402294,
+        "encoder_bitrate_bps": 1402294,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 837341,
+        "bitrate_bps": 1702294,
+        "encoder_bitrate_bps": 1702294,
+        "estimate_bps": 12000000,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 839353,
+        "bitrate_bps": 1276720,
+        "encoder_bitrate_bps": 1276720,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 840354,
+        "bitrate_bps": 957540,
+        "encoder_bitrate_bps": 957540,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 841357,
+        "bitrate_bps": 718155,
+        "encoder_bitrate_bps": 718155,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 842364,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 718155,
+        "estimate_bps": 12000000,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 844368,
+        "bitrate_bps": 1018155,
+        "encoder_bitrate_bps": 1018155,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 845374,
+        "bitrate_bps": 1318155,
+        "encoder_bitrate_bps": 1318155,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 852404,
+        "bitrate_bps": 659077,
+        "encoder_bitrate_bps": 659077,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 857418,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.5,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 877484,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 879489,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 880493,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 948705,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 952718,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 954720,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 955721,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 956722,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.765625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 959736,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 960737,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 961741,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 965750,
+        "bitrate_bps": 1050000,
+        "encoder_bitrate_bps": 1050000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 968762,
+        "bitrate_bps": 525000,
+        "encoder_bitrate_bps": 525000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 13.28125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 973780,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 978797,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 985826,
+        "bitrate_bps": 918750,
+        "encoder_bitrate_bps": 918750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 995850,
+        "bitrate_bps": 689062,
+        "encoder_bitrate_bps": 689062,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 996856,
+        "bitrate_bps": 516796,
+        "encoder_bitrate_bps": 516796,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1068087,
+        "bitrate_bps": 816796,
+        "encoder_bitrate_bps": 816796,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1072093,
+        "bitrate_bps": 1116796,
+        "encoder_bitrate_bps": 1116796,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1074097,
+        "bitrate_bps": 837597,
+        "encoder_bitrate_bps": 837597,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1081113,
+        "bitrate_bps": 628197,
+        "encoder_bitrate_bps": 628197,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1082116,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1088144,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1092159,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1094164,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.5,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1132272,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1134279,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1137291,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1140302,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1143308,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1144309,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1159354,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1163371,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1164374,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1168385,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1170389,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1171396,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1189461,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1196479,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.5,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1402115,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1403117,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1405121,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1408129,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1409130,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1417149,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1421162,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1423171,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1429191,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1430192,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1507438,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1513458,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1514461,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1541542,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1543549,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1550576,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1556596,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1557600,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1561614,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1562617,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1566632,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1575659,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1576668,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1577674,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1581683,
+        "bitrate_bps": 1050000,
+        "encoder_bitrate_bps": 1050000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1584688,
+        "bitrate_bps": 1350000,
+        "encoder_bitrate_bps": 1350000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1585688,
+        "bitrate_bps": 1650000,
+        "encoder_bitrate_bps": 1650000,
+        "estimate_bps": 12000000,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1586690,
+        "bitrate_bps": 1950000,
+        "encoder_bitrate_bps": 1950000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1588699,
+        "bitrate_bps": 975000,
+        "encoder_bitrate_bps": 975000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.546875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1589702,
+        "bitrate_bps": 731250,
+        "encoder_bitrate_bps": 731250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1590707,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 731250,
+        "estimate_bps": 12000000,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 1.5625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1592713,
+        "bitrate_bps": 548437,
+        "encoder_bitrate_bps": 548437,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1607759,
+        "bitrate_bps": 848437,
+        "encoder_bitrate_bps": 848437,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1611769,
+        "bitrate_bps": 636327,
+        "encoder_bitrate_bps": 636327,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1617793,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1622805,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1624816,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1628825,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 14.453125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1648880,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1649883,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1653893,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1657904,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.59375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1658909,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1689000,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1690002,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1692009,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1693012,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1696020,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1714084,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1715085,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1719098,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1722108,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1726119,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1734142,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1735147,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1737154,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1740162,
+        "bitrate_bps": 1125000,
+        "encoder_bitrate_bps": 1125000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1742169,
+        "bitrate_bps": 843750,
+        "encoder_bitrate_bps": 843750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1747185,
+        "bitrate_bps": 632812,
+        "encoder_bitrate_bps": 632812,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1748189,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1756217,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1758223,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1759226,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1784285,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1788302,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1789306,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1807352,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1811360,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1815369,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1821384,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1825398,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1826401,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1923691,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1928718,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1929718,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1982874,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1984880,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1985886,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1989899,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1991907,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1992908,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 1999945,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2005958,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2009972,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2050103,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2054109,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2057123,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2183510,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2185514,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2186515,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2254729,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2255748,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2256749,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2257750,
+        "bitrate_bps": 1700000,
+        "encoder_bitrate_bps": 1700000,
+        "estimate_bps": 12000000,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2262761,
+        "bitrate_bps": 1275000,
+        "encoder_bitrate_bps": 1275000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2263764,
+        "bitrate_bps": 956250,
+        "encoder_bitrate_bps": 956250,
+        "estimate_bps": 12000000,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2264765,
+        "bitrate_bps": 717187,
+        "encoder_bitrate_bps": 717187,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2267774,
+        "bitrate_bps": 537890,
+        "encoder_bitrate_bps": 537890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2348006,
+        "bitrate_bps": 837890,
+        "encoder_bitrate_bps": 837890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2350012,
+        "bitrate_bps": 628417,
+        "encoder_bitrate_bps": 628417,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2353020,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2363056,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2368071,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2372084,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2428260,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2430264,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.890625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2485435,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2487438,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2500479,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2527563,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2531574,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2532577,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2536601,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2540607,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2551636,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2566693,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2567694,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2573710,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2574715,
+        "bitrate_bps": 1700000,
+        "encoder_bitrate_bps": 1700000,
+        "estimate_bps": 12000000,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2578726,
+        "bitrate_bps": 1275000,
+        "encoder_bitrate_bps": 1275000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2581735,
+        "bitrate_bps": 956250,
+        "encoder_bitrate_bps": 956250,
+        "estimate_bps": 12000000,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2584748,
+        "bitrate_bps": 717187,
+        "encoder_bitrate_bps": 717187,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2585750,
+        "bitrate_bps": 537890,
+        "encoder_bitrate_bps": 537890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2598787,
+        "bitrate_bps": 837890,
+        "encoder_bitrate_bps": 837890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2599790,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 13.28125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2608812,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2609817,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2610823,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2611825,
+        "bitrate_bps": 1700000,
+        "encoder_bitrate_bps": 1700000,
+        "estimate_bps": 12000000,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2613830,
+        "bitrate_bps": 1275000,
+        "encoder_bitrate_bps": 1275000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2614837,
+        "bitrate_bps": 956250,
+        "encoder_bitrate_bps": 956250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2615839,
+        "bitrate_bps": 717187,
+        "encoder_bitrate_bps": 717187,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2616841,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 717187,
+        "estimate_bps": 12000000,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2618855,
+        "bitrate_bps": 537890,
+        "encoder_bitrate_bps": 537890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2636914,
+        "bitrate_bps": 837890,
+        "encoder_bitrate_bps": 837890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2637916,
+        "bitrate_bps": 1137890,
+        "encoder_bitrate_bps": 1137890,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2641922,
+        "bitrate_bps": 853417,
+        "encoder_bitrate_bps": 853417,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2642929,
+        "bitrate_bps": 640062,
+        "encoder_bitrate_bps": 640062,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2643931,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2650952,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2651954,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2653959,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.984375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2654965,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2657976,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2682054,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2686071,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2689078,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2707132,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2713150,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2714150,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2727188,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2728192,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2730201,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2733211,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2734211,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.765625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2747255,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2748258,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2750261,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2751270,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2752272,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2762292,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2768310,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2769315,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2853596,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2855599,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2858607,
+        "bitrate_bps": 900000,
+        "encoder_bitrate_bps": 900000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2860612,
+        "bitrate_bps": 675000,
+        "encoder_bitrate_bps": 675000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.59375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2861616,
+        "bitrate_bps": 506250,
+        "encoder_bitrate_bps": 506250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.8125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2871643,
+        "bitrate_bps": 806250,
+        "encoder_bitrate_bps": 806250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2875662,
+        "bitrate_bps": 604687,
+        "encoder_bitrate_bps": 604687,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2877668,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 14.84375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2888693,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2892700,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2895704,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2926814,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2930819,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2931820,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2936832,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2938843,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2943851,
+        "bitrate_bps": 900000,
+        "encoder_bitrate_bps": 900000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2947866,
+        "bitrate_bps": 675000,
+        "encoder_bitrate_bps": 675000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2948869,
+        "bitrate_bps": 506250,
+        "encoder_bitrate_bps": 506250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2990002,
+        "bitrate_bps": 806250,
+        "encoder_bitrate_bps": 806250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2991006,
+        "bitrate_bps": 1106250,
+        "encoder_bitrate_bps": 1106250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2992010,
+        "bitrate_bps": 1406250,
+        "encoder_bitrate_bps": 1406250,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2994013,
+        "bitrate_bps": 1054687,
+        "encoder_bitrate_bps": 1054687,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 2995015,
+        "bitrate_bps": 791015,
+        "encoder_bitrate_bps": 791015,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3001039,
+        "bitrate_bps": 1091015,
+        "encoder_bitrate_bps": 1091015,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3010066,
+        "bitrate_bps": 818261,
+        "encoder_bitrate_bps": 818261,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3011068,
+        "bitrate_bps": 613695,
+        "encoder_bitrate_bps": 613695,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3012075,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3028134,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3032147,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3034157,
+        "bitrate_bps": 550000,
+        "encoder_bitrate_bps": 550000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 11.71875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3091339,
+        "bitrate_bps": 850000,
+        "encoder_bitrate_bps": 850000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3092345,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.546875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3120428,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3125444,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3126449,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3145510,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3146515,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3147517,
+        "bitrate_bps": 1400000,
+        "encoder_bitrate_bps": 1400000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3153542,
+        "bitrate_bps": 1050000,
+        "encoder_bitrate_bps": 1050000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3154551,
+        "bitrate_bps": 787500,
+        "encoder_bitrate_bps": 787500,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3157553,
+        "bitrate_bps": 1087500,
+        "encoder_bitrate_bps": 1087500,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3158555,
+        "bitrate_bps": 1387500,
+        "encoder_bitrate_bps": 1387500,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3163570,
+        "bitrate_bps": 1040625,
+        "encoder_bitrate_bps": 1040625,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3166585,
+        "bitrate_bps": 780468,
+        "encoder_bitrate_bps": 780468,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3167586,
+        "bitrate_bps": 585351,
+        "encoder_bitrate_bps": 585351,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3183633,
+        "bitrate_bps": 885351,
+        "encoder_bitrate_bps": 885351,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3190659,
+        "bitrate_bps": 664013,
+        "encoder_bitrate_bps": 664013,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3191659,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3197681,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3198682,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3202695,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.859375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3203704,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.5,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3215742,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3217745,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3218753,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 12.890625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3259867,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3261871,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.203125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3262879,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3343132,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3345140,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.25,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3346147,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3395297,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3399310,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3400311,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3407339,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3408341,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3410344,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3411347,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3414351,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 8.984375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3431395,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3432399,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3436424,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 6.640625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3437425,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3447458,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3453477,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3455482,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3456485,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.421875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3464500,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3468522,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3469522,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 7.03125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3532716,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3538731,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3539734,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3544753,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3546764,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 3547766,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.546875,
+        "resolution_step_down": false
+      }
+    ],
+    "fps_retargets": 12,
+    "reconfig_errors": 0,
+    "resolution_step_down_rebuilds": 0
+  },
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 3603.5131666,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "capture_dead": {
+      "chaos_injected_after_frames": 0,
+      "died": false,
+      "reason": null,
+      "session_end_after_ms": null
+    },
+    "capture_reinit": 0,
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 1,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 15.183368987830505,
+    "fps_retargets": 12,
+    "fps_target": 60,
+    "frames_captured": 54682,
+    "frames_encoded": 54661,
+    "keyframe_forced": 3027,
+    "keyframes": 3423,
+    "pacer": {
+      "fps_tick_rate": 15.189480001491658,
+      "skipped": 2,
+      "ticks": 54683
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 396,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 3600.0574078
+  },
+  "input": {
+    "all_keys_up": 2,
+    "final_position": [
+      30176,
+      19104
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 20000,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 667,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat\\m6-soak-host-rig-host.jsonl",
+    "records": 294830
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 4,
+    "envelopes_sent": 243,
+    "heartbeats_raised": 240,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 1,
+    "ice_minted": 1,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 1,
+    "wire_sent": 3
+  },
+  "proc": {
+    "final": {
+      "handles": 572,
+      "private_mib": 256.07421875,
+      "threads": 35,
+      "ws_mib": 91.25390625
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 613,
+        "private_mib": 267.37890625,
+        "threads": 39,
+        "ws_mib": 102.09375
+      }
+    ]
+  },
+  "prompts": 1,
+  "real_input": false,
+  "role": "host",
+  "scenario": "soak",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 1,
+        "dropped": 0,
+        "enqueued": 1,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 2,
+        "dropped": 0,
+        "enqueued": 2,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 54624,
+    "loss_percent": null,
+    "netem_queue": {
+      "capacity": 300,
+      "delivered": 92145,
+      "depth": 0,
+      "dropped": 3826,
+      "heap_capacity": 4096,
+      "heap_high_water": 1,
+      "high_water": 1
+    },
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 92145,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.1608,
+    "selected_pair": {
+      "local": "127.0.0.1:51024",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:58616",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 97.69482476228238
+  }
+}

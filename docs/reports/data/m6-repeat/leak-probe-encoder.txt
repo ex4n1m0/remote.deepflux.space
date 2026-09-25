@@ -1,0 +1,14 @@
+--- phase: MfEncoder create/encode/drop ---
+encoder    iter  0: ws   +36.4 MiB  private   +52.8 MiB  threads  35  handles   409
+encoder    iter  1: ws   +71.7 MiB  private  +121.8 MiB  threads  39  handles   495
+encoder    iter  2: ws   +73.0 MiB  private  +123.4 MiB  threads  39  handles   495
+encoder    iter  3: ws   +73.7 MiB  private  +125.9 MiB  threads  39  handles   495
+encoder    iter  4: ws   +74.2 MiB  private  +123.7 MiB  threads  39  handles   495
+encoder    iter  5: ws   +74.8 MiB  private  +124.4 MiB  threads  39  handles   495
+encoder    iter  6: ws   +75.3 MiB  private  +125.9 MiB  threads  39  handles   495
+encoder    iter  7: ws   +75.8 MiB  private  +124.9 MiB  threads  39  handles   495
+encoder    iter  8: ws   +76.3 MiB  private  +126.0 MiB  threads  39  handles   495
+encoder    iter  9: ws   +79.1 MiB  private  +127.2 MiB  threads  39  handles   495
+encoder    iter 10: ws   +81.9 MiB  private  +126.7 MiB  threads  39  handles   495
+encoder    iter 11: ws   +77.9 MiB  private  +125.8 MiB  threads  39  handles   495
+encoder    iter 12: ws   +78.8 MiB  private  +124.8 MiB  threads  39  handles   495

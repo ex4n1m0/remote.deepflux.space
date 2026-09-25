@@ -1,0 +1,375 @@
+[rig-controller] m2_rig role=controller scenario=full dir=C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery/.sigB-VcDH2S stream=45s seed=2026 drop-fast=0 reorder-fast=0 drop-reliable-every=0
+[rig-controller] metrics: C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\m6-full9-ctrl-rig-controller.jsonl
+[rig-controller] gpu: NVIDIA GeForce RTX 5080 Laptop GPU
+[rig-controller] signaling: file(C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery/.sigB-VcDH2S out=c2h.jsonl, in=h2c.jsonl)
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] controller -> Requesting
+[rig-controller] connect_request sent
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-2
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] connected in 1198 ms
+[controller] decoder: Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] input chaos phase starting
+[rig-controller] chaos done: dropped=0 reordered=0
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] network change: restart_ice probe + goodbye + hard teardown
+[rig-controller] restart_ice ok
+[rig-controller] rendering stopped
+[rig-controller] session ended: Peer
+[rig-controller] controller -> Disconnected
+[rig-controller] host observed the network change (45 ms); waiting for self to re-register
+[rig-controller] controller -> Registering
+[rig-controller] controller -> Online
+[rig-controller] re-establishing after network change (510 ms after host-down)
+[rig-controller] controller -> Requesting
+[rig-controller] controller -> Offering
+[rig-controller] controller -> Connecting
+[rig-controller] session established: rig-controller-ctrl-8
+[rig-controller] controller -> Connected
+[rig-controller] rendering started
+[rig-controller] re-established in 1168 ms
+[controller] decoder (reused): Microsoft H264 Video Decoder MFT (hardware, 1920x1080, DXVA)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[controller] decode error: codec bounded wait expired: decoder needs more input (expected one-in-one-out)
+[rig-controller] rendering stopped
+[rig-controller] session ended: User
+[rig-controller] controller -> Disconnected
+[rig-controller] disconnect sent; draining
+[rig-controller] summary:
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      46500,
+      55500
+    ],
+    "moves_sent": 1500,
+    "reliable_send_errors": 0,
+    "reliable_sent": 50,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 138,
+    "device_lost": 0,
+    "fps_presented": 23.888408533066364,
+    "frame_id_gaps": 235,
+    "frames_decoded": 1793,
+    "frames_missing_packets": 4,
+    "frames_presented": 1793,
+    "frames_received": 3034,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 1103,
+    "keyframe_requests_sent": 192,
+    "render_secs": 75.0573232
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 79.6243065,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\\m6-full9-ctrl-rig-controller.jsonl",
+    "records": 15899
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 12,
+    "heartbeats_raised": 5,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 1746
+  },
+  "proc": {
+    "final": {
+      "handles": 610,
+      "private_mib": 113.6328125,
+      "threads": 40,
+      "ws_mib": 87.17578125
+    },
+    "per_session": [
+      {
+        "handles": 640,
+        "private_mib": 125.0546875,
+        "session": "rig-controller-ctrl-8",
+        "threads": 46,
+        "ws_mib": 98.38671875
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 623,
+        "private_mib": 114.4765625,
+        "threads": 45,
+        "ws_mib": 87.71484375
+      },
+      {
+        "handles": 627,
+        "private_mib": 124.91015625,
+        "threads": 44,
+        "ws_mib": 98.296875
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1198
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1168
+      ]
+    ],
+    "ends": [
+      "Peer",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 30.0027969
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 152,
+        "dropped": 0,
+        "enqueued": 152,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 43,
+    "frames_received": 2409,
+    "frames_sent": 0,
+    "loss_percent": 3.420843277645187,
+    "netem_queue": null,
+    "packets_lost": 129,
+    "packets_received": 3642,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 425.87705751903275,
+    "relay_in_use": false,
+    "rtt_ms": 0.1429,
+    "selected_pair": {
+      "local": "127.0.0.1:50676",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:51632",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

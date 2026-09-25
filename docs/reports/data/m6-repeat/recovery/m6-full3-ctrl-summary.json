@@ -1,0 +1,198 @@
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-fast"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      46500,
+      55500
+    ],
+    "moves_sent": 1500,
+    "reliable_send_errors": 0,
+    "reliable_sent": 50,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 52,
+    "device_lost": 0,
+    "fps_presented": 24.930394358926158,
+    "frame_id_gaps": 242,
+    "frames_decoded": 1872,
+    "frames_missing_packets": 4,
+    "frames_presented": 1872,
+    "frames_received": 3025,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 1101,
+    "keyframe_requests_sent": 194,
+    "render_secs": 75.0890649
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 79.6904819,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\\m6-full3-ctrl-rig-controller.jsonl",
+    "records": 16138
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 12,
+    "heartbeats_raised": 5,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 1748
+  },
+  "proc": {
+    "final": {
+      "handles": 610,
+      "private_mib": 115.22265625,
+      "threads": 40,
+      "ws_mib": 87.57421875
+    },
+    "per_session": [
+      {
+        "handles": 640,
+        "private_mib": 126.6484375,
+        "session": "rig-controller-ctrl-8",
+        "threads": 46,
+        "ws_mib": 98.78125
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 625,
+        "private_mib": 118.8828125,
+        "threads": 46,
+        "ws_mib": 90.94921875
+      },
+      {
+        "handles": 627,
+        "private_mib": 126.50390625,
+        "threads": 44,
+        "ws_mib": 98.69140625
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        1194
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1171
+      ]
+    ],
+    "ends": [
+      "Peer",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 30.003099
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 152,
+        "dropped": 0,
+        "enqueued": 152,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 42,
+    "frames_received": 2415,
+    "frames_sent": 0,
+    "loss_percent": 3.452785770337431,
+    "netem_queue": null,
+    "packets_lost": 132,
+    "packets_received": 3691,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 352.1078264916734,
+    "relay_in_use": false,
+    "rtt_ms": 0.17670000000000002,
+    "selected_pair": {
+      "local": "127.0.0.1:62825",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:62824",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

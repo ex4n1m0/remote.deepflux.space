@@ -1,0 +1,13 @@
+[e2e-host] Online
+[e2e-host] consent accepted
+[host] encoder: NVIDIA H.264 Encoder MFT (hardware, 1920x1080@60fps, 6000000 bps CBR, GOP 120)
+[host] capture: \\.\DISPLAY5 at (3840, 2160)
+[host] congestion: bitrate -> 4493909 bps (live)
+[host] monitor switched: \\.\DISPLAY5 at (3840, 2160)
+[host] congestion: bitrate -> 4793909 bps (live)
+[host] congestion: bitrate -> 5093909 bps (live)
+[host] congestion: bitrate -> 5393909 bps (live)
+[host] congestion: bitrate -> 5693909 bps (live)
+[host] congestion: bitrate -> 5993909 bps (live)
+[e2e-host] session ended: ["Peer"]
+[e2e-host] back Online after session end

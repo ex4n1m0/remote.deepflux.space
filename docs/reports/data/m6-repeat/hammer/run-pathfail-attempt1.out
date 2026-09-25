@@ -1,0 +1,5 @@
+docs/reports/data/m6-repeat/hammer/run-hammer.sh: line 33: cd: services/signaling: No such file or directory
+docs/reports/data/m6-repeat/hammer/run-hammer.sh: line 36: cd: services/signaling: No such file or directory
+hammer: n=30 host=m6-hammer-host-1790344111 work=/c/Remote.deepflux.space/docs/docs/reports/data/m6-repeat/hammer/.work-SEEhoY start=2026-09-25T21:48:31+08:00
+hammer: done iterations=30 fails=30 quality_applied=0 held_violations=0 end=2026-09-25T21:49:38+08:00
+HAMMER RESULT: FAIL

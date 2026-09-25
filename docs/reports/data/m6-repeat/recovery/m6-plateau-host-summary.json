@@ -1,0 +1,787 @@
+{
+  "all_keys_up_disconnect": 60,
+  "channel_open_order": [
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "control",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control"
+  ],
+  "congestion": {
+    "congestion_decisions": 24,
+    "congestion_reconfigs": 23,
+    "enabled": true,
+    "encoder_rebuilds": 0,
+    "events": [
+      {
+        "at_ms": 3171,
+        "bitrate_bps": 3600000,
+        "encoder_bitrate_bps": 3600000,
+        "estimate_bps": 4000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 6176,
+        "bitrate_bps": 2700000,
+        "encoder_bitrate_bps": 2700000,
+        "estimate_bps": 5019435,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 7179,
+        "bitrate_bps": 2025000,
+        "encoder_bitrate_bps": 2025000,
+        "estimate_bps": 5441424,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 8180,
+        "bitrate_bps": 1518750,
+        "encoder_bitrate_bps": 1518750,
+        "estimate_bps": 5809621,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 9181,
+        "bitrate_bps": 1139062,
+        "encoder_bitrate_bps": 1139062,
+        "estimate_bps": 6301952,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 10182,
+        "bitrate_bps": 854296,
+        "encoder_bitrate_bps": 854296,
+        "estimate_bps": 6836644,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 12184,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 854296,
+        "estimate_bps": 7934967,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 5.46875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 16193,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 10768902,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 10.15625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 21202,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 25210,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 11.71875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 102337,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.78125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 105341,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 106343,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.6875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 437105,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 440147,
+        "bitrate_bps": 1100000,
+        "encoder_bitrate_bps": 1100000,
+        "estimate_bps": 4062045,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 442155,
+        "bitrate_bps": 825000,
+        "encoder_bitrate_bps": 825000,
+        "estimate_bps": 4786051,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 443157,
+        "bitrate_bps": 618750,
+        "encoder_bitrate_bps": 618750,
+        "estimate_bps": 5103543,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.734375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 444159,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 5539528,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 533432,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 9807626,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.78125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 535437,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 11352604,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 4.296875,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 536443,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 577566,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 4326784,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.78125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 581580,
+        "bitrate_bps": 600000,
+        "encoder_bitrate_bps": 600000,
+        "estimate_bps": 5884016,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 9.375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 582583,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 6373342,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      }
+    ],
+    "fps_retargets": 2,
+    "reconfig_errors": 0,
+    "resolution_step_down_rebuilds": 0
+  },
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 820.3950797,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "capture_dead": {
+      "chaos_injected_after_frames": 0,
+      "died": false,
+      "reason": null,
+      "session_end_after_ms": null
+    },
+    "capture_reinit": 0,
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 1,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 58.81163348771363,
+    "fps_retargets": 2,
+    "fps_target": 60,
+    "frames_captured": 44258,
+    "frames_encoded": 44208,
+    "keyframe_forced": 2537,
+    "keyframes": 2560,
+    "pacer": {
+      "fps_tick_rate": 58.87815044560328,
+      "skipped": 1,
+      "ticks": 44258
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 23,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 751.6880143999999
+  },
+  "input": {
+    "all_keys_up": 60,
+    "final_position": [
+      46500,
+      55500
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 1500,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 50,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\\m6-plateau-host-rig-host.jsonl",
+    "records": 222157
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 120,
+    "envelopes_sent": 120,
+    "heartbeats_raised": 30,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 30,
+    "ice_minted": 30,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 30,
+    "wire_sent": 32
+  },
+  "proc": {
+    "final": {
+      "handles": 603,
+      "private_mib": 290.5234375,
+      "threads": 35,
+      "ws_mib": 125.578125
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 627,
+        "private_mib": 264.51171875,
+        "threads": 45,
+        "ws_mib": 98.0078125
+      },
+      {
+        "handles": 627,
+        "private_mib": 265.25,
+        "threads": 44,
+        "ws_mib": 99.98828125
+      },
+      {
+        "handles": 630,
+        "private_mib": 267.0,
+        "threads": 42,
+        "ws_mib": 101.76171875
+      },
+      {
+        "handles": 631,
+        "private_mib": 268.5078125,
+        "threads": 42,
+        "ws_mib": 103.26171875
+      },
+      {
+        "handles": 622,
+        "private_mib": 269.9921875,
+        "threads": 39,
+        "ws_mib": 104.8125
+      },
+      {
+        "handles": 631,
+        "private_mib": 271.78515625,
+        "threads": 42,
+        "ws_mib": 106.4921875
+      },
+      {
+        "handles": 633,
+        "private_mib": 273.11328125,
+        "threads": 42,
+        "ws_mib": 107.72265625
+      },
+      {
+        "handles": 634,
+        "private_mib": 274.44140625,
+        "threads": 42,
+        "ws_mib": 108.90625
+      },
+      {
+        "handles": 635,
+        "private_mib": 275.609375,
+        "threads": 42,
+        "ws_mib": 110.10546875
+      },
+      {
+        "handles": 624,
+        "private_mib": 276.73828125,
+        "threads": 39,
+        "ws_mib": 111.3046875
+      },
+      {
+        "handles": 627,
+        "private_mib": 277.9765625,
+        "threads": 40,
+        "ws_mib": 112.73828125
+      },
+      {
+        "handles": 628,
+        "private_mib": 279.1796875,
+        "threads": 40,
+        "ws_mib": 113.96875
+      },
+      {
+        "handles": 629,
+        "private_mib": 280.38671875,
+        "threads": 40,
+        "ws_mib": 115.046875
+      },
+      {
+        "handles": 638,
+        "private_mib": 281.625,
+        "threads": 42,
+        "ws_mib": 116.33203125
+      },
+      {
+        "handles": 637,
+        "private_mib": 282.640625,
+        "threads": 41,
+        "ws_mib": 117.3828125
+      },
+      {
+        "handles": 638,
+        "private_mib": 284.18359375,
+        "threads": 41,
+        "ws_mib": 118.9453125
+      },
+      {
+        "handles": 639,
+        "private_mib": 285.375,
+        "threads": 41,
+        "ws_mib": 120.16796875
+      },
+      {
+        "handles": 632,
+        "private_mib": 286.171875,
+        "threads": 39,
+        "ws_mib": 121.01953125
+      },
+      {
+        "handles": 633,
+        "private_mib": 287.78125,
+        "threads": 39,
+        "ws_mib": 122.4921875
+      },
+      {
+        "handles": 634,
+        "private_mib": 289.0078125,
+        "threads": 39,
+        "ws_mib": 123.75390625
+      },
+      {
+        "handles": 635,
+        "private_mib": 290.0,
+        "threads": 39,
+        "ws_mib": 124.76171875
+      },
+      {
+        "handles": 638,
+        "private_mib": 291.546875,
+        "threads": 40,
+        "ws_mib": 126.33984375
+      },
+      {
+        "handles": 639,
+        "private_mib": 292.4453125,
+        "threads": 40,
+        "ws_mib": 127.2734375
+      },
+      {
+        "handles": 640,
+        "private_mib": 293.94140625,
+        "threads": 40,
+        "ws_mib": 128.625
+      },
+      {
+        "handles": 637,
+        "private_mib": 295.109375,
+        "threads": 39,
+        "ws_mib": 129.828125
+      },
+      {
+        "handles": 640,
+        "private_mib": 296.453125,
+        "threads": 39,
+        "ws_mib": 131.2109375
+      },
+      {
+        "handles": 641,
+        "private_mib": 297.6171875,
+        "threads": 39,
+        "ws_mib": 132.40234375
+      },
+      {
+        "handles": 642,
+        "private_mib": 299.078125,
+        "threads": 39,
+        "ws_mib": 133.890625
+      },
+      {
+        "handles": 645,
+        "private_mib": 300.61328125,
+        "threads": 40,
+        "ws_mib": 135.25
+      },
+      {
+        "handles": 646,
+        "private_mib": 301.66796875,
+        "threads": 40,
+        "ws_mib": 136.3203125
+      }
+    ]
+  },
+  "prompts": 30,
+  "real_input": false,
+  "role": "host",
+  "scenario": "cycles",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer",
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8",
+      "rig-controller-ctrl-14",
+      "rig-controller-ctrl-20",
+      "rig-controller-ctrl-26",
+      "rig-controller-ctrl-32",
+      "rig-controller-ctrl-38",
+      "rig-controller-ctrl-44",
+      "rig-controller-ctrl-50",
+      "rig-controller-ctrl-56",
+      "rig-controller-ctrl-62",
+      "rig-controller-ctrl-68",
+      "rig-controller-ctrl-74",
+      "rig-controller-ctrl-80",
+      "rig-controller-ctrl-86",
+      "rig-controller-ctrl-92",
+      "rig-controller-ctrl-98",
+      "rig-controller-ctrl-104",
+      "rig-controller-ctrl-110",
+      "rig-controller-ctrl-116",
+      "rig-controller-ctrl-122",
+      "rig-controller-ctrl-128",
+      "rig-controller-ctrl-134",
+      "rig-controller-ctrl-140",
+      "rig-controller-ctrl-146",
+      "rig-controller-ctrl-152",
+      "rig-controller-ctrl-158",
+      "rig-controller-ctrl-164",
+      "rig-controller-ctrl-170",
+      "rig-controller-ctrl-176"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 1,
+        "dropped": 0,
+        "enqueued": 1,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 1401,
+    "loss_percent": null,
+    "netem_queue": {
+      "capacity": 300,
+      "delivered": 2051,
+      "depth": 0,
+      "dropped": 72,
+      "heap_capacity": 4096,
+      "heap_high_water": 1,
+      "high_water": 1
+    },
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 2051,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.14750000000000002,
+    "selected_pair": {
+      "local": "127.0.0.1:52595",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:52596",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 381.42948903157406
+  }
+}

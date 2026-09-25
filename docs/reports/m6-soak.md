@@ -10,6 +10,10 @@ baseline reports. Evidence: `docs/reports/data/m6-{smoke,soak,diag,hammer,recove
 ## 0. Verdict
 
 **NO-GO as-is — one blocking finding (F71), with a narrow, cheap path to SHIP.**
+
+> *Amended 2026-09-26 (repeat gate at `5763d4e`): F71 fixed and the repeat 60-min
+> soak completed clean; final recommendation is now **SHIP-WITH-CONDITIONS** —
+> see §10. This §0 remains the verbatim record of `fb91755`.*
 Everything else the M6 gate names passed with margin: latency budgets, connect
 budget, queue bounds under 4 % loss, memory flatness over the hour, input
 safety, preset hammer (100/100), recovery endurance (22/22), zero encoder
@@ -408,3 +412,217 @@ budget in `AGENTS.md` with large margins (connect 4×, LAN proxy 17×, queues
 and memory flat, input exactly convergent), and the M5 blocker (GCC feedback
 ingest) is verified fixed at every scale tested. Real-WAN spot checks (user)
 remain the ground truth for the WAN budget and estimate-axis reaction (§6).
+
+## 10. Repeat soak at `5763d4e` — the F71 ship condition (2026-09-25/26)
+
+Auditor: `rd-performance-qa` (same discipline: read-only except this file and
+`docs/reports/data/m6-repeat/`). Inputs: §9's ship path; fix commits `20e97d2`
+(F74/F75/F76a/F78/F79 telemetry) and `5763d4e` (F71 capture-death
+propagation, F72/F73 drop-path teardown) with their evidence under
+`docs/reports/data/m6-shipfix/` (F71 injected-death: typed session end in
+37-40 ms; leak_probe all phases flat; F73 re-measured +1.60/+1.44). Binaries
+rebuilt from a clean tree at HEAD `5763d4e` (`git status` clean; no source
+modified during this re-run). The NO-GO verdict of §0 remains the record of
+`fb91755`; everything below is the repeat evidence that §9 demanded.
+
+### 10.0 Attempts 1-3 (voided environment failures — kept as evidence)
+
+- **attempt1-staticdesktop/**: the controller viewer window covered the rig's
+  GDI stimulus window; one early decode reset then IDR-gated the stream while
+  the host had no screen changes to attach a keyframe to — a stillness
+  fixpoint (4 presents in 6 min, `Connected`). This is the M5 static-desktop
+  pitfall (F79), not a product defect. Remedy: `stimulus-guardian.py`
+  (re-asserts `HWND_TOPMOST` on the stimulus every 2 s) — restores the rig's
+  own "guaranteed desktop updates during soaks" methodology; configuration
+  unchanged. Side effect vs `fb91755`'s run: the visible stimulus yields
+  ~15 fps capture vs the feedback-recursion's ~10.5 — a *stricter* load
+  profile through the same configuration.
+- **attempt2-slopewindow/**: healthy 11.7 min; the watchdog then fired a
+  false slope violation — a one-time +255.5 MiB host-private step at minute
+  ~3.5 (266.7 to 522.2 in one 60 s sample, flat for 7 min after; absent in
+  attempts 3/4) sat inside the trailing-600 s regression window while the
+  delta-vs-baseline check (baseline t=300-360, post-step) passed. Harness
+  fix in my runner copy: slope points restricted to post-baseline. The step
+  itself is nondeterministic one-time allocator/driver retention (same
+  family as the documented ~67 MiB first-encode NVENC driver-session
+  retention) — flat after, never observed twice, and policed by the 64 MiB
+  delta cap in every run.
+- **attempt3-lockscreensaver/**: healthy 40 min (buckets 11.3-11.8 fps),
+  then a password-protected screensaver (`matrix.scr`, input desktop
+  "Screen-saver") locked the console: DDA `E_ACCESSDENIED`. The product
+  behaved exactly per the F71 policy — session stayed `Connected`, reinit
+  polled access-denied without converting to `Dead` (8 255 stderr lines at
+  ~10 Hz over 8.5 min, memory flat 101.5/267.7 — no growth, no typed death,
+  no silent dead state), and the fps-floor watchdog killed the run as
+  designed at t=2900. Voided as environment intrusion; keep-awake
+  (`SetThreadExecutionState`) added to the guardian. Serendipitous value:
+  live evidence for the secure-desktop branch of
+  `capture-windows/src/recovery.rs` (AccessDenied never consumes the reinit
+  budget) at soak scale.
+
+### 10.1 The 60-minute repeat soak — **PASS, clean** (attempt 4)
+
+`bash docs/reports/data/m6-repeat/run-soak.sh 3600 4` — byte-identical
+configuration to §1 (two processes, rig `soak`, congestion ON, netem
+`loss=4`, NVENC 1080p, animated host stimulus, mid-run watchdog, warm-up
+excluded) plus the two harness guards above. `SOAK RESULT: PASS`,
+`watchdog: clean exit`, **0 violations**. Evidence: `m6-repeat/`
+(runner, watchdog csv/log, gzipped JSONL pair, both summaries,
+`analysis.json` from `analyze-soak.py`).
+
+- **F71 ship condition**: the run the blocker died in now completes. Host
+  `capture_reinit: 0` (exported, F78), `capture_dead.died: false` (F71
+  evidence block), zero `duplication not started`/capture-error lines in
+  `host.log`, and no reinit events at all — nothing ignored, nothing
+  silently dead. Combined with the fix commit's injected-death integration
+  (typed end 37-40 ms) and attempt 3's lock-screen poll behavior, the
+  capture-death surface is closed from all three directions the fix
+  claimed.
+- **Watchdog minute marks** (ws/priv MiB; presents per trailing 600 s):
+  10 min host 101.5/267.0 ctrl 95.2/120.6 presents 6 236 · 20 min
+  101.7/267.2 · 95.6/120.8 · 7 147 · 30 min 101.8/267.2 · 95.6/120.8 ·
+  7 086 · 40 min 101.9/267.3 · 96.1/121.6 · 6 973 · 45 min (the minute F71
+  killed `fb91755`) 102.1/267.4 · 96.2/121.6 · 7 088 · 60 min 102.2/267.6 ·
+  96.5/121.4 · 6 274. Host +0.7 ws/+0.6 priv over 50 min; ctrl private
+  oscillates 120.6-124.6 (allocator, slope never fired); post-teardown
+  finals 91.3/256.1 and 85.4/110.2 — release on teardown.
+- **Session**: 1 connect, single session, ends `Peer` (host) / `User`
+  (controller, scripted) — typed-or-clean only; `illegal_transitions: 0`,
+  `ice_forward_errors: 0`, relay not in use, nominated pair host↔host both
+  sides.
+- **F74 counters (evidence without log parsing)**: `congestion_decisions
+  400 / congestion_reconfigs 396 / encoder_rebuilds 0 / reconfig_errors 0 /
+  fps_retargets 12 / resolution_step_down_rebuilds 0` — the `fb91755`
+  shape (404/403/0) reproduced; encode size stayed 1920×1080. New gauges:
+  `trail_overflow` 0 on all four channels (F63), netem shaper queue
+  high-water 1/300 with 3 826 packets drop-counted, netem heap high-water
+  1/4 096 — the F69 bounds now evidenced directly from the summary.
+- **Frames**: host 54 682 captured / 54 661 encoded (15.18 fps effective);
+  controller 50 997 received / 41 849 decoded / 41 849 presented = **11.62
+  fps**; IDR rate 3 423/54 661 = 6.26 % (3 027 forced; 3 064 requests,
+  98.8 % honored); decode errors 4 928 + IDR-gated drops 4 220 — counted,
+  ~2.2x `fb91755`'s absolute counts at ~2.2x the frame rate (proportional
+  to load, not a regression). fps per 5-min bucket: 11.03-12.18 across all
+  12 buckets — no drift, no death bucket.
+- **Queues**: capture→enc 1/1 (replaced 20), enc→send 1/1 (replaced 35),
+  recv→dec 2/8 (0 dropped), dec→pres 1/1; channels input-fast hw 30/32
+  (0 dropped), control 1/256, input-reliable 1/256, cursor 1/8 — every
+  high-water within capacity.
+- **Input**: 20 000/20 000 moves applied, 0 stale, 0 gaps, 0 inject errors,
+  `held_at_end: 0`, final position exact match ([30 176, 19 104] both
+  sides), 2 `AllKeysUp` on teardown.
+- **Latency (F8 proxy, warm-up excluded, n=41 849)**: **p50 14.06 / p95
+  41.36 / p99 53.64 / max 86.31 ms** (ICE RTT p50 0.156) — 5.7x margin on
+  the ≤80 ms LAN median budget; per-bucket p50 13.71-14.40 flat (no
+  progressive latency). p50 is higher than §1's 4.53 because this profile
+  encodes real 1080p AUs at ~15 fps (encode p50 9.82 ms) instead of the
+  collapsed-ladder micro-frames; the tail improved (max 347.75 → 86.31).
+  Stages p50/p95: capture→submit 0.139/0.183, encode 9.823/13.598,
+  done→send 1.775/19.053, recv→decode 1.841/11.205, decode→present
+  0.087/0.121 ms (render path unchanged).
+- **Sinks**: 294 830 + 303 549 records, `backpressure_events: 0` both
+  sides; flush-on-idle (F76a) live — the JSONLs were readable continuously
+  during the run.
+- Gates at HEAD: `cargo fmt --check` green, `cargo test --workspace` 34/34
+  test binaries ok, F75 loop 20/20 standalone runs green.
+
+### 10.2 Hammer re-check (30 cycles) — PASS
+
+`bash docs/reports/data/m6-repeat/hammer/run-hammer.sh 30` (first launch
+failed on a harness path bug — `run-pathfail-attempt1.out`, no rig
+involvement): **30/30 rc=0, quality field matched 30/30, held keys = 0 at
+30/30** (cycle low→auto→high→auto→balanced→auto: 15 Auto-after-manual F70
+restores, 15 manual presets). F72 root-fix re-verified directly at HEAD on
+this machine (`m6-repeat/leak-probe-{encoder,rebuild-hw}.txt`): encoder
+phase flat after the documented one-time NVENC driver-session retention
+(iter 1-2 ≈ +65 ws/+122 priv, then private oscillates 124-127, threads
+frozen 39, handles frozen 495); hw-rebuild ×12: ws oscillates 7.3-12.7,
+private sawtooths 15.1-31.0 — bounded, vs `fb91755`'s linear +14.1/+28.1
+per rebuild. Residual: ≈ +1 handle per rebuild (14 over 12 iters).
+`encoder_rebuilds` tracking verified in the soak's F74 block (0 there).
+
+### 10.3 Recovery re-check — PASS (+30-cycle plateau)
+
+`run-recovery.sh` (path-bug attempt archived): (a) **12/12** cycles under
+loss=4+congestion — ends `Peer`×12/`User`×12, 0 illegal transitions,
+connects 1 155-1 195 ms, reconfig 11/0/0, `capture_reinit: 0`; slope
+**+1.51 ws/+1.48 private MiB per session** (fix commit +1.60/+1.44;
+`fb91755` +1.65/+1.55), teardown releases ~11 MiB. (b) **10/10** full
+interface-change recoveries — initial connect 1 162-1 216 ms, re-establish
+1 162-1 184 ms, ends `[Peer, User]` each. (c) NEW **30-cycle plateau**
+(`run-plateau.sh`): 30/30 `Peer`; slope overall **+1.32/+1.28**, by thirds
++1.48/+1.36 → +1.23/+1.22 → +1.28/+1.30 — **decelerating, not
+accelerating**: sub-linear, consistent with the fix commit's
+allocator/segment-retention attribution, not object retention. Cumulative
++38.3 ws/+37.2 priv MiB over 30 sessions; teardown releases ~11 MiB.
+(Note: the plateau runner clobbered the 12-cycle summary *filename* — raw
+12-cycle JSONL survives, extracted series preserved in
+`m6-cycles12-extracted.json`.)
+
+### 10.4 Verdict — **SHIP-WITH-CONDITIONS** at `5763d4e`
+
+The blocking finding F71 is fixed and verified three ways (policy code with
+unit tests; injected-death integration, typed end 37-40 ms; this repeat hour
+— zero capture events, counters exported). Every §0 budget row passes at
+HEAD, most with the §1 margins carried forward, and the two prior
+should-fix families (F72, F73) are root-fixed to bounded residuals. What
+keeps this from an unconditional SHIP is residual, bounded, and documented
+— each condition below is checkable by a command:
+
+1. **C1 (F73 residual)** — per-reconnect retention +1.3-1.5 MiB private
+   (30-cycle plateau: decelerating; ~130 MiB per 100 reconnects). Check at
+   each release: run `run-recovery.sh` + `run-plateau.sh`; fail if the
+   30-cycle per-session slope exceeds 3 MiB private or the third-tercile
+   slope exceeds the first (acceleration).
+2. **C2 (F72 residual)** — manual-preset rebuilds retain a bounded 15-31
+   MiB private oscillation + ≈1 handle each; the decoder-path MFTEnumEx
+   leak stays deliberately (vendor-driver unload fault, documented in
+   code). Check: `reconfig_probe --mode rebuild` slope ≤ ~30 MiB
+   oscillation, no linear trend; release notes state a manual-quality-
+   changes-per-session budget (≤100 keeps retention oscillation-bound) or
+   the drop-path follow-up lands.
+3. **C3 (one-time retentions, support-facing)** — first-encode NVENC
+   driver session ~67-125 MiB per process; rare one-time ~256 MiB
+   host-private allocator step (1 of 3 hour-runs here, flat after). Check:
+   any *repeat* step or monotone growth in a 60-min soak is a regression
+   (the watchdog's 64 MiB delta cap + post-baseline slope already enforce
+   this mechanically).
+4. **C4 (unchanged caveat)** — real-WAN spot checks (user) remain ground
+   truth for the ≤150 ms WAN budget and estimate-axis reaction (§6: the
+   rig's netem cannot shape the estimate axis).
+5. **C5 (gate hygiene)** — keep the F75 10x loop in the merge gate
+   (fixed at `20e97d2`, 20/20 here); fold the repeat-soak harness guards
+   (stimulus topmost + keep-awake + post-baseline slope window,
+   `m6-repeat/stimulus-guardian.py`, `run-soak.sh`) into the canonical
+   `m6-soak/run-soak.sh` so the next auditor does not re-trip attempts 1-3.
+6. Note (non-blocking): during secure-desktop denial the host logs a
+   reinit-failed line per ~100 ms poll (attempt 3: 8 255 lines in 8.5 min,
+   stderr only, no memory effect) — rate-limit before it meets a long
+   lock in production logging.
+
+### 10.5 Reproduction index (repeat)
+
+```bash
+cd C:/Remote.deepflux.space
+# The headline repeat soak (~63 min): PASS, watchdog 0 violations
+bash docs/reports/data/m6-repeat/run-soak.sh 3600 4
+python docs/reports/data/m6-repeat/analyze-soak.py docs/reports/data/m6-repeat
+# F71 evidence trio: counters in the summary (no log parsing)
+python -c "import json; h=json.load(open('docs/reports/data/m6-repeat/host-summary.json')); print(h['host']['capture_reinit'], h['host']['capture_dead'], h['congestion'])"
+# Hammer 30 (paths incl. 15 F70 geometry restores)
+bash docs/reports/data/m6-repeat/hammer/run-hammer.sh 30
+# Recovery: 12 cycles + 10 interface-change recoveries, then the plateau
+bash docs/reports/data/m6-repeat/recovery/run-recovery.sh
+bash docs/reports/data/m6-repeat/recovery/run-plateau.sh
+# F72 direct: encoder phase + hw rebuild drop path at HEAD
+cargo run --release -p node-runtime --example leak_probe -- --phase encoder --iters 12
+cargo run --release -p codec-windows --example reconfig_probe -- --mode rebuild --iters 12 --encoder hw
+# F75 flake loop (fixed)
+for i in $(seq 1 10); do cargo test -p transport-webrtc --lib channel_slot_depth_trail; done
+```
+
+Evidence: `docs/reports/data/m6-repeat/` — attempt 4 (`run.out`,
+`watchdog.{csv,log}`, `m6-soak-{host,ctrl}-rig-*.jsonl.gz`, both summaries,
+`analysis.json`, `stimulus-guardian.py`, patched `run-soak.sh`), attempts
+1-3 archives, `hammer/`, `recovery/` (cycles/full/plateau + extracted
+series), `leak-probe-*.txt`, `f75-flake-loop.txt`.

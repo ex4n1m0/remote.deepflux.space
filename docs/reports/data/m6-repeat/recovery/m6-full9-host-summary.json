@@ -1,0 +1,317 @@
+{
+  "all_keys_up_disconnect": 4,
+  "channel_open_order": [
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable"
+  ],
+  "congestion": {
+    "congestion_decisions": 11,
+    "congestion_reconfigs": 10,
+    "enabled": true,
+    "encoder_rebuilds": 0,
+    "events": [
+      {
+        "at_ms": 3188,
+        "bitrate_bps": 3600000,
+        "encoder_bitrate_bps": 3600000,
+        "estimate_bps": 4000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": null,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 6193,
+        "bitrate_bps": 2700000,
+        "encoder_bitrate_bps": 2700000,
+        "estimate_bps": 4930474,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 7194,
+        "bitrate_bps": 2025000,
+        "encoder_bitrate_bps": 2025000,
+        "estimate_bps": 5345088,
+        "fps_cap": 30,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 3.125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 8196,
+        "bitrate_bps": 1518750,
+        "encoder_bitrate_bps": 1518750,
+        "estimate_bps": 5704824,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 5.078125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 9196,
+        "bitrate_bps": 1139062,
+        "encoder_bitrate_bps": 1139062,
+        "estimate_bps": 6187998,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 10199,
+        "bitrate_bps": 854296,
+        "encoder_bitrate_bps": 854296,
+        "estimate_bps": 6719910,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.515625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 11200,
+        "bitrate_bps": 640722,
+        "encoder_bitrate_bps": 640722,
+        "estimate_bps": 7282084,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 2.34375,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 12202,
+        "bitrate_bps": null,
+        "encoder_bitrate_bps": 640722,
+        "estimate_bps": 7773960,
+        "fps_cap": 15,
+        "reason": "bandwidth collapsed: fps cap applied",
+        "remote_loss_percent": 1.953125,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 16207,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 10618847,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 3.90625,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 29229,
+        "bitrate_bps": 800000,
+        "encoder_bitrate_bps": 800000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 0.0,
+        "resolution_step_down": false
+      },
+      {
+        "at_ms": 30230,
+        "bitrate_bps": 500000,
+        "encoder_bitrate_bps": 500000,
+        "estimate_bps": 12000000,
+        "fps_cap": null,
+        "reason": "",
+        "remote_loss_percent": 14.0625,
+        "resolution_step_down": false
+      }
+    ],
+    "fps_retargets": 2,
+    "reconfig_errors": 0,
+    "resolution_step_down_rebuilds": 0
+  },
+  "cursor": {
+    "overlays_received": 0,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-host",
+  "elapsed_s": 80.8035329,
+  "failed": false,
+  "failures": [],
+  "host": {
+    "capture_dead": {
+      "chaos_injected_after_frames": 0,
+      "died": false,
+      "reason": null,
+      "session_end_after_ms": null
+    },
+    "capture_reinit": 0,
+    "cursor_only_updates": 0,
+    "cursor_positions_available": 1,
+    "device_lost": 0,
+    "encode_deferred": 0,
+    "encode_size": "1920x1080",
+    "fps_effective": 45.15198595599452,
+    "fps_retargets": 2,
+    "fps_target": 60,
+    "frames_captured": 3412,
+    "frames_encoded": 3388,
+    "keyframe_forced": 194,
+    "keyframes": 204,
+    "pacer": {
+      "fps_tick_rate": 45.471834734903574,
+      "skipped": 1,
+      "ticks": 3412
+    },
+    "reconfig_errors": 0,
+    "reconfig_live": 10,
+    "reconfig_rebuilt": 0,
+    "stream_secs": 75.0354592
+  },
+  "input": {
+    "all_keys_up": 4,
+    "final_position": [
+      46500,
+      55500
+    ],
+    "held_at_end": 0,
+    "inject_errors": 0,
+    "moves_applied": 1500,
+    "moves_stale_suppressed": 0,
+    "reliable_applied": 50,
+    "reliable_duplicates_suppressed": 0,
+    "reliable_stale_suppressed": 0,
+    "sequence_gaps": 0
+  },
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\\m6-full9-host-rig-host.jsonl",
+    "records": 17123
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 7,
+    "envelopes_sent": 12,
+    "heartbeats_raised": 5,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 2,
+    "ice_minted": 2,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 2,
+    "wire_sent": 4
+  },
+  "proc": {
+    "final": {
+      "handles": 582,
+      "private_mib": 254.734375,
+      "threads": 38,
+      "ws_mib": 87.6640625
+    },
+    "per_session": [],
+    "per_session_end": [
+      {
+        "handles": 591,
+        "private_mib": 263.82421875,
+        "threads": 42,
+        "ws_mib": 95.9453125
+      },
+      {
+        "handles": 607,
+        "private_mib": 265.84375,
+        "threads": 42,
+        "ws_mib": 98.3671875
+      }
+    ]
+  },
+  "prompts": 2,
+  "real_input": false,
+  "role": "host",
+  "scenario": "full",
+  "sessions": {
+    "connect_attempts_ms": [],
+    "ends": [
+      "TransportError",
+      "Peer"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 1,
+        "dropped": 0,
+        "enqueued": 1,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 0,
+    "frames_received": 0,
+    "frames_sent": 2543,
+    "loss_percent": null,
+    "netem_queue": {
+      "capacity": 300,
+      "delivered": 3643,
+      "depth": 0,
+      "dropped": 133,
+      "heap_capacity": 4096,
+      "heap_high_water": 1,
+      "high_water": 1
+    },
+    "packets_lost": 0,
+    "packets_received": 0,
+    "packets_sent": 3643,
+    "recv_bitrate_kbps": null,
+    "relay_in_use": false,
+    "rtt_ms": 0.1263,
+    "selected_pair": {
+      "local": "127.0.0.1:51632",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:50676",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": 416.8577048053708
+  }
+}

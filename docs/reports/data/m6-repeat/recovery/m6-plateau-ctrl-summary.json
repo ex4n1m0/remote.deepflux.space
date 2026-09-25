@@ -1,0 +1,853 @@
+{
+  "all_keys_up_disconnect": 0,
+  "channel_open_order": [
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "control",
+    "cursor",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "input-fast",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "control",
+    "cursor",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "input-reliable",
+    "control",
+    "cursor",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-reliable",
+    "input-fast",
+    "cursor",
+    "control",
+    "input-fast",
+    "input-reliable",
+    "cursor",
+    "input-fast",
+    "control",
+    "input-reliable",
+    "input-reliable",
+    "control",
+    "input-fast",
+    "cursor"
+  ],
+  "chaos": {
+    "dropped": 0,
+    "final_position_sent": [
+      46500,
+      55500
+    ],
+    "moves_sent": 1500,
+    "reliable_send_errors": 0,
+    "reliable_sent": 50,
+    "reordered": 0,
+    "seed": 2026
+  },
+  "congestion": {
+    "enabled": false,
+    "events": [],
+    "input_delay_delivered": 0,
+    "input_delay_dropped": 0,
+    "input_delay_ms": 0
+  },
+  "controller": {
+    "decode_errors": 597,
+    "device_lost": 0,
+    "fps_presented": 31.46941463218306,
+    "frame_id_gaps": 3281,
+    "frames_decoded": 23647,
+    "frames_missing_packets": 36,
+    "frames_presented": 23647,
+    "frames_received": 39748,
+    "frames_without_frame_id": 0,
+    "idr_gate_drops": 15504,
+    "keyframe_requests_sent": 2511,
+    "render_secs": 751.4280223000001
+  },
+  "cursor": {
+    "overlays_received": 1,
+    "shapes_received": 0,
+    "slot_replaced": 0,
+    "slot_taken": 0
+  },
+  "device": "rig-controller",
+  "elapsed_s": 819.4286374,
+  "failed": false,
+  "failures": [],
+  "input": null,
+  "metrics": {
+    "backpressure_events": 0,
+    "disabled": false,
+    "path": "C:/Remote.deepflux.space/docs/reports/data/m6-repeat/recovery\\m6-plateau-ctrl-rig-controller.jsonl",
+    "records": 170089
+  },
+  "netem": {
+    "initial": null,
+    "schedule": null
+  },
+  "node_counters": {
+    "apply_answer_errors": 0,
+    "compose_errors": 0,
+    "envelopes_received": 90,
+    "envelopes_sent": 150,
+    "heartbeats_raised": 30,
+    "ice_forward_errors": 0,
+    "ice_forwarded": 30,
+    "ice_minted": 30,
+    "illegal_transitions": 0,
+    "late_channels_open": 0,
+    "register_acked": 30,
+    "wire_sent": 4121
+  },
+  "proc": {
+    "final": {
+      "handles": 629,
+      "private_mib": 121.4921875,
+      "threads": 37,
+      "ws_mib": 96.30859375
+    },
+    "per_session": [
+      {
+        "handles": 663,
+        "private_mib": 115.51953125,
+        "session": "rig-controller-ctrl-2",
+        "threads": 48,
+        "ws_mib": 89.56640625
+      },
+      {
+        "handles": 646,
+        "private_mib": 122.484375,
+        "session": "rig-controller-ctrl-8",
+        "threads": 49,
+        "ws_mib": 96.94140625
+      },
+      {
+        "handles": 647,
+        "private_mib": 123.64453125,
+        "session": "rig-controller-ctrl-14",
+        "threads": 46,
+        "ws_mib": 97.97265625
+      },
+      {
+        "handles": 648,
+        "private_mib": 124.70703125,
+        "session": "rig-controller-ctrl-20",
+        "threads": 46,
+        "ws_mib": 99.03515625
+      },
+      {
+        "handles": 637,
+        "private_mib": 128.33203125,
+        "session": "rig-controller-ctrl-26",
+        "threads": 42,
+        "ws_mib": 102.74609375
+      },
+      {
+        "handles": 647,
+        "private_mib": 125.98828125,
+        "session": "rig-controller-ctrl-32",
+        "threads": 45,
+        "ws_mib": 100.2734375
+      },
+      {
+        "handles": 648,
+        "private_mib": 126.4609375,
+        "session": "rig-controller-ctrl-38",
+        "threads": 45,
+        "ws_mib": 100.703125
+      },
+      {
+        "handles": 649,
+        "private_mib": 126.99609375,
+        "session": "rig-controller-ctrl-44",
+        "threads": 45,
+        "ws_mib": 101.3203125
+      },
+      {
+        "handles": 650,
+        "private_mib": 127.33984375,
+        "session": "rig-controller-ctrl-50",
+        "threads": 45,
+        "ws_mib": 101.69140625
+      },
+      {
+        "handles": 639,
+        "private_mib": 124.5703125,
+        "session": "rig-controller-ctrl-56",
+        "threads": 42,
+        "ws_mib": 99.04296875
+      },
+      {
+        "handles": 640,
+        "private_mib": 128.16796875,
+        "session": "rig-controller-ctrl-62",
+        "threads": 42,
+        "ws_mib": 102.49609375
+      },
+      {
+        "handles": 645,
+        "private_mib": 131.8046875,
+        "session": "rig-controller-ctrl-68",
+        "threads": 44,
+        "ws_mib": 106.1875
+      },
+      {
+        "handles": 646,
+        "private_mib": 129.0625,
+        "session": "rig-controller-ctrl-74",
+        "threads": 44,
+        "ws_mib": 103.57421875
+      },
+      {
+        "handles": 653,
+        "private_mib": 132.61328125,
+        "session": "rig-controller-ctrl-80",
+        "threads": 46,
+        "ws_mib": 107.10546875
+      },
+      {
+        "handles": 646,
+        "private_mib": 129.9765625,
+        "session": "rig-controller-ctrl-86",
+        "threads": 43,
+        "ws_mib": 104.5703125
+      },
+      {
+        "handles": 649,
+        "private_mib": 133.5859375,
+        "session": "rig-controller-ctrl-92",
+        "threads": 44,
+        "ws_mib": 108.1015625
+      },
+      {
+        "handles": 650,
+        "private_mib": 133.859375,
+        "session": "rig-controller-ctrl-98",
+        "threads": 44,
+        "ws_mib": 108.38671875
+      },
+      {
+        "handles": 645,
+        "private_mib": 134.26953125,
+        "session": "rig-controller-ctrl-104",
+        "threads": 42,
+        "ws_mib": 108.8671875
+      },
+      {
+        "handles": 646,
+        "private_mib": 128.515625,
+        "session": "rig-controller-ctrl-110",
+        "threads": 42,
+        "ws_mib": 103.1484375
+      },
+      {
+        "handles": 647,
+        "private_mib": 131.78515625,
+        "session": "rig-controller-ctrl-116",
+        "threads": 42,
+        "ws_mib": 106.4609375
+      },
+      {
+        "handles": 648,
+        "private_mib": 132.55078125,
+        "session": "rig-controller-ctrl-122",
+        "threads": 42,
+        "ws_mib": 107.03515625
+      },
+      {
+        "handles": 651,
+        "private_mib": 132.93359375,
+        "session": "rig-controller-ctrl-128",
+        "threads": 43,
+        "ws_mib": 107.4140625
+      },
+      {
+        "handles": 652,
+        "private_mib": 136.3515625,
+        "session": "rig-controller-ctrl-134",
+        "threads": 43,
+        "ws_mib": 110.83984375
+      },
+      {
+        "handles": 653,
+        "private_mib": 136.7734375,
+        "session": "rig-controller-ctrl-140",
+        "threads": 43,
+        "ws_mib": 111.24609375
+      },
+      {
+        "handles": 652,
+        "private_mib": 137.07421875,
+        "session": "rig-controller-ctrl-146",
+        "threads": 42,
+        "ws_mib": 111.63671875
+      },
+      {
+        "handles": 653,
+        "private_mib": 134.3984375,
+        "session": "rig-controller-ctrl-152",
+        "threads": 42,
+        "ws_mib": 108.984375
+      },
+      {
+        "handles": 654,
+        "private_mib": 137.97265625,
+        "session": "rig-controller-ctrl-158",
+        "threads": 42,
+        "ws_mib": 112.3828125
+      },
+      {
+        "handles": 655,
+        "private_mib": 138.359375,
+        "session": "rig-controller-ctrl-164",
+        "threads": 42,
+        "ws_mib": 112.875
+      },
+      {
+        "handles": 658,
+        "private_mib": 135.57421875,
+        "session": "rig-controller-ctrl-170",
+        "threads": 43,
+        "ws_mib": 110.1328125
+      },
+      {
+        "handles": 659,
+        "private_mib": 132.92578125,
+        "session": "rig-controller-ctrl-176",
+        "threads": 43,
+        "ws_mib": 107.5390625
+      }
+    ],
+    "per_session_end": [
+      {
+        "handles": 632,
+        "private_mib": 115.42578125,
+        "threads": 48,
+        "ws_mib": 89.76953125
+      },
+      {
+        "handles": 633,
+        "private_mib": 122.34375,
+        "threads": 47,
+        "ws_mib": 96.85546875
+      },
+      {
+        "handles": 634,
+        "private_mib": 123.5,
+        "threads": 44,
+        "ws_mib": 97.87890625
+      },
+      {
+        "handles": 635,
+        "private_mib": 124.56640625,
+        "threads": 44,
+        "ws_mib": 98.9453125
+      },
+      {
+        "handles": 624,
+        "private_mib": 128.1875,
+        "threads": 40,
+        "ws_mib": 102.65234375
+      },
+      {
+        "handles": 634,
+        "private_mib": 125.83984375,
+        "threads": 43,
+        "ws_mib": 100.1796875
+      },
+      {
+        "handles": 635,
+        "private_mib": 126.3203125,
+        "threads": 43,
+        "ws_mib": 100.609375
+      },
+      {
+        "handles": 636,
+        "private_mib": 126.84765625,
+        "threads": 43,
+        "ws_mib": 101.2265625
+      },
+      {
+        "handles": 637,
+        "private_mib": 127.19921875,
+        "threads": 43,
+        "ws_mib": 101.59765625
+      },
+      {
+        "handles": 626,
+        "private_mib": 124.421875,
+        "threads": 40,
+        "ws_mib": 98.94921875
+      },
+      {
+        "handles": 629,
+        "private_mib": 128.05859375,
+        "threads": 40,
+        "ws_mib": 102.625
+      },
+      {
+        "handles": 632,
+        "private_mib": 131.65625,
+        "threads": 42,
+        "ws_mib": 106.09375
+      },
+      {
+        "handles": 633,
+        "private_mib": 128.91796875,
+        "threads": 42,
+        "ws_mib": 103.48046875
+      },
+      {
+        "handles": 640,
+        "private_mib": 132.46484375,
+        "threads": 44,
+        "ws_mib": 107.01171875
+      },
+      {
+        "handles": 633,
+        "private_mib": 129.83203125,
+        "threads": 41,
+        "ws_mib": 104.4765625
+      },
+      {
+        "handles": 636,
+        "private_mib": 133.4375,
+        "threads": 42,
+        "ws_mib": 108.0078125
+      },
+      {
+        "handles": 637,
+        "private_mib": 133.71875,
+        "threads": 42,
+        "ws_mib": 108.296875
+      },
+      {
+        "handles": 632,
+        "private_mib": 134.12109375,
+        "threads": 40,
+        "ws_mib": 108.7734375
+      },
+      {
+        "handles": 633,
+        "private_mib": 128.37109375,
+        "threads": 40,
+        "ws_mib": 103.0546875
+      },
+      {
+        "handles": 634,
+        "private_mib": 131.63671875,
+        "threads": 40,
+        "ws_mib": 106.3671875
+      },
+      {
+        "handles": 635,
+        "private_mib": 132.41015625,
+        "threads": 40,
+        "ws_mib": 106.9453125
+      },
+      {
+        "handles": 638,
+        "private_mib": 132.78515625,
+        "threads": 41,
+        "ws_mib": 107.3203125
+      },
+      {
+        "handles": 639,
+        "private_mib": 136.20703125,
+        "threads": 41,
+        "ws_mib": 110.74609375
+      },
+      {
+        "handles": 640,
+        "private_mib": 136.625,
+        "threads": 41,
+        "ws_mib": 111.15234375
+      },
+      {
+        "handles": 639,
+        "private_mib": 136.92578125,
+        "threads": 40,
+        "ws_mib": 111.54296875
+      },
+      {
+        "handles": 640,
+        "private_mib": 134.25,
+        "threads": 40,
+        "ws_mib": 108.890625
+      },
+      {
+        "handles": 641,
+        "private_mib": 137.82421875,
+        "threads": 40,
+        "ws_mib": 112.2890625
+      },
+      {
+        "handles": 642,
+        "private_mib": 138.2109375,
+        "threads": 40,
+        "ws_mib": 112.78125
+      },
+      {
+        "handles": 645,
+        "private_mib": 135.4296875,
+        "threads": 41,
+        "ws_mib": 110.0390625
+      },
+      {
+        "handles": 646,
+        "private_mib": 132.77734375,
+        "threads": 41,
+        "ws_mib": 107.4453125
+      }
+    ]
+  },
+  "prompts": 0,
+  "real_input": false,
+  "role": "controller",
+  "scenario": "cycles",
+  "sessions": {
+    "connect_attempts_ms": [
+      [
+        "rig-controller-ctrl-2",
+        976
+      ],
+      [
+        "rig-controller-ctrl-8",
+        1176
+      ],
+      [
+        "rig-controller-ctrl-14",
+        1182
+      ],
+      [
+        "rig-controller-ctrl-20",
+        1184
+      ],
+      [
+        "rig-controller-ctrl-26",
+        1172
+      ],
+      [
+        "rig-controller-ctrl-32",
+        1171
+      ],
+      [
+        "rig-controller-ctrl-38",
+        1154
+      ],
+      [
+        "rig-controller-ctrl-44",
+        1183
+      ],
+      [
+        "rig-controller-ctrl-50",
+        1179
+      ],
+      [
+        "rig-controller-ctrl-56",
+        1173
+      ],
+      [
+        "rig-controller-ctrl-62",
+        1171
+      ],
+      [
+        "rig-controller-ctrl-68",
+        1179
+      ],
+      [
+        "rig-controller-ctrl-74",
+        1177
+      ],
+      [
+        "rig-controller-ctrl-80",
+        1172
+      ],
+      [
+        "rig-controller-ctrl-86",
+        1182
+      ],
+      [
+        "rig-controller-ctrl-92",
+        1171
+      ],
+      [
+        "rig-controller-ctrl-98",
+        1179
+      ],
+      [
+        "rig-controller-ctrl-104",
+        1186
+      ],
+      [
+        "rig-controller-ctrl-110",
+        1198
+      ],
+      [
+        "rig-controller-ctrl-116",
+        1176
+      ],
+      [
+        "rig-controller-ctrl-122",
+        1167
+      ],
+      [
+        "rig-controller-ctrl-128",
+        1200
+      ],
+      [
+        "rig-controller-ctrl-134",
+        1173
+      ],
+      [
+        "rig-controller-ctrl-140",
+        1180
+      ],
+      [
+        "rig-controller-ctrl-146",
+        1173
+      ],
+      [
+        "rig-controller-ctrl-152",
+        1159
+      ],
+      [
+        "rig-controller-ctrl-158",
+        1183
+      ],
+      [
+        "rig-controller-ctrl-164",
+        1157
+      ],
+      [
+        "rig-controller-ctrl-170",
+        1170
+      ],
+      [
+        "rig-controller-ctrl-176",
+        1181
+      ]
+    ],
+    "ends": [
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User",
+      "User"
+    ],
+    "established": [
+      "rig-controller-ctrl-2",
+      "rig-controller-ctrl-8",
+      "rig-controller-ctrl-14",
+      "rig-controller-ctrl-20",
+      "rig-controller-ctrl-26",
+      "rig-controller-ctrl-32",
+      "rig-controller-ctrl-38",
+      "rig-controller-ctrl-44",
+      "rig-controller-ctrl-50",
+      "rig-controller-ctrl-56",
+      "rig-controller-ctrl-62",
+      "rig-controller-ctrl-68",
+      "rig-controller-ctrl-74",
+      "rig-controller-ctrl-80",
+      "rig-controller-ctrl-86",
+      "rig-controller-ctrl-92",
+      "rig-controller-ctrl-98",
+      "rig-controller-ctrl-104",
+      "rig-controller-ctrl-110",
+      "rig-controller-ctrl-116",
+      "rig-controller-ctrl-122",
+      "rig-controller-ctrl-128",
+      "rig-controller-ctrl-134",
+      "rig-controller-ctrl-140",
+      "rig-controller-ctrl-146",
+      "rig-controller-ctrl-152",
+      "rig-controller-ctrl-158",
+      "rig-controller-ctrl-164",
+      "rig-controller-ctrl-170",
+      "rig-controller-ctrl-176"
+    ],
+    "netchange_at_stream_elapsed_s": 0.0
+  },
+  "transport_failures": 0,
+  "transport_stats": {
+    "channel_queues": {
+      "control": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 83,
+        "dropped": 0,
+        "enqueued": 83,
+        "high_water": 1,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "cursor": {
+        "capacity": 8,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-fast": {
+        "capacity": 32,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      },
+      "input-reliable": {
+        "capacity": 256,
+        "depth": 0,
+        "dequeued": 0,
+        "dropped": 0,
+        "enqueued": 0,
+        "high_water": 0,
+        "replaced": 0,
+        "trail_overflow": 0
+      }
+    },
+    "events_dropped_drain_queue": 0,
+    "frames_dropped_rx_queue": 28,
+    "frames_received": 1347,
+    "frames_sent": 0,
+    "loss_percent": 3.2452480296708393,
+    "netem_queue": null,
+    "packets_lost": 70,
+    "packets_received": 2087,
+    "packets_sent": 0,
+    "recv_bitrate_kbps": 401.2805159446441,
+    "relay_in_use": false,
+    "rtt_ms": 0.1838,
+    "selected_pair": {
+      "local": "127.0.0.1:52596",
+      "local_type": "host",
+      "nominated": true,
+      "remote": "127.0.0.1:52595",
+      "remote_type": "host"
+    },
+    "send_bitrate_kbps": null
+  }
+}

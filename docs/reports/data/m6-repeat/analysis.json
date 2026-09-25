@@ -1,0 +1,177 @@
+{
+ "warmup_excluded_s": 60,
+ "stages_ms": {
+  "capture_to_encode_submit": {
+   "p50": 0.139,
+   "p95": 0.183,
+   "p99": 0.23,
+   "max": 0.661,
+   "n": 53547
+  },
+  "encode_submit_to_done": {
+   "p50": 9.823,
+   "p95": 13.598,
+   "p99": 15.331,
+   "max": 17.655,
+   "n": 53547
+  },
+  "encode_done_to_send": {
+   "p50": 1.775,
+   "p95": 19.053,
+   "p99": 39.004,
+   "max": 53.275,
+   "n": 53547
+  },
+  "host_half_capture_to_send": {
+   "p50": 11.771,
+   "p95": 29.126,
+   "p99": 49.15,
+   "max": 65.661,
+   "n": 53547
+  },
+  "recv_to_decode": {
+   "p50": 1.841,
+   "p95": 11.205,
+   "p99": 33.478,
+   "max": 59.928,
+   "n": 41111
+  },
+  "decode_to_present": {
+   "p50": 0.087,
+   "p95": 0.121,
+   "p99": 0.16,
+   "max": 2.467,
+   "n": 41111
+  },
+  "ctrl_half_recv_to_present": {
+   "p50": 1.932,
+   "p95": 11.291,
+   "p99": 33.602,
+   "max": 60.013,
+   "n": 41111
+  }
+ },
+ "queues": {
+  "channel_control": {
+   "capacity": 256,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 0
+  },
+  "channel_input_fast": {
+   "capacity": 32,
+   "high_water": 30,
+   "depth_max": 30,
+   "dropped": 0,
+   "replaced": 0
+  },
+  "channel_input_reliable": {
+   "capacity": 256,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 0
+  },
+  "channel_cursor": {
+   "capacity": 8,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 0
+  },
+  "capture_to_encode": {
+   "capacity": 1,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 20
+  },
+  "encode_to_send": {
+   "capacity": 1,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 35
+  },
+  "recv_to_decode": {
+   "capacity": 8,
+   "high_water": 2,
+   "depth_max": 2,
+   "dropped": 0,
+   "replaced": 0
+  },
+  "decode_to_present": {
+   "capacity": 1,
+   "high_water": 1,
+   "depth_max": 1,
+   "dropped": 0,
+   "replaced": 0
+  }
+ },
+ "link": {
+  "rtt_ms": {
+   "p50": 0.156,
+   "p95": 0.2617,
+   "p99": 0.3188,
+   "max": 0.4812,
+   "n": 3590
+  },
+  "send_bitrate_kbps": {
+   "p50": 125,
+   "p95": 241,
+   "p99": 323,
+   "max": 1959,
+   "n": 3590
+  },
+  "available_bandwidth_kbps": {
+   "p50": 12000,
+   "p95": 12000,
+   "p99": 12000,
+   "max": 12000,
+   "n": 3590
+  },
+  "remote_loss_percent": {
+   "p50": 3.125,
+   "p95": 9.375,
+   "p99": 12.5,
+   "max": 21.875,
+   "n": 3588
+  },
+  "remote_rtt_ms": {
+   "p50": 0.26289,
+   "p95": 0.377066,
+   "p99": 0.469297,
+   "max": 0.835532,
+   "n": 3588
+  }
+ },
+ "i2v_proxy_ms": {
+  "p50": 14.06,
+  "p95": 41.36,
+  "p99": 53.64,
+  "max": 86.31,
+  "n": 41849,
+  "note": "F8 proxy: + ICE RTT p50 0.156 ms"
+ },
+ "fps_per_5min": {
+  "0-5min": 11.8,
+  "5-10min": 11.43,
+  "10-15min": 11.37,
+  "15-20min": 12.03,
+  "20-25min": 11.03,
+  "25-30min": 11.48,
+  "30-35min": 11.27,
+  "35-40min": 11.26,
+  "40-45min": 12.15,
+  "45-50min": 12.18,
+  "50-55min": 11.7,
+  "55-60min": 11.79
+ },
+ "estimate_kbps": {
+  "distinct": 16,
+  "min": 4000,
+  "max": 12000
+ },
+ "rr_loss_nonzero_frac": 0.593
+}
