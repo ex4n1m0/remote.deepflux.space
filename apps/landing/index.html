@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote — peer-to-peer remote desktop by DeepFlux</title>
+<meta name="description" content="A P2P remote desktop for Windows. Your screen and input travel directly between your two machines — encrypted, GPU-fast, and never relayed through anyone's server.">
+<meta property="og:title" content="Remote — peer-to-peer remote desktop">
+<meta property="og:description" content="Direct, encrypted, no accounts. Screen and input never touch a server.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://remote.deepflux.space/">
+<style>
+:root{
+  --bg:#0a0e14; --bg2:#0d131c; --panel:#111825; --line:#1d2736;
+  --text:#e8edf4; --muted:#8b98ab; --dim:#5c6a7e;
+  --accent:#5b8cff; --accent2:#38d0c6; --warn:#e8b34b;
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:10;background:rgba(10,14,20,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.2px}
+.logo svg{display:block}
+.logo .by{color:var(--dim);font-weight:400;font-size:13px}
+nav ul{display:flex;gap:26px;list-style:none;font-size:14px;color:var(--muted)}
+nav ul a{color:var(--muted)}
+nav ul a:hover{color:var(--text);text-decoration:none}
+@media(max-width:640px){nav ul{display:none}}
+.hero{padding:96px 0 72px;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-40% -20% auto;height:130%;background:
+  radial-gradient(600px 300px at 30% 20%,rgba(91,140,255,.16),transparent 70%),
+  radial-gradient(500px 280px at 75% 30%,rgba(56,208,198,.10),transparent 70%);pointer-events:none}
+.hero .wrap{position:relative}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg2);
+  border-radius:999px;padding:5px 14px;font-size:13px;color:var(--muted);margin-bottom:28px}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
+h1{font-size:clamp(34px,5.4vw,56px);line-height:1.08;letter-spacing:-1.2px;font-weight:750;max-width:760px}
+h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{margin-top:22px;font-size:19px;color:var(--muted);max-width:620px}
+.cta-row{display:flex;gap:14px;margin-top:36px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:13px 22px;border-radius:12px;font-weight:600;font-size:15px;border:1px solid transparent;cursor:pointer}
+.btn-primary{background:linear-gradient(92deg,var(--accent),#7d6bff);color:#fff;box-shadow:0 8px 28px rgba(91,140,255,.28)}
+.btn-primary:hover{text-decoration:none;filter:brightness(1.08)}
+.btn-ghost{border-color:var(--line);color:var(--text);background:var(--bg2)}
+.btn-ghost:hover{text-decoration:none;border-color:#2c3a4f}
+.meta{font-size:13px;color:var(--dim);margin-top:14px}
+.diagram{margin-top:64px;border:1px solid var(--line);border-radius:16px;background:var(--bg2);padding:34px 20px}
+.diagram svg{display:block;margin:0 auto;max-width:760px;width:100%;height:auto}
+.diagram figcaption{text-align:center;color:var(--dim);font-size:13.5px;margin-top:18px}
+section{padding:72px 0;border-top:1px solid var(--line)}
+h2{font-size:clamp(24px,3.4vw,34px);letter-spacing:-.5px;font-weight:700}
+.sub{color:var(--muted);margin-top:10px;max-width:640px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;margin-top:40px}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:22px 22px 20px}
+.card h3{font-size:16.5px;display:flex;align-items:center;gap:10px}
+.card p{color:var(--muted);font-size:14.5px;margin-top:8px}
+.card .ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:rgba(91,140,255,.12);color:var(--accent);flex:none;font-size:16px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:40px;counter-reset:step}
+.step{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:22px;position:relative}
+.step::before{counter-increment:step;content:counter(step,decimal-leading-zero);font-family:var(--mono);
+  color:var(--accent2);font-size:13px;letter-spacing:1px}
+.step h3{font-size:16px;margin-top:10px}
+.step p{color:var(--muted);font-size:14.5px;margin-top:6px}
+.fineprint{border:1px solid var(--line);background:var(--bg2);border-radius:14px;padding:20px 24px;margin-top:40px;font-size:13.5px;color:var(--muted)}
+.fineprint b{color:var(--warn);font-weight:600}
+.fineprint ul{margin:8px 0 0 18px}
+.fineprint li{margin-top:4px}
+footer{border-top:1px solid var(--line);padding:36px 0 48px;color:var(--dim);font-size:13.5px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:auto auto;gap:4px 18px;font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:8px}
+.kv b{color:var(--text);font-weight:600}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="2" y="5" width="13" height="10" rx="2" stroke="#5b8cff" stroke-width="1.8"/>
+        <rect x="9" y="9" width="13" height="10" rx="2" stroke="#38d0c6" stroke-width="1.8" fill="#0a0e14"/>
+        <path d="M6 19h5" stroke="#5b8cff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      Remote <span class="by">by DeepFlux</span>
+    </div>
+    <ul>
+      <li><a href="#why">Why P2P</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#download">Download</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="pill"><span class="dot"></span> v0.1.0 beta — Windows 10/11</div>
+    <h1>Your screen. Your network.<br><em>Nobody in between.</em></h1>
+    <p class="lede">
+      Remote is a peer-to-peer remote desktop for Windows. After a short handshake, your
+      screen and input stream <strong>directly between your two machines</strong> — encrypted,
+      hardware-accelerated, and never relayed through anyone&rsquo;s server.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#download">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download for Windows
+      </a>
+      <a class="btn btn-ghost" href="#why">How is this different?</a>
+    </div>
+    <div class="meta">~6&nbsp;MB installer &middot; per-user install, no elevation &middot; unsigned beta build</div>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 760 240" role="img" aria-label="Two computers connected directly, with a crossed-out relay server between them">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="#38d0c6"/>
+          </marker>
+        </defs>
+        <!-- host machine -->
+        <rect x="40" y="60" width="150" height="95" rx="10" fill="#111825" stroke="#2c3a4f"/>
+        <rect x="55" y="76" width="120" height="64" rx="4" fill="#0a0e14" stroke="#1d2736"/>
+        <path d="M55 108h120" stroke="#1d2736"/>
+        <rect x="150" y="146" width="10" height="26" rx="3" fill="#2c3a4f" transform="rotate(14 155 159)"/>
+        <rect x="128" y="168" width="44" height="7" rx="3.5" fill="#2c3a4f"/>
+        <text x="115" y="200" text-anchor="middle" fill="#8b98ab" font-size="13" font-family="system-ui">Host — shares its screen</text>
+        <text x="115" y="50" text-anchor="middle" fill="#5b8cff" font-size="12" font-family="ui-monospace,monospace" letter-spacing="1">DESKTOP CAPTURE → H.264 (GPU)</text>
+        <!-- controller machine -->
+        <rect x="570" y="60" width="150" height="95" rx="10" fill="#111825" stroke="#2c3a4f"/>
+        <rect x="585" y="76" width="120" height="64" rx="4" fill="#0a0e14" stroke="#1d2736"/>
+        <path d="M640 82l22 8-4 10-22-8z" fill="#38d0c6" opacity=".85"/>
+        <rect x="680" y="146" width="10" height="26" rx="3" fill="#2c3a4f" transform="rotate(-14 685 159)"/>
+        <rect x="658" y="168" width="44" height="7" rx="3.5" fill="#2c3a4f"/>
+        <text x="645" y="200" text-anchor="middle" fill="#8b98ab" font-size="13" font-family="system-ui">Controller — views &amp; types</text>
+        <text x="645" y="50" text-anchor="middle" fill="#38d0c6" font-size="12" font-family="ui-monospace,monospace" letter-spacing="1">DECODE (GPU) → INPUT INJECT</text>
+        <!-- direct link -->
+        <line x1="196" y1="107" x2="564" y2="107" stroke="#38d0c6" stroke-width="2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+        <text x="380" y="96" text-anchor="middle" fill="#e8edf4" font-size="13.5" font-weight="600" font-family="system-ui">Direct WebRTC — encrypted (DTLS/SRTP)</text>
+        <text x="380" y="128" text-anchor="middle" fill="#5c6a7e" font-size="12" font-family="ui-monospace,monospace">VIDEO + INPUT NEVER TOUCH A SERVER</text>
+        <!-- crossed relay -->
+        <g opacity=".55">
+          <rect x="330" y="150" width="100" height="42" rx="8" fill="#0d131c" stroke="#1d2736"/>
+          <text x="380" y="176" text-anchor="middle" fill="#5c6a7e" font-size="12.5" font-family="system-ui">relay server</text>
+          <line x1="326" y1="146" x2="434" y2="196" stroke="#e8b34b" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="434" y1="146" x2="326" y2="196" stroke="#e8b34b" stroke-width="2.2" stroke-linecap="round"/>
+        </g>
+        <!-- signaling note -->
+        <text x="380" y="228" text-anchor="middle" fill="#5c6a7e" font-size="12" font-family="system-ui">a tiny signaling service only introduces the two machines — then steps out of the way</text>
+      </svg>
+      <figcaption>The handshake goes through a minimal signaling service. Everything you see and type goes peer-to-peer.</figcaption>
+    </figure>
+  </div>
+</header>
+
+<section id="why">
+  <div class="wrap">
+    <h2>Why peer-to-peer matters</h2>
+    <p class="sub">
+      Every cloud remote-desktop product routes your screen through servers it operates.
+      That means your pixels live on infrastructure you don&rsquo;t control, latency is
+      doubled by the detour, and the product dies the day the company&rsquo;s relay does.
+      Remote takes the other road.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ico">⇄</span> Direct by construction</h3>
+        <p>After the introduction, video and input flow over a direct WebRTC connection. There is no relay to slow you down — and none to trust. TURN is deliberately absent.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🔒</span> Encrypted by the transport</h3>
+        <p>WebRTC&rsquo;s built-in DTLS/SRTP encryption covers every frame and every keystroke. Sessions are gated by a one-time consent prompt and a single-use secret.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">👤</span> No accounts, ever</h3>
+        <p>No email, no sign-up, no telemetry account. Your machine gets a short connection code; the other side types it and you accept. That&rsquo;s the whole identity model.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Built like an engineering tool, not a web page</h2>
+    <p class="sub">A native Rust engine does the work; the UI is a thin shell over it.</p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ico">⚡</span> GPU the whole way</h3>
+        <p>Desktop capture, H.264 encode/decode and rendering stay on your graphics card — hardware encoder first, with a software fallback. Target: ≤&nbsp;80&nbsp;ms input-to-visible on LAN.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🪟</span> Native viewer window</h3>
+        <p>The stream renders into a real D3D11 swapchain, not a browser canvas. Fit, 1:1 and fullscreen modes; multi-monitor picker.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">📉</span> Latency beats completeness</h3>
+        <p>Every queue is bounded. Under pressure the engine drops stale frames instead of queuing them — you always see <em>now</em>, never a backlog.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">⌨️</span> Input that behaves</h3>
+        <p>Split fast/reliable input channels: pointer moves arrive fresh and coalesced, clicks and keys arrive reliably. Focus loss or disconnect releases every held key.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">📊</span> Honest instrumentation</h3>
+        <p>Per-frame timestamps for capture, encode, send, receive, decode and present — visible in-app. When it&rsquo;s slow, it tells you exactly where.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">📶</span> Adapts to your link</h3>
+        <p>The congestion controller walks bitrate, frame rate and resolution down when your network degrades — and back up when it recovers. No surprise stutter.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>Three steps, one consent prompt</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Install on both machines</h3>
+        <p>The same small app plays either role — Host to share, Controller to view and drive.</p>
+      </div>
+      <div class="step">
+        <h3>Share the connection code</h3>
+        <p>The Host shows a short code. Type it into the Controller. The introduction happens over the signaling service.</p>
+      </div>
+      <div class="step">
+        <h3>Accept once</h3>
+        <p>The Host accepts a one-time prompt. From that moment the session is direct, encrypted, and unmediated.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>Download</h2>
+    <p class="sub">Windows 10/11, 64-bit. Per-user install — no admin prompt.</p>
+    <div class="cta-row" style="margin-top:28px">
+      <a class="btn btn-primary" href="./download/Remote-Desktop-0.1.0-x64-setup.exe" download>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Remote-Desktop-0.1.0-x64-setup.exe
+      </a>
+    </div>
+    <div class="kv">
+      <span>version</span><b>0.1.0 beta</b>
+      <span>size</span><b>~6.3 MB</b>
+      <span>installer</span><b>NSIS, per-user</b>
+      <span>signature</span><b>unsigned (beta)</b>
+    </div>
+    <div class="fineprint">
+      <b>Know what you&rsquo;re installing — beta limitations, stated plainly:</b>
+      <ul>
+        <li>Unsigned build: Windows SmartScreen will warn on first run. That&rsquo;s expected for a beta; code signing is on the roadmap.</li>
+        <li>Direct connections only: on symmetric NAT or networks that block UDP, the session can&rsquo;t be established — the app will tell you plainly rather than fall back to a relay. Relaying is a deliberate non-feature.</li>
+        <li>One controlled machine per session; Windows-to-Windows only for now.</li>
+        <li>Input into elevated (administrator) windows on the Host is blocked by Windows itself (UIPI); the app surfaces this when it happens.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Remote — a DeepFlux project &middot; 2026</div>
+    <div>P2P, no relay, no accounts &middot; <span style="font-family:var(--mono)">remote.deepflux.space</span></div>
+  </div>
+</footer>
+
+</body>
+</html>
