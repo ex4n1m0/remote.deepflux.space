@@ -22,3 +22,14 @@ windows = { workspace = true, features = [
     "Win32_System_Variant",
     "Win32_Security",
 ] }
+
+[dev-dependencies]
+# reconfig_probe example (CR-1 memory evidence): process counters +
+# frame_surface for the shared device.
+frame-surface = { path = "../frame-surface" }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }

@@ -33,7 +33,11 @@ use windows::core::{IUnknown, Interface};
 use frame_surface::{FrameSurface, GpuDevice, readback};
 
 use crate::convert::Nv12Converter;
-use crate::{CodecError, CodecKind, EncodeInput, EncodedPacket, VideoEncoder, annex_b_is_keyframe};
+use crate::reconfig::{CodecApiProbe, ReconfigCaps, ReconfigPlan, plan_reconfigure};
+use crate::{
+    CodecError, CodecKind, EncodeInput, EncodedPacket, EncoderParams, ReconfigureOutcome,
+    VideoEncoder, annex_b_is_keyframe,
+};
 
 /// How many NV12 input textures rotate under the encoder (the async
 /// hardware path may hold one while the next is converted).
@@ -155,6 +159,14 @@ struct WorkerOutput {
     is_keyframe: bool,
 }
 
+/// Live-reconfiguration command for the async worker: apply these
+/// `(ICodecAPI property, value)` pairs on the worker thread (the MFT's
+/// home) and ack with the HRESULT of the last SetValue.
+struct ReconfigCmd {
+    props: Vec<(windows::core::GUID, u64)>,
+    ack: SyncSender<i32>,
+}
+
 /// Shared control block between the encode thread and the MFT worker.
 struct AsyncShared {
     stop: bool,
@@ -175,6 +187,7 @@ struct AsyncWorker {
     shared: Arc<Mutex<AsyncShared>>,
     submit_tx: SyncSender<SubmitInput>,
     output_rx: Receiver<WorkerOutput>,
+    reconfig_tx: SyncSender<ReconfigCmd>,
     join: Option<std::thread::JoinHandle<()>>,
     dropped_outputs: Arc<AtomicU64>,
 }
@@ -209,6 +222,14 @@ pub struct MfEncoder {
     time_100ns: i64,
     bitrate_bps: u32,
     force_keyframe_supported: bool,
+    /// Probed live-reconfig capability matrix (CR-1).
+    caps: ReconfigCaps,
+    /// Set by `reconfigure`; the next `encode` submits force_keyframe so
+    /// a parameter change lands on an IDR boundary.
+    pending_force_idr: bool,
+    /// CR-1 counters: live reconfigurations vs internal rebuilds.
+    reconfigured_count: u64,
+    rebuilt_count: u64,
     /// Encoded bytes emitted (diagnostics: measured bitrate).
     pub bytes_emitted: u64,
     pub frames_encoded: u64,
@@ -217,15 +238,28 @@ pub struct MfEncoder {
 /// The async-MFT event pump (see `Backend::Async`). Runs entirely on the
 /// worker thread: `METransformNeedInput` credits gate `ProcessInput`,
 /// `METransformHaveOutput` gates `ProcessOutput`.
-fn async_encoder_worker(
+struct WorkerArgs {
     transform: SendBox<IMFTransform>,
     event_gen: SendBox<IMFMediaEventGenerator>,
     codec_api: SendBox<Option<ICodecAPI>>,
     submit_rx: Receiver<SubmitInput>,
     output_tx: SyncSender<WorkerOutput>,
+    reconfig_rx: Receiver<ReconfigCmd>,
     shared: Arc<Mutex<AsyncShared>>,
     dropped_outputs: Arc<AtomicU64>,
-) {
+}
+
+fn async_encoder_worker(args: WorkerArgs) {
+    let WorkerArgs {
+        transform,
+        event_gen,
+        codec_api,
+        submit_rx,
+        output_tx,
+        reconfig_rx,
+        shared,
+        dropped_outputs,
+    } = args;
     let SendBox(transform) = transform;
     let SendBox(event_gen) = event_gen;
     let SendBox(codec_api) = codec_api;
@@ -241,6 +275,23 @@ fn async_encoder_worker(
         if let Some(err) = error {
             eprintln!("mft-encoder-worker fatal: {err}");
             break;
+        }
+
+        // Apply live reconfiguration commands BEFORE taking the next
+        // submit so the properties land on the transform ahead of the
+        // frame they must govern.
+        while let Ok(cmd) = reconfig_rx.try_recv() {
+            let mut last_hr = 0i32;
+            if let Some(api) = &codec_api {
+                for (guid, value) in &cmd.props {
+                    if unsafe { set_prop_fitting(api, guid, *value) }.is_ok() {
+                        last_hr = 0;
+                    } else {
+                        last_hr = -1;
+                    }
+                }
+            }
+            let _ = cmd.ack.send(last_hr);
         }
 
         if pending.is_none()
@@ -424,6 +475,13 @@ impl MfEncoder {
 
             let codec_api: Option<ICodecAPI> = transform.cast().ok();
             let mut force_kf_supported = false;
+            // CR-1: probe the live-reconfig capability matrix once, on
+            // the constructing thread (queries only — safe before the
+            // stream starts and before the async handoff).
+            let caps = codec_api
+                .as_ref()
+                .map(|api| crate::reconfig::probe_caps(&mut CodecApiProbe::new(api)))
+                .unwrap_or_default();
             if let Some(api) = &codec_api {
                 if api.IsSupported(&CODECAPI_AVEncVideoForceKeyFrame).is_ok() {
                     force_kf_supported = true;
@@ -513,6 +571,7 @@ impl MfEncoder {
             let backend = if is_async {
                 let (submit_tx, submit_rx) = sync_channel::<SubmitInput>(2);
                 let (output_tx, output_rx) = sync_channel::<WorkerOutput>(4);
+                let (reconfig_tx, reconfig_rx) = sync_channel::<ReconfigCmd>(2);
                 let shared = Arc::new(Mutex::new(AsyncShared {
                     stop: false,
                     need_input: 0,
@@ -535,21 +594,23 @@ impl MfEncoder {
                         // closure captures the SendBox (edition-2021
                         // disjoint captures would otherwise grab the
                         // non-Send `.0` field).
-                        async_encoder_worker(
+                        async_encoder_worker(WorkerArgs {
                             transform,
                             event_gen,
                             codec_api,
                             submit_rx,
                             output_tx,
-                            worker_shared,
-                            worker_dropped,
-                        );
+                            reconfig_rx,
+                            shared: worker_shared,
+                            dropped_outputs: worker_dropped,
+                        });
                     })
                     .map_err(|e| CodecError::NotReady(e.to_string()))?;
                 Backend::Async(AsyncWorker {
                     shared,
                     submit_tx,
                     output_rx,
+                    reconfig_tx,
                     join: Some(join),
                     dropped_outputs: dropped,
                 })
@@ -585,9 +646,61 @@ impl MfEncoder {
                 time_100ns: 0,
                 bitrate_bps: config.bitrate_bps,
                 force_keyframe_supported: force_kf_supported,
+                caps,
+                pending_force_idr: false,
+                reconfigured_count: 0,
+                rebuilt_count: 0,
                 bytes_emitted: 0,
                 frames_encoded: 0,
             })
+        }
+    }
+
+    /// The probed live-reconfig capability matrix (CR-1).
+    pub fn reconfig_capabilities(&self) -> &ReconfigCaps {
+        &self.caps
+    }
+
+    /// CR-1 counters: `(live reconfigurations, internal rebuilds)`.
+    pub fn reconfigure_counters(&self) -> (u64, u64) {
+        (self.reconfigured_count, self.rebuilt_count)
+    }
+
+    /// Apply `(ICodecAPI property, value)` pairs on the transform's home
+    /// thread: directly for the sync backend, through a worker command
+    /// (with a bounded ack) for the async backend.
+    fn apply_live(&mut self, props: Vec<(windows::core::GUID, u64)>) -> Result<(), CodecError> {
+        match &mut self.backend {
+            Backend::Sync {
+                codec_api: Some(api),
+                ..
+            } => unsafe {
+                for (guid, value) in props {
+                    set_prop_fitting(api, &guid, value)?;
+                }
+                Ok(())
+            },
+            Backend::Sync {
+                codec_api: None, ..
+            } => Err(CodecError::FormatNegotiation(
+                "sync backend has no ICodecAPI".into(),
+            )),
+            Backend::Async(worker) => {
+                let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+                worker
+                    .reconfig_tx
+                    .send(ReconfigCmd { props, ack: ack_tx })
+                    .map_err(|_| CodecError::Processing("encoder worker gone".into()))?;
+                match ack_rx.recv_timeout(Duration::from_millis(200)) {
+                    Ok(0) => Ok(()),
+                    Ok(hr) => Err(CodecError::Processing(format!(
+                        "live property set refused (hr {hr})"
+                    ))),
+                    Err(_) => Err(CodecError::Timeout(
+                        "encoder worker did not ack reconfigure".into(),
+                    )),
+                }
+            }
         }
     }
 
@@ -697,6 +810,24 @@ unsafe fn make_device_manager(
 /// apply to numeric variants.
 pub(crate) unsafe fn variant_u32_pub(value: u32) -> VARIANT {
     unsafe { variant_u32(value) }
+}
+
+/// Set an ICodecAPI property with the VARIANT type the value fits:
+/// VT_UI4 for <= u32::MAX (the documented type for the rate-control
+/// properties — the MS software encoder rejects VT_UI8 with
+/// E_INVALIDARG; measured), VT_UI8 above.
+unsafe fn set_prop_fitting(
+    api: &ICodecAPI,
+    guid: &windows::core::GUID,
+    value: u64,
+) -> Result<(), CodecError> {
+    unsafe {
+        if value <= u32::MAX as u64 {
+            set_u32(api, guid, value as u32)
+        } else {
+            set_u64(api, guid, value)
+        }
+    }
 }
 
 unsafe fn variant_u32(value: u32) -> VARIANT {
@@ -836,6 +967,9 @@ impl VideoEncoder for MfEncoder {
         input: EncodeInput,
         force_keyframe: bool,
     ) -> Result<EncodedPacket, CodecError> {
+        // CR-1: a reconfigure forces the next frame to an IDR so the
+        // parameter change lands on a clean boundary.
+        let force_keyframe = force_keyframe || std::mem::take(&mut self.pending_force_idr);
         // 1. GPU color convert (and scale) into an NV12 ring slot.
         if self.converter.input_geometry() != (input.surface.width(), input.surface.height()) {
             self.rebind_converter(input.surface.width(), input.surface.height())?;
@@ -999,20 +1133,75 @@ impl VideoEncoder for MfEncoder {
     }
 
     fn set_bitrate(&mut self, bps: u32) -> Result<(), CodecError> {
-        self.bitrate_bps = bps;
-        if let Backend::Sync {
-            codec_api: Some(api),
-            ..
-        } = &self.backend
-        {
-            unsafe { set_u32(api, &CODECAPI_AVEncCommonMeanBitRate, bps) }
-        } else {
-            // Async MFTs: post through the worker's codec API is not
-            // wired for live changes in M1; report unsupported rather
-            // than pretending.
-            Err(CodecError::Processing(
-                "live bitrate change on async MFT not wired in M1".into(),
-            ))
+        // CR-1: both backends go through the live-reconfigure path (the
+        // async MFT included — the property is applied on its worker
+        // thread); a rebuild-capable fallback covers the rest.
+        self.reconfigure(&EncoderParams {
+            bitrate_bps: Some(bps),
+            ..Default::default()
+        })
+        .map(|_| ())
+    }
+
+    fn reconfigure(&mut self, params: &EncoderParams) -> Result<ReconfigureOutcome, CodecError> {
+        let plan = plan_reconfigure(
+            params,
+            &self.caps,
+            self.config.width,
+            self.config.height,
+            self.config.fps,
+        );
+        match plan {
+            ReconfigPlan::Live { props, .. } if props.is_empty() => Ok(ReconfigureOutcome::Noop),
+            ReconfigPlan::Live { props, clamped } => {
+                self.apply_live(props)?;
+                // Track the new values for the next plan's "current".
+                if let Some(b) = params.bitrate_bps {
+                    self.bitrate_bps = b;
+                    self.config.bitrate_bps = b;
+                }
+                if let Some(g) = params.gop_size {
+                    self.config.gop_size = g;
+                }
+                self.pending_force_idr = true;
+                self.reconfigured_count += 1;
+                Ok(ReconfigureOutcome::Live { clamped })
+            }
+            ReconfigPlan::Rebuild { reason } => {
+                // The encoder OBJECT survives; only the transform (and
+                // the converter/ring for a geometry change) is rebuilt —
+                // the leak cost is paid once per rebuild, not per call.
+                let mut next = self.config.clone();
+                if let Some(b) = params.bitrate_bps {
+                    next.bitrate_bps = b;
+                }
+                if let Some(f) = params.fps {
+                    next.fps = f;
+                }
+                if let Some(w) = params.width {
+                    next.width = w;
+                }
+                if let Some(h) = params.height {
+                    next.height = h;
+                }
+                if let Some(g) = params.gop_size {
+                    next.gop_size = g;
+                }
+                let fresh = MfEncoder::new(self.device.clone(), next.clone())?;
+                self.backend = fresh.backend;
+                self.converter = fresh.converter;
+                self.nv12_ring = fresh.nv12_ring;
+                self.ring_next = fresh.ring_next;
+                self.config = next;
+                self.bitrate_bps = fresh.bitrate_bps;
+                self.caps = fresh.caps;
+                self.force_keyframe_supported = fresh.force_keyframe_supported;
+                // A fresh MFT always starts with an IDR anyway; keep the
+                // invariant explicit.
+                self.pending_force_idr = true;
+                self.rebuilt_count += 1;
+                Ok(ReconfigureOutcome::Rebuilt { reason })
+            }
         }
     }
 }
@@ -1027,6 +1216,33 @@ impl MfEncoder {
                 .load(std::sync::atomic::Ordering::Relaxed),
             Backend::Sync { .. } => 0,
         }
+    }
+}
+
+/// Capability matrix for the report (CR-1): construct one encoder per
+/// available path and describe what it can reconfigure live. Constructing
+/// an MFT per call is fine — this is a diagnostics entry point, not a
+/// hot path.
+pub fn probe_reconfig_capabilities(preference: MfEncoderPreference) -> Vec<String> {
+    let device = match GpuDevice::create_hardware() {
+        Ok(d) => d,
+        Err(e) => return vec![format!("(no hardware device: {e})")],
+    };
+    let cfg = MfEncoderConfig {
+        width: 640,
+        height: 360,
+        fps: 60,
+        bitrate_bps: 4_000_000,
+        gop_size: 120,
+        preference,
+    };
+    match MfEncoder::new(device, cfg) {
+        Ok(enc) => vec![format!(
+            "{}: {}",
+            enc.name,
+            enc.reconfig_capabilities().describe()
+        )],
+        Err(e) => vec![format!("(no encoder for {preference:?}: {e})")],
     }
 }
 

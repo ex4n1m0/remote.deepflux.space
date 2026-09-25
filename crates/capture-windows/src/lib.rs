@@ -58,7 +58,11 @@ mod cursor;
 mod dupl;
 
 pub use cursor::{monochrome_pitch, shape_to_cursor_message};
-pub use dupl::{DxgiCapture, MonitorInfo};
+// CR-3 (M4 QA): display enumeration is exported so `apps/desktop` (and
+// any future runtime) stops re-implementing raw Win32 monitor walks —
+// one source of truth for monitor identity (the DXGI device names that
+// `SelectMonitor` consumes). The app can switch in a follow-up.
+pub use dupl::{DxgiCapture, MonitorInfo, enumerate_monitors};
 
 /// Stable identifier matching `protocol::capabilities::MonitorInfo::monitor_id`
 /// (the DXGI device name, e.g. `\\.\DISPLAY5`).

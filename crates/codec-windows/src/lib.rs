@@ -45,11 +45,18 @@ mod annexb;
 mod convert;
 mod decoder;
 mod encoder;
+mod reconfig;
 
 pub use annexb::{annex_b_is_keyframe, annex_b_nal_types};
 pub use convert::Nv12Converter;
 pub use decoder::{MfDecoder, MfDecoderConfig};
-pub use encoder::{MfEncoder, MfEncoderConfig, MfEncoderPreference, describe_encoder_candidates};
+pub use encoder::{
+    MfEncoder, MfEncoderConfig, MfEncoderPreference, describe_encoder_candidates,
+    probe_reconfig_capabilities,
+};
+pub use reconfig::{
+    CapProbe, CodecApiProbe, ParamRange, ReconfigCaps, ReconfigPlan, plan_reconfigure, probe_caps,
+};
 
 /// Encoder/decoder implementation in use — reported in diagnostics and
 /// capabilities.
@@ -165,6 +172,35 @@ impl Drop for MfRuntime {
     }
 }
 
+/// Runtime encoder parameters for [`VideoEncoder::reconfigure`] (M4 QA
+/// F56 / CR-1). Any field left `None` keeps its current value. Changing
+/// fields the active implementation cannot set live falls back to a
+/// rebuild — see [`ReconfigureOutcome`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EncoderParams {
+    pub bitrate_bps: Option<u32>,
+    pub fps: Option<u32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub gop_size: Option<u32>,
+}
+
+/// How a [`VideoEncoder::reconfigure`] call was carried out — the rig and
+/// report distinguish leak-free live changes from rebuilds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReconfigureOutcome {
+    /// Properties applied on the existing transform via `ICodecAPI`; a
+    /// keyframe is forced on the next encode. `clamped` names fields
+    /// whose requested value was outside the probed range.
+    Live { clamped: Vec<&'static str> },
+    /// A new transform was constructed (geometry/fps change or an
+    /// unsupported property). The encoder object is still usable; the
+    /// rebuild cost was paid once.
+    Rebuilt { reason: String },
+    /// Nothing to change.
+    Noop,
+}
+
 /// Low-latency H.264 encoder boundary.
 ///
 /// Backpressure rule (invariant 3): `encode` is synchronous one-in-one-out
@@ -187,8 +223,27 @@ pub trait VideoEncoder: Send {
 
     /// Retarget the CBR bitrate (quality presets, congestion response).
     /// Best-effort: reports an error if the active MFT refuses the change.
+    /// Default routes through [`VideoEncoder::reconfigure`] semantics
+    /// where implemented.
     fn set_bitrate(&mut self, _bps: u32) -> Result<(), CodecError> {
         Ok(())
+    }
+
+    /// Apply runtime parameter changes without returning the encoder to
+    /// the caller's rebuild path (M4 QA F56/CR-1: each MFT rebuild leaks
+    /// ~14 MiB working set / ~28 MiB private commit). Implementations
+    /// that support live `ICodecAPI` reconfiguration apply bitrate/GOP
+    /// in place and force a keyframe on the next encode; changes that
+    /// genuinely need a new media type (resolution, fps) rebuild the
+    /// transform internally and report [`ReconfigureOutcome::Rebuilt`].
+    ///
+    /// The default signals "not implemented": callers keep their existing
+    /// behavior of constructing a replacement encoder (the pre-CR-1
+    /// status quo), so no implementor breaks.
+    fn reconfigure(&mut self, _params: &EncoderParams) -> Result<ReconfigureOutcome, CodecError> {
+        Err(CodecError::Processing(
+            "reconfigure not implemented for this encoder; rebuild required".into(),
+        ))
     }
 
     fn set_perf_sink(&mut self, _sink: Box<dyn PerfSink>) {}

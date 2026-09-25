@@ -183,6 +183,197 @@ fn decoder_idr_gate_after_reset() {
 }
 
 #[test]
+#[ignore = "requires Media Foundation + real GPU"]
+fn reconfig_capability_matrix() {
+    // CR-1 capability matrix for the report: which encoder path supports
+    // what live.
+    let _mf = MfRuntime::new().expect("MFStartup");
+    for pref in [MfEncoderPreference::Hardware, MfEncoderPreference::Software] {
+        for line in probe_reconfig_capabilities(pref) {
+            eprintln!("caps [{pref:?}]: {line}");
+        }
+    }
+}
+
+fn encode_with_retry(
+    encoder: &mut MfEncoder,
+    frame_id: u64,
+    force: bool,
+    width: u32,
+    height: u32,
+) -> EncodedPacket {
+    loop {
+        let surface = frame_surface::FrameSurface::new(
+            &encoder.shared_device(),
+            width,
+            height,
+            frame_surface::SurfaceFormat::Bgra8,
+        )
+        .expect("surface");
+        let input = EncodeInput {
+            frame_id,
+            timestamp_ns: 0,
+            surface,
+        };
+        match encoder.encode(input, force) {
+            Ok(p) => return p,
+            // Software depth-1 pipeline defers output to the next input.
+            Err(CodecError::Timeout(_)) => continue,
+            Err(e) => panic!("encode: {e}"),
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires Media Foundation + real GPU (hardware path)"]
+fn live_reconfigure_nvenc() {
+    let _mf = MfRuntime::new().expect("MFStartup");
+    let device = frame_surface::GpuDevice::create_hardware().expect("hardware device");
+    let cfg = MfEncoderConfig {
+        width: 1280,
+        height: 720,
+        fps: 60,
+        bitrate_bps: 8_000_000,
+        gop_size: 240,
+        preference: MfEncoderPreference::Hardware,
+    };
+    let mut encoder = match MfEncoder::new(device.clone(), cfg.clone()) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("no hardware encoder on this machine: {e}");
+            return;
+        }
+    };
+    eprintln!(
+        "nvenc caps: {} (force-kf {})",
+        encoder.reconfig_capabilities().describe(),
+        encoder.force_keyframe_supported()
+    );
+    let mut decoder = MfDecoder::new(device, MfDecoderConfig { use_gpu: true }).expect("decoder");
+
+    // Baseline: encode + decode a few frames at 8 Mbps.
+    for i in 0..5u64 {
+        let p = encode_with_retry(&mut encoder, i + 1, i == 0, cfg.width, cfg.height);
+        decoder.decode(&p.bytes, i + 1, 0).expect("baseline decode");
+    }
+
+    // Live reconfigure: bitrate 8 -> 4 Mbps (async path applies it on
+    // the worker thread and acks).
+    let outcome = encoder
+        .reconfigure(&EncoderParams {
+            bitrate_bps: Some(4_000_000),
+            ..Default::default()
+        })
+        .expect("reconfigure");
+    eprintln!("nvenc reconfigure outcome: {outcome:?}");
+    match &outcome {
+        ReconfigureOutcome::Live { clamped } => assert!(clamped.is_empty()),
+        other => panic!("NVENC expected Live, got {other:?}"),
+    }
+
+    // Requirement 4: the next frame must be an IDR and the stream must
+    // decode through the change with unchanged geometry.
+    let mut post_idr = 0;
+    for i in 5..15u64 {
+        let p = encode_with_retry(&mut encoder, i + 1, false, cfg.width, cfg.height);
+        if p.is_keyframe {
+            post_idr += 1;
+        }
+        let frame = decoder
+            .decode(&p.bytes, i + 1, 0)
+            .expect("decode continues after reconfigure");
+        assert_eq!((frame.width, frame.height), (cfg.width, cfg.height));
+    }
+    assert!(
+        post_idr >= 1,
+        "reconfigure must force an IDR (got {post_idr})"
+    );
+    let (live, rebuilt) = encoder.reconfigure_counters();
+    assert_eq!((live, rebuilt), (1, 0), "live path must not rebuild");
+    // set_bitrate now works on the async path too (was the M1 gap).
+    encoder
+        .set_bitrate(6_000_000)
+        .expect("set_bitrate routes through reconfigure");
+    assert_eq!(encoder.reconfigure_counters(), (2, 0));
+
+    // Resolution change -> explicit rebuild outcome, stream continues.
+    let outcome = encoder
+        .reconfigure(&EncoderParams {
+            width: Some(640),
+            height: Some(360),
+            bitrate_bps: Some(2_000_000),
+            ..Default::default()
+        })
+        .expect("rebuild reconfigure");
+    match &outcome {
+        ReconfigureOutcome::Rebuilt { reason } => eprintln!("rebuild reason: {reason}"),
+        other => panic!("resolution change expected Rebuilt, got {other:?}"),
+    }
+    let mut idr_after_rebuild = 0;
+    for i in 15..20u64 {
+        let p = encode_with_retry(&mut encoder, i + 1, false, 640, 360);
+        if p.is_keyframe {
+            idr_after_rebuild += 1;
+        }
+        let frame = decoder
+            .decode(&p.bytes, i + 1, 0)
+            .expect("decode after rebuild");
+        assert_eq!((frame.width, frame.height), (640, 360));
+    }
+    assert!(idr_after_rebuild >= 1, "fresh MFT starts with an IDR");
+    assert_eq!(encoder.reconfigure_counters(), (2, 1));
+}
+
+#[test]
+#[ignore = "requires Media Foundation + real GPU (software path)"]
+fn live_reconfigure_software() {
+    let _mf = MfRuntime::new().expect("MFStartup");
+    let device = frame_surface::GpuDevice::create_hardware().expect("hardware device");
+    let cfg = MfEncoderConfig {
+        width: 640,
+        height: 360,
+        fps: 30,
+        bitrate_bps: 4_000_000,
+        gop_size: 60,
+        preference: MfEncoderPreference::Software,
+    };
+    let mut encoder = MfEncoder::new(device.clone(), cfg.clone()).expect("software encoder");
+    eprintln!("sw caps: {}", encoder.reconfig_capabilities().describe());
+    let mut decoder = MfDecoder::new(device, MfDecoderConfig { use_gpu: false }).expect("decoder");
+
+    for i in 0..5u64 {
+        let p = encode_with_retry(&mut encoder, i + 1, i == 0, cfg.width, cfg.height);
+        decoder.decode(&p.bytes, i + 1, 0).expect("baseline decode");
+    }
+
+    let outcome = encoder
+        .reconfigure(&EncoderParams {
+            bitrate_bps: Some(1_500_000),
+            gop_size: Some(30),
+            ..Default::default()
+        })
+        .expect("reconfigure");
+    eprintln!("sw reconfigure outcome: {outcome:?}");
+    match &outcome {
+        ReconfigureOutcome::Live { clamped } => assert!(clamped.is_empty()),
+        other => panic!("software encoder expected Live, got {other:?}"),
+    }
+
+    let mut post_idr = 0;
+    for i in 5..15u64 {
+        let p = encode_with_retry(&mut encoder, i + 1, false, cfg.width, cfg.height);
+        if p.is_keyframe {
+            post_idr += 1;
+        }
+        decoder
+            .decode(&p.bytes, i + 1, 0)
+            .expect("decode continues after sw reconfigure");
+    }
+    assert!(post_idr >= 1, "reconfigure must force an IDR");
+    assert_eq!(encoder.reconfigure_counters(), (1, 0));
+}
+
+#[test]
 #[ignore = "requires Media Foundation + real GPU (hardware path)"]
 fn hardware_encoder_candidates_reported() {
     let _mf = MfRuntime::new().expect("MFStartup");
