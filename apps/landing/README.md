@@ -13,7 +13,7 @@ Static single-page site for the P2P remote desktop. Zero framework, zero build s
 ```bash
 # 1. refresh the installer asset (NOT committed to git — it is a build artifact)
 cp "../../target/release/bundle/nsis/Remote Desktop_0.1.0_x64-setup.exe" \
-   "download/Remote-Desktop-0.1.0-x64-setup.exe"   # bump filename + page link on new versions
+   "download/Remote-Desktop-0.2.0-x64-setup.exe"   # bump filename + page link on new versions
 
 # 2. deploy
 vercel deploy --prod -S timedivision

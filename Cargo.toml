@@ -18,7 +18,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # 1.88, not 1.85: the transport dep tree (rtc 0.21) uses let-chains, raising
 # the effective MSRV above edition-2024's floor. Toolchain is 1.98.1.
