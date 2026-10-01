@@ -40,3 +40,10 @@ tungstenite = { workspace = true }
 native-tls = { workspace = true }
 ureq = { workspace = true }
 getrandom = { workspace = true }
+
+# Post-MVP accounts & encrypted roster (client-side crypto + /api/account
+# client; see docs/adr/ADR-003-accounts-and-roster.md).
+scrypt = { workspace = true }
+aes-gcm = { workspace = true }
+zeroize = { workspace = true }
+hex = { workspace = true }

@@ -103,8 +103,10 @@ export function SettingsPanel({
             />
           </label>
           <p className="muted">
-            The deployed Vercel service in normal use; the local dev server
-            (<code className="code">http://127.0.0.1:38013</code>) for testing.
+            The deployed Vercel service in normal use — the default is{" "}
+            <code className="code">https://remote.deepflux.space</code>; the local dev server
+            (<code className="code">http://127.0.0.1:38013</code>) for testing. Clear the field
+            to opt out (accounts and the engine then need a URL set before use).
           </p>
           <label>
             This machine's display name

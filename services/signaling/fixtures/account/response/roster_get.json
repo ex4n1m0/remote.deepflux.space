@@ -1,0 +1,8 @@
+{
+  "action": "roster_get",
+  "ciphertext_hex": "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+  "nonce_hex": "8d8d8d8d8d8d8d8d8d8d8d8d",
+  "ok": true,
+  "protocol_version": 1,
+  "version": 4
+}

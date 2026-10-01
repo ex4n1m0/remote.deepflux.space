@@ -51,8 +51,13 @@ windows = { workspace = true, features = [
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
+    # Account session tokens in the Windows Credential Manager (credstore.rs)
+    "Win32_Security_Credentials",
 ] }
 # CSPRNG for device ids and the one-time session secret (same source the
 # signaling client uses for tokens).
 getrandom = { workspace = true }
+# Zeroized DEK buffers for the in-memory account session (same crate the
+# crypto layer uses; key bytes are never serialized).
+zeroize = { workspace = true }
 

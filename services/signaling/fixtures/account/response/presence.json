@@ -1,0 +1,8 @@
+{
+  "action": "presence",
+  "ok": true,
+  "online": [
+    "0123456789abcdef"
+  ],
+  "protocol_version": 1
+}

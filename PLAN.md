@@ -11,6 +11,13 @@ numbers from the source plan are kept for traceability.
 > env vars; README has the steps); M4's awaits the user's UX acceptance. Audit trail: 79 findings
 > (F1–F79) across six milestone audits, all discharged or documented as ship conditions C1–C5.
 > Post-MVP queue opens with the trusted-device roster (§ below).
+>
+> **Post-MVP phase ACTIVE (2026-10-01): accounts + encrypted roster (ADR-003).**
+> Wire contract `crates/protocol/src/account.rs` (v1) + client crypto/HTTP in `node-runtime`
+> landed; `services/signaling` `/api/account` and the desktop login/"Your computers" flow
+> in flight. User-directed scope: login-first onboarding (anonymous flow kept as escape
+> hatch), local + server-synced encrypted roster, per-user random key. Pairing-key trust
+> (consent-free connect) explicitly deferred.
 
 ---
 
@@ -20,7 +27,9 @@ One Windows 10/11 application, two runtime roles (Host / Controller). Tauri 2 + 
 shell around a Rust native engine. Vercel is the signaling/control plane only — no screen, input,
 cursor, or payload bytes ever traverse it. After SDP/ICE exchange, everything flows over a direct
 WebRTC peer connection (STUN, TURN disabled in MVP). H.264 hardware pipeline on GPU, native
-rendering, `SendInput` injection. No accounts, no relay, one controlled machine per session.
+rendering, `SendInput` injection. No relay, one controlled machine per session. Optional
+user accounts (post-MVP, ADR-003, 2026-10-01) live on the control plane only —
+identity + encrypted device roster; the anonymous connection-code flow remains.
 
 **Frozen decisions (from source plan §Key decisions):** unchanged — Windows-first, one binary /
 both roles, Vercel + ephemeral Redis control plane, WebRTC STUN-only, H.264 GPU path, split
@@ -157,6 +166,15 @@ links — connect without the one-time consent prompt each time. Deferred until 
   (the M3 audit's missing token-bucket), and the CR-4 presence-query op become prerequisites.
 - **Windows credential surface:** username/password sign-in in the M4 shell; token storage in
   Windows Credential Manager, never plaintext in the local favorites JSON.
+
+**Activation record (2026-10-01, user direction — ADR-003).** Scope shipped first: accounts +
+encrypted roster sync, with the login screen as the default first-run experience (anonymous
+flow kept behind "skip for now"). Envelope crypto per ADR-003: per-user random DEK wrapped by
+scrypt(password); server stores second-layer scrypt verifiers + AES-256-GCM ciphertext only;
+rate limiting and the CR-4 presence query land with it. The pairing-key trust / consent-free
+connect item above is **explicitly deferred** — the one-time consent gate is unchanged in this
+phase. Contract: `crates/protocol/src/account.rs`; service: `services/signaling` `/api/account`;
+client: `node-runtime::{account_crypto, account_remote}` + `apps/desktop`.
 
 ## 5. Orchestration model
 

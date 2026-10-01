@@ -1,0 +1,5 @@
+{
+  "action": "login_pre",
+  "protocol_version": 1,
+  "username": "alice"
+}

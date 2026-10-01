@@ -1,0 +1,7 @@
+{
+  "action": "roster_put",
+  "base_version": 3,
+  "ciphertext_hex": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+  "nonce_hex": "6a6a6a6a6a6a6a6a6a6a6a6a",
+  "protocol_version": 1
+}

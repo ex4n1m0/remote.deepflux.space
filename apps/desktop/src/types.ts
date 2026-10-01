@@ -70,12 +70,46 @@ export interface Settings {
   signaling_base_url: string;
   default_quality: string;
   default_viewer_scale: string;
+  /** First-run onboarding skip flag (persisted in settings.json). */
+  skipped_onboarding: boolean;
 }
 
 export interface Favorite {
   id: string;
   name: string;
   code: string;
+}
+
+// ---- accounts / roster (post-MVP accounts phase) ----
+
+/** Account gate states — mirrors `AccountStateDto.status` in ipc.rs. */
+export type AccountStatus = "logged_out" | "saved_account" | "logged_in";
+
+export interface AccountState {
+  status: AccountStatus;
+  username: string | null;
+  /** null = unknown (register carries no expiry). */
+  expires_ms: number | null;
+}
+
+/** One computer in the encrypted, server-synced roster. */
+export interface Computer {
+  id: string;
+  name: string;
+  code: string;
+  added_at_ms: number;
+  updated_at_ms: number;
+  /** True when this entry is the machine the app runs on. */
+  is_self: boolean;
+}
+
+export interface ComputersList {
+  computers: Computer[];
+  server_version: number;
+}
+
+export interface PresenceResult {
+  online: string[];
 }
 
 export interface MonitorInfo {

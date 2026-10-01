@@ -1,0 +1,5 @@
+{
+  "action": "delete_everything",
+  "protocol_version": 1,
+  "username": "alice"
+}

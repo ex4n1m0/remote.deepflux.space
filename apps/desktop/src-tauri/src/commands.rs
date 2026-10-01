@@ -30,6 +30,9 @@ pub mod events {
 pub struct AppServices {
     pub store: Mutex<LocalStore>,
     pub engine: Mutex<Option<EngineHandle>>,
+    /// Account/roster state (post-MVP accounts). Lock order when both are
+    /// held: store first, then account (see `with_account`).
+    pub account: Mutex<crate::account::AccountManager>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -41,6 +44,26 @@ fn with_engine<T>(app: &AppHandle, f: impl FnOnce(&EngineHandle) -> CmdResult<T>
         return Err("engine not started (set the signaling URL and go online first)".into());
     };
     f(handle)
+}
+
+/// Run an account operation with the store + account locks held (store
+/// first — the only place both are taken together). Keeps the service
+/// adapter in sync with signaling-URL changes without a restart.
+fn with_account<T>(
+    app: &AppHandle,
+    f: impl FnOnce(&mut LocalStore, &mut crate::account::AccountManager) -> CmdResult<T>,
+) -> CmdResult<T> {
+    let services = app.state::<AppServices>();
+    let mut store = services.store.lock().expect("store");
+    let mut account = services.account.lock().expect("account");
+    let url = store.settings().signaling_base_url.clone();
+    account.set_base_url(&url);
+    if url.trim().is_empty() {
+        return Err(
+            "No account service configured. Open Settings and set the service URL first.".into(),
+        );
+    }
+    f(&mut store, &mut account)
 }
 
 /// Create the engine thread (signaling connection + runtime). Idempotent.
@@ -232,6 +255,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         signaling_base_url: s.signaling_base_url.clone(),
         default_quality: s.default_quality.clone(),
         default_viewer_scale: s.default_viewer_scale.clone(),
+        skipped_onboarding: s.skipped_onboarding,
     })
 }
 
@@ -248,6 +272,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_quality: patch.default_quality,
         default_viewer_scale: patch.default_viewer_scale,
         device_token: store.settings().device_token.clone(),
+        skipped_onboarding: patch.skipped_onboarding,
     };
     store.update_settings(next)?;
     let s = store.settings().clone();
@@ -257,6 +282,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         signaling_base_url: s.signaling_base_url,
         default_quality: s.default_quality,
         default_viewer_scale: s.default_viewer_scale,
+        skipped_onboarding: s.skipped_onboarding,
     })
 }
 
@@ -312,6 +338,115 @@ pub fn rename_favorite(app: AppHandle, args: RenameFavoriteArgs) -> CmdResult<Fa
         id: favorite.id,
         name: favorite.name,
         code: favorite.code,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Account / computers (post-MVP accounts; works with the engine stopped —
+// only "Add this computer" starts host mode, from the UI side)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn account_state(app: AppHandle) -> CmdResult<AccountStateDto> {
+    let services = app.state::<AppServices>();
+    let store = services.store.lock().expect("store");
+    let mut account = services.account.lock().expect("account");
+    // One-time startup session validation, run here (a Tauri worker
+    // thread) instead of the setup hook so a blackholed network cannot
+    // delay the window (security review P3 availability).
+    if !account.restored {
+        account.restored = true;
+        let _ = account.restore(&store);
+    }
+    Ok(account.status(&store).into())
+}
+
+#[tauri::command]
+pub fn account_register(
+    app: AppHandle,
+    args: AccountCredentialsArgs,
+) -> CmdResult<AccountStateDto> {
+    with_account(&app, |store, account| {
+        account.register(store, &args.username, &args.password)?;
+        Ok(account.status(store).into())
+    })
+}
+
+#[tauri::command]
+pub fn account_login(app: AppHandle, args: AccountCredentialsArgs) -> CmdResult<AccountStateDto> {
+    with_account(&app, |store, account| {
+        account.login(store, &args.username, &args.password)?;
+        Ok(account.status(store).into())
+    })
+}
+
+#[tauri::command]
+pub fn account_unlock(app: AppHandle, args: AccountPasswordArgs) -> CmdResult<AccountStateDto> {
+    with_account(&app, |store, account| {
+        account.unlock(store, &args.password)?;
+        Ok(account.status(store).into())
+    })
+}
+
+#[tauri::command]
+pub fn account_logout(app: AppHandle) -> CmdResult<AccountStateDto> {
+    let services = app.state::<AppServices>();
+    let store = services.store.lock().expect("store");
+    let mut account = services.account.lock().expect("account");
+    Ok(account.logout(&store).into())
+}
+
+#[tauri::command]
+pub fn computers_list(app: AppHandle) -> CmdResult<ComputersListDto> {
+    with_account(&app, |store, account| {
+        let device_id = store.settings().device_id.clone();
+        Ok(account.computers(&device_id)?.into())
+    })
+}
+
+#[tauri::command]
+pub fn computer_add(app: AppHandle, args: ComputerAddArgs) -> CmdResult<ComputersListDto> {
+    with_account(&app, |store, account| {
+        let device_id = store.settings().device_id.clone();
+        Ok(account
+            .add_computer(store, &device_id, &args.name, &args.code)?
+            .into())
+    })
+}
+
+#[tauri::command]
+pub fn computer_add_this(app: AppHandle) -> CmdResult<ComputersListDto> {
+    with_account(&app, |store, account| {
+        let device_id = store.settings().device_id.clone();
+        let name = display_name(store.settings());
+        Ok(account.add_this_computer(store, &device_id, &name)?.into())
+    })
+}
+
+#[tauri::command]
+pub fn computer_remove(app: AppHandle, args: ComputerIdArgs) -> CmdResult<ComputersListDto> {
+    with_account(&app, |store, account| {
+        let device_id = store.settings().device_id.clone();
+        Ok(account.remove_computer(store, &device_id, &args.id)?.into())
+    })
+}
+
+#[tauri::command]
+pub fn computer_rename(app: AppHandle, args: ComputerRenameArgs) -> CmdResult<ComputersListDto> {
+    with_account(&app, |store, account| {
+        let device_id = store.settings().device_id.clone();
+        Ok(account
+            .rename_computer(store, &device_id, &args.id, &args.name)?
+            .into())
+    })
+}
+
+#[tauri::command]
+pub fn computers_presence(app: AppHandle) -> CmdResult<PresenceDto> {
+    with_account(&app, |_store, account| {
+        Ok(PresenceDto {
+            online: account.presence()?,
+        })
     })
 }
 

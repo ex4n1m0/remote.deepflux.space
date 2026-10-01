@@ -1,0 +1,9 @@
+{
+  "action": "login",
+  "dek_nonce_hex": "4e4e4e4e4e4e4e4e4e4e4e4e",
+  "expires_ms": 1760000000000,
+  "ok": true,
+  "protocol_version": 1,
+  "session_token": "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
+  "wrapped_dek_hex": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+}

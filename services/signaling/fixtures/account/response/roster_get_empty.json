@@ -1,0 +1,8 @@
+{
+  "action": "roster_get",
+  "ciphertext_hex": "",
+  "nonce_hex": "",
+  "ok": true,
+  "protocol_version": 1,
+  "version": 0
+}

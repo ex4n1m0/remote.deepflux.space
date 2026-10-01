@@ -16,12 +16,18 @@ only ever sees state names, ids, and counters.
 src/                      React control surface
   state/mapping.ts        UI views = pure functions of the machine states
   state/reducer.ts        engine events → one UI state (tested)
+  state/account.ts        account reducer + onboarding gate + error copy (tested)
   hooks/useEngine.ts      Tauri events + 1 Hz status poll wiring
-  components/             home, favorites, consent, session controls, overlay
+  hooks/useAccount.ts     account/roster wiring + 30 s presence poll (logged in only)
+  components/             home, onboarding, computers, favorites, consent,
+                          session controls, overlay
 src-tauri/
   src/commands.rs         typed Tauri commands (thin veneer)
   src/ipc.rs              IPC DTOs (metadata only — the invariant-1 proof)
-  src/store.rs            settings + favorites (local JSON, atomic writes)
+  src/store.rs            settings + favorites + account.json + roster.json
+  src/account.rs          AccountManager: login/register/unlock/logout,
+                          encrypted-roster merge + sync (fake-service tested)
+  src/credstore.rs        session token in the Windows Credential Manager
   src/engine/             the tauri-free engine (reused by tests + e2e child)
     mod.rs                loop thread: commands in, events out, pipelines
     host.rs               capture→encode pipeline (monitor switch, presets)
@@ -84,10 +90,43 @@ and `docs/reports/data/m4-e2e-20260925-fixpkg.log`.
 
 Local JSON under the app data dir (`%APPDATA%/space.deepflux.remote.desktop`):
 `settings.json` (device id + presence token, display name, signaling base URL,
-default quality/scale) and `favorites.json`. No sync, no accounts (source
-plan). The signaling URL is the deployed Vercel service in normal use, or
-`http://127.0.0.1:38013` (the standalone dev server) for local runs — see
-`services/signaling/README.md`.
+default quality/scale, onboarding-skip flag) and `favorites.json`. The
+signaling URL defaults to the deployed service (`https://remote.deepflux.space`,
+accounts phase); an explicit empty string is the documented opt-out — the local
+dev rig is `http://127.0.0.1:38013` (see `services/signaling/README.md`).
+
+## Accounts & the synced computer list (post-MVP, ADR-003)
+
+First run shows an onboarding card (Sign in / Create account, "Skip for now"
+keeps the account-less behavior). The wire + crypto layers live in
+`crates/protocol/src/account.rs` and `crates/node-runtime/src/account_{crypto,
+remote}.rs`; this shell only composes them:
+
+- **Registration** mints the per-user key material client-side (random DEK
+  wrapped under a password-derived KEK), imports the current favorites as the
+  initial roster, and uploads it encrypted. The service never sees a password
+  or plaintext.
+- **Login** fetches salts, proves the password via its scrypt image, unwraps
+  the DEK in memory, and merges the server roster with the local encrypted
+  cache (`roster.json`) — union by code, newest `updated_at_ms` wins, entries
+  are never lost; favorites saved while signed out join the merge. The merged
+  list is written back to `favorites.json` so the logged-out UI stays coherent.
+- **Saved-account unlock**: the DEK cannot be unwrapped without the password,
+  so a restart validates only the persisted session token and shows a
+  one-field "Welcome back, @user" card; the roster stays encrypted until the
+  password is re-entered.
+- **Storage**: `account.json` (salts + wrapped DEK, no secrets), `roster.json`
+  (AES-GCM ciphertext under the DEK), and the session token in the **Windows
+  Credential Manager** (`credstore.rs`) — never plaintext on disk. The DEK and
+  session live in memory only and are dropped on exit/logout.
+- **Commands** (engine-independent; only "Add this computer" starts host
+  mode, from the UI): `account_state`, `account_register`, `account_login`,
+  `account_unlock`, `account_logout`, `computers_list`, `computer_add`,
+  `computer_add_this`, `computer_remove`, `computer_rename`,
+  `computers_presence`. Result DTOs are clean metadata — no tokens, no
+  passwords, no ciphertext (asserted by `tests/ipc_surface.rs`).
+- Unit tests drive register/login/merge/conflict/offline flows against an
+  in-memory fake service (`src/account/tests.rs`); the network is never used.
 
 ## Installer
 

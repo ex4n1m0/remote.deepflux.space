@@ -43,16 +43,19 @@ export function Section({
 export function ErrorBanner({
   message,
   hint,
+  title = "Connection problem",
   onDismiss,
 }: {
   message: string;
   hint?: string | null;
+  /** Heading; defaults to the connection copy (accounts flows override). */
+  title?: string;
   onDismiss: () => void;
 }) {
   return (
     <div className="banner banner-error" role="alert">
       <div>
-        <strong>Connection problem</strong>
+        <strong>{title}</strong>
         <p>{message}</p>
         {hint ? <p className="hint">{hint}</p> : null}
       </div>

@@ -9,24 +9,26 @@
  */
 
 type Level = 'debug' | 'info' | 'warn' | 'error';
+type Fields = Record<string, string | number>;
 
-function emit(level: Level, msg: string, fields: Record<string, string | number>): void {
+function emit(level: Level, msg: string, fields: Fields, svc: string = 'signaling'): void {
   const line = JSON.stringify({
     t: new Date().toISOString(),
     lvl: level,
-    svc: 'signaling',
+    svc,
     msg,
     ...fields,
   });
-  // Single line, no envelope bodies, no tokens, no SDP material.
+  // Single line, no envelope bodies, no tokens, no SDP material, no account
+  // key material (auth_key/salts/verifiers/session tokens/roster ciphertext).
   (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line);
 }
 
 export const log = {
-  debug: (msg: string, fields: Record<string, string | number> = {}) => {
-    if (process.env['SIGNALING_LOG_DEBUG'] === '1') emit('debug', msg, fields);
+  debug: (msg: string, fields: Fields = {}, svc?: string) => {
+    if (process.env['SIGNALING_LOG_DEBUG'] === '1') emit('debug', msg, fields, svc);
   },
-  info: (msg: string, fields: Record<string, string | number> = {}) => emit('info', msg, fields),
-  warn: (msg: string, fields: Record<string, string | number> = {}) => emit('warn', msg, fields),
-  error: (msg: string, fields: Record<string, string | number> = {}) => emit('error', msg, fields),
+  info: (msg: string, fields: Fields = {}, svc?: string) => emit('info', msg, fields, svc),
+  warn: (msg: string, fields: Fields = {}, svc?: string) => emit('warn', msg, fields, svc),
+  error: (msg: string, fields: Fields = {}, svc?: string) => emit('error', msg, fields, svc),
 };

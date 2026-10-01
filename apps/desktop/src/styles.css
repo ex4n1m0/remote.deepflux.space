@@ -436,3 +436,70 @@ legend {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+/* ---- accounts phase: onboarding card + roster chrome ---- */
+
+.onboarding-loading {
+  text-align: center;
+  padding: 48px 0;
+}
+
+.onboarding-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 8vh 16px 0;
+}
+
+.onboarding-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 22px 24px;
+  width: min(400px, 100%);
+}
+
+.onboarding-card h1 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.onboarding-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+
+.onboarding-tabs .tab-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.onboarding-form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.onboarding-form button {
+  align-self: flex-start;
+  margin-top: 10px;
+}
+
+.onboarding-skip {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.account-chip {
+  cursor: default;
+}
+
+.badge {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  flex: none;
+}

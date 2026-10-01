@@ -13,8 +13,9 @@
     "typecheck": "tsc --noEmit",
     "validate:wires": "node --import tsx scripts/validate-wires.mjs",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:account": "node --import tsx --test tests/account.test.ts",
     "test:contract": "node --import tsx --test tests/contract.test.ts",
-    "test": "pnpm typecheck && pnpm validate:wires && pnpm test:unit",
+    "test": "pnpm typecheck && pnpm validate:wires && pnpm test:unit && pnpm test:account",
     "dev:vercel": "vercel dev --local --listen 127.0.0.1:38011",
     "test:contract:headless": "node --import tsx scripts/contract-headless.mjs"
   },

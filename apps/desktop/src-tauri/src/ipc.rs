@@ -19,6 +19,8 @@ pub struct SettingsPatch {
     pub signaling_base_url: String,
     pub default_quality: String,
     pub default_viewer_scale: String,
+    /// First-run onboarding skip flag (persisted; see store::AppSettings).
+    pub skipped_onboarding: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -53,6 +55,58 @@ pub struct ConnectArgs {
     pub code: String,
 }
 
+// -- account / computers (post-MVP accounts phase) ---------------------------
+
+/// Password-bearing args: `Debug` is manual and redacted, `Serialize` is
+/// deliberately absent (args are deserialized only) — so a credential can
+/// never be emitted into a result/event by accident (security review P2).
+#[derive(Clone, Deserialize)]
+pub struct AccountCredentialsArgs {
+    pub username: String,
+    /// Password-equivalent input; exists ONLY as a command argument —
+    /// never in a result DTO, never logged (invariant 6 discipline).
+    pub password: String,
+}
+
+impl core::fmt::Debug for AccountCredentialsArgs {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AccountCredentialsArgs")
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Deserialize)]
+pub struct AccountPasswordArgs {
+    pub password: String,
+}
+
+impl core::fmt::Debug for AccountPasswordArgs {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AccountPasswordArgs")
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ComputerAddArgs {
+    pub name: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ComputerIdArgs {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ComputerRenameArgs {
+    pub id: String,
+    pub name: String,
+}
+
 // ---------------------------------------------------------------------------
 // Results / event payloads (Rust → frontend).
 // ---------------------------------------------------------------------------
@@ -73,6 +127,7 @@ pub struct SettingsDto {
     pub signaling_base_url: String,
     pub default_quality: String,
     pub default_viewer_scale: String,
+    pub skipped_onboarding: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +135,89 @@ pub struct FavoriteDto {
     pub id: String,
     pub name: String,
     pub code: String,
+}
+
+// -- account / computers results (clean metadata: no tokens, no secrets) ----
+
+/// Account state for the onboarding gate. `status` is one of
+/// `logged_out` | `saved_account` | `logged_in`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountStateDto {
+    pub status: String,
+    pub username: Option<String>,
+    pub expires_ms: Option<u64>,
+}
+
+impl From<crate::account::AccountStatus> for AccountStateDto {
+    fn from(status: crate::account::AccountStatus) -> Self {
+        match status {
+            crate::account::AccountStatus::LoggedOut => Self {
+                status: "logged_out".to_owned(),
+                username: None,
+                expires_ms: None,
+            },
+            crate::account::AccountStatus::SavedAccount { username } => Self {
+                status: "saved_account".to_owned(),
+                username: Some(username),
+                expires_ms: None,
+            },
+            crate::account::AccountStatus::LoggedIn {
+                username,
+                expires_ms,
+            } => Self {
+                status: "logged_in".to_owned(),
+                username: Some(username),
+                expires_ms: if expires_ms == 0 {
+                    None
+                } else {
+                    Some(expires_ms)
+                },
+            },
+        }
+    }
+}
+
+/// One computer in the encrypted, server-synced roster.
+#[derive(Debug, Clone, Serialize)]
+pub struct ComputerDto {
+    pub id: String,
+    pub name: String,
+    pub code: String,
+    pub added_at_ms: u64,
+    pub updated_at_ms: u64,
+    /// True when this entry is the machine the app runs on.
+    pub is_self: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ComputersListDto {
+    pub computers: Vec<ComputerDto>,
+    pub server_version: u32,
+}
+
+impl From<crate::account::ComputersList> for ComputersListDto {
+    fn from(list: crate::account::ComputersList) -> Self {
+        Self {
+            computers: list
+                .computers
+                .into_iter()
+                .map(|row| ComputerDto {
+                    id: row.id,
+                    name: row.name,
+                    code: row.code,
+                    added_at_ms: row.added_at_ms,
+                    updated_at_ms: row.updated_at_ms,
+                    is_self: row.is_self,
+                })
+                .collect(),
+            server_version: list.server_version,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PresenceDto {
+    pub online: Vec<String>,
 }
 
 /// One display the host can share.

@@ -11,6 +11,11 @@
       "runtime": "@vercel/node@15.0.0",
       "maxDuration": 10,
       "memory": 128
+    },
+    "api/account.ts": {
+      "runtime": "@vercel/node@15.0.0",
+      "maxDuration": 10,
+      "memory": 128
     }
   }
 }

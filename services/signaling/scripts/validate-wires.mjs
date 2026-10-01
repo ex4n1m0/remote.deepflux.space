@@ -21,6 +21,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { signalingEnvelopeSchema, SIGNALING_PROTOCOL_VERSION } from '../lib/envelope.ts';
+import {
+  accountRequestSchema,
+  accountResponseSchema,
+  ACCOUNT_PROTOCOL_VERSION,
+} from '../lib/account-schema.ts';
 
 const root = new URL('../fixtures/', import.meta.url).pathname
   // Windows: file URL -> plain path
@@ -114,6 +119,83 @@ for (const [file, expect] of Object.entries(expectations)) {
   } else {
     pass += 1;
     console.log(`ok   reject/${file} (schema-invalid)`);
+  }
+}
+
+// --- account API: golden fixtures <-> lib/account-schema.ts ------------------
+//
+// Same rules as the signaling section: every golden parses with the TS
+// mirror, every reject fixture fails its documented way, and additive
+// optional fields stay tolerated on both surfaces.
+
+for (const direction of ['account/request', 'account/response']) {
+  const dir = join(root, direction);
+  const files = listJson(dir);
+  if (files.length === 0) {
+    console.error(`FAIL ${direction}: no fixtures (regenerate from Rust)`);
+    fail += 1;
+    continue;
+  }
+  for (const file of files) {
+    const value = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+    const schema = direction === 'account/request' ? accountRequestSchema : accountResponseSchema;
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      console.error(`FAIL ${direction}/${file}: schema rejected: ${parsed.error.issues[0]?.path}`);
+      fail += 1;
+      continue;
+    }
+    if (value.protocol_version !== ACCOUNT_PROTOCOL_VERSION) {
+      console.error(`FAIL ${direction}/${file}: wrong protocol_version`);
+      fail += 1;
+      continue;
+    }
+    // Unknown additive fields must be tolerated (serde policy mirror) —
+    // checked on one golden per surface, like the signaling section.
+    if (file === 'register.json' || file === 'login.json') {
+      const withFuture = { ...value, future_additive_field: 42 };
+      if (!schema.safeParse(withFuture).success) {
+        console.error(`FAIL ${direction}/${file}: additive optional field rejected`);
+        fail += 1;
+        continue;
+      }
+    }
+    pass += 1;
+    console.log(`ok   ${direction}/${file} (action=${value.action})`);
+  }
+}
+
+// --- account reject: each must fail its documented way -----------------------
+const accountExpectations = {
+  // v0 is schema-shaped but must be version-gated by the service (raw
+  // protocol_version check BEFORE body validation).
+  'v0_register.json': 'version-gated',
+  'unknown_action.json': 'schema-invalid',
+  'camelcase_probe.json': 'schema-invalid',
+};
+
+for (const [file, outcome] of Object.entries(accountExpectations)) {
+  const value = JSON.parse(readFileSync(join(root, 'account/reject', file), 'utf8'));
+  const parsed = accountRequestSchema.safeParse(value);
+  if (outcome === 'version-gated') {
+    if (parsed.success && value.protocol_version !== ACCOUNT_PROTOCOL_VERSION) {
+      pass += 1;
+      console.log(`ok   account/reject/${file} (version-gated at the service, saw v${value.protocol_version})`);
+    } else if (!parsed.success) {
+      pass += 1;
+      console.log(`ok   account/reject/${file} (schema-invalid, also version-gated)`);
+    } else {
+      console.error(`FAIL account/reject/${file}: v0 parsed as v1-compatible`);
+      fail += 1;
+    }
+    continue;
+  }
+  if (parsed.success) {
+    console.error(`FAIL account/reject/${file}: schema accepted an invalid request`);
+    fail += 1;
+  } else {
+    pass += 1;
+    console.log(`ok   account/reject/${file} (schema-invalid)`);
   }
 }
 

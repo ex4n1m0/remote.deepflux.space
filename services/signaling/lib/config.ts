@@ -1,8 +1,12 @@
 /**
- * Environment-tunable configuration (defaults per source plan RD-009/010).
+ * Environment-tunable configuration (defaults per source plan RD-009/010;
+ * account/roster knobs per the post-MVP accounts patch, 2026-10-01).
  *
  * Every value has an expiry or bound; nothing lives forever and nothing is
- * unbounded (AGENTS.md invariant 3 applied to the control plane).
+ * unbounded (AGENTS.md invariant 3 applied to the control plane). The
+ * account-TTL exception is deliberate: account/roster records are the one
+ * DURABLE thing this control plane stores (10-year default TTL so records do
+ * not silently expire underneath users) — everything else stays ephemeral.
  */
 
 function intEnv(name: string, def: number, min: number, max: number): number {
@@ -38,6 +42,22 @@ export interface SignalingConfig {
   readonly maxConnectionSec: number;
   /** Redis key namespace. */
   readonly prefix: string;
+  // --- account & roster API (POST /api/account) -----------------------------
+  /** Account session-token TTL (default 30 days). */
+  readonly ttlAccountSessionSec: number;
+  /** Account + roster record TTL (default ~10 years; Upstash accepts it). */
+  readonly ttlAccountSec: number;
+  /** Decoded-byte cap for roster ciphertext (oversize answers 413). */
+  readonly rosterMaxCiphertextBytes: number;
+  /** Rate limits (fixed windows; see lib/account-service.ts key shapes). */
+  readonly rlRegisterPerHour: number;
+  /** Global register ceiling (all IPs combined) — bounds 10-year KV minting. */
+  readonly rlRegisterGlobalPerDay: number;
+  readonly rlLoginPrePerMin: number;
+  readonly rlLoginPerUserPer15m: number;
+  readonly rlLoginPerIpPer15m: number;
+  readonly rlRosterPutPerMin: number;
+  readonly rlPresencePerMin: number;
 }
 
 export function loadConfig(): SignalingConfig {
@@ -52,5 +72,15 @@ export function loadConfig(): SignalingConfig {
     wsPollMs: intEnv('SIGNALING_WS_POLL_MS', 250, 50, 10_000),
     maxConnectionSec: intEnv('SIGNALING_MAX_CONNECTION_SECONDS', 290, 1, 3_600),
     prefix: process.env['SIGNALING_STORE_PREFIX'] ?? 'sg1:',
+    ttlAccountSessionSec: intEnv('SIGNALING_TTL_ACCOUNT_SESSION_SECONDS', 2_592_000, 60, 315_532_800),
+    ttlAccountSec: intEnv('SIGNALING_TTL_ACCOUNT_SECONDS', 315_532_800, 3_600, 2_000_000_000),
+    rosterMaxCiphertextBytes: intEnv('SIGNALING_ROSTER_MAX_CIPHERTEXT_BYTES', 65_536, 1_024, 1 << 20),
+    rlRegisterPerHour: intEnv('SIGNALING_RL_REGISTER_PER_HOUR', 10, 1, 100_000),
+    rlRegisterGlobalPerDay: intEnv('SIGNALING_RL_REGISTER_GLOBAL_PER_DAY', 500, 1, 1_000_000),
+    rlLoginPrePerMin: intEnv('SIGNALING_RL_LOGIN_PRE_PER_MIN', 120, 1, 100_000),
+    rlLoginPerUserPer15m: intEnv('SIGNALING_RL_LOGIN_PER_USER_15M', 20, 1, 100_000),
+    rlLoginPerIpPer15m: intEnv('SIGNALING_RL_LOGIN_PER_IP_15M', 60, 1, 100_000),
+    rlRosterPutPerMin: intEnv('SIGNALING_RL_ROSTER_PUT_PER_MIN', 60, 1, 100_000),
+    rlPresencePerMin: intEnv('SIGNALING_RL_PRESENCE_PER_MIN', 60, 1, 100_000),
   };
 }

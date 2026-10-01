@@ -12,8 +12,10 @@ One Windows 10/11 application with two runtime roles (Host / Controller).
 Tauri 2 + React/TypeScript shell (M4) around a Rust native engine. Vercel is
 the signaling/control plane only; after SDP/ICE exchange everything flows
 over a direct WebRTC peer connection (STUN, TURN disabled in MVP). H.264 GPU
-pipeline, native rendering, `SendInput` injection. No accounts, no relay, one
-controlled machine per session.
+pipeline, native rendering, `SendInput` injection. No relay, one controlled
+machine per session. Optional user accounts (post-MVP, ADR-003, 2026-10-01)
+exist on the control plane only — identity plus an encrypted device roster;
+the anonymous connection-code flow remains as the escape hatch.
 
 Module map (source-plan layout, verbatim):
 
@@ -40,12 +42,16 @@ reports; the main session integrates.
 
 Key docs: `docs/adr/ADR-001-architecture.md`,
 `docs/adr/ADR-002-webrtc-rs-behind-transport-trait.md`,
+`docs/adr/ADR-003-accounts-and-roster.md`,
 `docs/protocol/state-machines.md`, `docs/perf-counter-schema.md`.
 
 ## Non-negotiable invariants
 
 1. No frame bytes through Tauri IPC, React state, JSON, or canvas — ever.
-2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes. Nothing else.
+2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes, and —
+   since ADR-003 (2026-10-01) — account verifiers plus encrypted-roster
+   ciphertext. Never frame, input, or cursor bytes; never plaintext user
+   data (the roster is AES-256-GCM under a client-held key).
 3. Every queue is bounded; under pressure drop obsolete frames, never queue latency.
 4. TURN/relay forbidden in MVP.
 5. No undocumented wire-format changes; `protocolVersion` bumps are explicit.
@@ -89,7 +95,8 @@ it executes in the cloud only after a remote exists (delta D6).
 
 ## Wire-format & versioning policy
 
-Two surfaces, both owned by `crates/protocol` (delta D7):
+Three surfaces, all owned by `crates/protocol` (delta D7; the third since
+ADR-003):
 
 1. **Signaling envelopes = JSON**, stable **snake_case** field names,
    flattened `type` discriminant. The TypeScript signaling service (M3) is
@@ -107,6 +114,14 @@ Two surfaces, both owned by `crates/protocol` (delta D7):
    `WIRE_VERSION` is currently `0`. Bincode is **not** self-describing: any
    layout change — field reorder, type change, variant insertion — requires
    a version bump.
+3. **Account & roster API = JSON request/response** (`POST /api/account`,
+   ADR-003): flattened `action` discriminant, same snake_case/additive rules
+   as signaling. `ACCOUNT_PROTOCOL_VERSION` is currently **1**; TS mirror +
+   golden fixtures live in `services/signaling` (`fixtures/account/`,
+   `validate-wires.mjs`), exported from `crates/node-runtime`'s
+   `account_fixtures` test. Binary fields are lowercase `*_hex`. The
+   `RosterDoc` plaintext (also in `crates/protocol`) is a durable
+   client-side format: it only ever travels inside AES-256-GCM ciphertext.
 
 Rules:
 
@@ -117,7 +132,10 @@ Rules:
 - Never log SDP bodies, the one-time session secret (`SessionSecret`'s
   Debug is redacted — keep it that way), or input event contents —
   `InputEvent`'s `Debug` is redacted too (QA F3), and new input-carrying
-  types must follow that pattern.
+  types must follow that pattern. The same redaction/no-log rule applies to
+  account credentials: passwords, `auth_key`, salts, verifiers, session
+  tokens (`SessionToken`'s Debug is redacted), and DEK material
+  (`Zeroizing` buffers in `node-runtime::account_crypto`).
 - Cursor shape pixels travel on the direct `cursor` data channel (bounded
   binary). They never appear in signaling, Tauri IPC, or logs. Video frames
   are an RTP track, not messages (invariant 1).

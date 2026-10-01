@@ -54,6 +54,13 @@ ureq = { version = "=2.12.1", default-features = false, features = ["native-tls"
 # Device-token entropy for the signaling client (safe API; keeps the
 # node-runtime free of new `unsafe` beyond the AGENTS.md sanctioned list).
 getrandom = "=0.3.3"
+# Post-MVP accounts & roster client crypto (node-runtime::account_crypto):
+# scrypt KDF + AES-256-GCM envelope + zeroized key buffers. RustCrypto leaf
+# crates, pure-safe, no extra build tooling.
+scrypt = "0.11"
+aes-gcm = "0.10"
+zeroize = "1"
+hex = "0.4"
 
 # M6 F59 fork pins (see ADR-002 "M6 fork" section): local, patched copies of
 # the exact upstream versions. `[patch.crates-io]` applies workspace-wide.

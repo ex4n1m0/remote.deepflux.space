@@ -1,0 +1,8 @@
+{
+  "action": "presence",
+  "codes": [
+    "0123456789abcdef",
+    "fedcba9876543210"
+  ],
+  "protocol_version": 1
+}

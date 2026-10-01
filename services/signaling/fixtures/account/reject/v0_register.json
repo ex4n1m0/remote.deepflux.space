@@ -1,0 +1,10 @@
+{
+  "action": "register",
+  "auth_key": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+  "auth_salt_hex": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+  "dek_nonce_hex": "4e4e4e4e4e4e4e4e4e4e4e4e",
+  "protocol_version": 0,
+  "username": "alice",
+  "wrap_salt_hex": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
+  "wrapped_dek_hex": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+}

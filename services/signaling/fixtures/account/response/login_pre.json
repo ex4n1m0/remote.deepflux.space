@@ -1,0 +1,7 @@
+{
+  "action": "login_pre",
+  "auth_salt_hex": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+  "ok": true,
+  "protocol_version": 1,
+  "wrap_salt_hex": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
+}
