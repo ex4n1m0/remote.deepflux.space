@@ -133,7 +133,7 @@ async function storeCommand(...command: string[]): Promise<void> {
   const r = await fetch(`${STORE.url}/pipeline`, {
     method: 'POST',
     headers: { authorization: `Bearer ${STORE.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify([{ command }]),
+    body: JSON.stringify([command]),
     signal: AbortSignal.timeout(4000),
   });
   assert.equal(r.status, 200, 'store command must reach the emulator');

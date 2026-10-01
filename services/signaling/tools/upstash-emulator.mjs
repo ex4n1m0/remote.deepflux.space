@@ -11,7 +11,7 @@
  *
  *   POST /pipeline
  *   Authorization: Bearer <any non-empty>
- *   [{"command":["SET","key","value","EX","30"]}, ...]
+ *   [["SET","key","value","EX","30"], ...]
  *   -> [{"result":"OK"}] | [{"error":"ERR ..."}]
  *
  * Running it as a separate process is the point: `vercel dev` function
@@ -253,9 +253,13 @@ const server = http.createServer((req, res) => {
     try {
       const parsed = JSON.parse(body);
       if (!Array.isArray(parsed)) throw new Error('pipeline body must be an array');
-      const out = parsed.map((entry) => {
-        const command = entry && Array.isArray(entry.command) ? entry.command : null;
-        if (!command) return { error: 'ERR each pipeline entry needs a command array' };
+      const out = parsed.map((command) => {
+        // Production-faithful shape (verified on real Upstash,
+        // 2026-10-01): every entry is itself a command array. The old
+        // [{command:[...]}] object shape is REJECTED here on purpose —
+        // the emulator must not accept what production refuses.
+        const ok = Array.isArray(command) && command.every((c) => typeof c === 'string');
+        if (!ok) return { error: 'ERR each pipeline entry must be a command array' };
         try {
           return { result: run(command) };
         } catch (err) {

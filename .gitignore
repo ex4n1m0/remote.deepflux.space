@@ -5,3 +5,5 @@
 node_modules/
 # M4 shell build output (vite)
 apps/desktop/dist/
+# Vercel function bundles (services/signaling build output)
+services/signaling/api/*.js

@@ -91,7 +91,7 @@ and `docs/reports/data/m4-e2e-20260925-fixpkg.log`.
 Local JSON under the app data dir (`%APPDATA%/space.deepflux.remote.desktop`):
 `settings.json` (device id + presence token, display name, signaling base URL,
 default quality/scale, onboarding-skip flag) and `favorites.json`. The
-signaling URL defaults to the deployed service (`https://remote.deepflux.space`,
+signaling URL defaults to the deployed service (`https://signaling.deepflux.space`,
 accounts phase); an explicit empty string is the documented opt-out — the local
 dev rig is `http://127.0.0.1:38013` (see `services/signaling/README.md`).
 

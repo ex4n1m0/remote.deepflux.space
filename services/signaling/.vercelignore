@@ -1,0 +1,4 @@
+# Only the esbuild bundles (api/*.js, built by pnpm build:api) ship to
+# Vercel; the .ts sources run via tsx in dev/tests and would conflict
+# with the bundles at the same route paths.
+api/*.ts

@@ -168,71 +168,73 @@ plus the account knobs: `SIGNALING_TTL_ACCOUNT_SESSION_SECONDS` (2592000),
 `SIGNALING_RL_LOGIN_PER_USER_15M` (20), `SIGNALING_RL_LOGIN_PER_IP_15M` (60),
 `SIGNALING_RL_ROSTER_PUT_PER_MIN` (60), `SIGNALING_RL_PRESENCE_PER_MIN` (60).
 
-## The single deploy (USER runs this, at the END of M3)
+## Deployment — LIVE (deployed 2026-10-01)
 
-Everything below is prepared and verified; none of it was executed by the
-agent (per plan delta D5 — one cloud deploy, with your accounts):
+**Production: https://signaling.deepflux.space** (project `remote-signaling`,
+team `timedivision`, region hkg1). Everything was deployed and verified by
+the agent session; the original "user runs this once" runbook below is kept
+for history/reprovisioning.
+
+Deployed-and-verified state (2026-10-01):
+
+- `/api/health`, `/api/signal` (HTTP ops + **WebSocket hello_ok**), and the
+  full `/api/account` round-trip (register -> login_pre/login -> roster
+  get/put incl. 409 conflict -> presence -> logout invalidation, decoy salts
+  for unknown users) all pass against production Upstash.
+- Storage: Vercel Marketplace resource `remote-signaling-redis`
+  (Upstash KV) connected to the project — credentials arrive as the legacy
+  `KV_REST_API_URL` / `KV_REST_API_TOKEN` env names, which
+  `UpstashRestStore.fromEnv` accepts alongside `UPSTASH_REDIS_REST_*`.
+
+### How to redeploy
 
 ```bash
 cd services/signaling
-
-# 1. Accounts (one-time): create/log in at vercel.com; create an Upstash
-#    Redis database (any region near your devices) and copy its REST URL +
-#    token from the Upstash console.
-
-# 2. Link this directory to a Vercel project (interactive; uses your login):
-vercel link
-
-# 3. Set the production env vars (values from Upstash; never commit them):
-vercel env add UPSTASH_REDIS_REST_URL production
-vercel env add UPSTASH_REDIS_REST_TOKEN production
-#    optional overrides: SIGNALING_TTL_*, SIGNALING_RL_*, SIGNALING_WS_POLL_MS, ...
-#    Deploy note (accounts phase): NO new external services — the account
-#    API uses the SAME Upstash Redis database and the SAME env vars; the new
-#    api/account.ts function is pinned in vercel.json like the others.
-
-# 4. The single deploy:
-vercel deploy --prod
-
-# 5. Verify (first things after deploy):
-
-# 5a. Liveness (NOTE: /api/health never touches the store — it proves the
-#     deployment answers, NOT that Upstash env vars are correct; 5b does):
-curl https://<your-deployment>.vercel.app/api/health
-
-# 5b. WS smoke with HEADER auth (query-string tokens are rejected by design;
-#     this also exercises the store — a broken Upstash env fails here):
-node --input-type=module -e "
-import WebSocket from 'ws';
-const ws = new WebSocket('wss://<your-deployment>.vercel.app/api/signal?device_id=probe', {
-  headers: { authorization: 'Bearer probe-token' },
-});
-ws.on('open', () => ws.send(JSON.stringify({op:'hello',device_id:'probe',resume_seq:0,svc_version:1})));
-ws.on('message', (m) => { console.log(String(m)); process.exit(0); });
-ws.on('error', (e) => { console.log('ERR', e.message); process.exit(1); });
-"
-# Expected: a hello_ok frame. If the upgrade is refused, the HTTP fallback
-# still carries M4 (the desktop client tries WS, falls back automatically);
-# file the WS-beta gap with Vercel support and retry after a platform bump.
-
-# 5c. Plan-cap check (QA F42a): vercel.json requests maxDuration 300, but
-#     plans CLAMP it (Hobby lower than Pro). Check the deployed function's
-#     effective maximum duration (dashboard: Project -> Settings ->
-#     Functions, or `vercel inspect <deployment-url>`). If the effective cap
-#     is below 300 s, pin the graceful-bye bound 10 s under it and redeploy:
-vercel env add SIGNALING_MAX_CONNECTION_SECONDS production   # value: <effective-cap> - 10
-vercel deploy --prod
-#     Without this, WS connections are hard-killed at the plan cap with no
-#     bye frame (the client still resumes, but reconnect churns).
-
-# 5d. Idle-gap connect probe (QA F37's scenario against the real service):
-#     register a host, leave it idle > SIGNALING_TTL_MAILBOX_SECONDS with
-#     only heartbeats, then send it a connect_request from a second device —
-#     the consent prompt must appear (era-safe seq handling).
+pnpm deploy:prod     # = pnpm build:api && vercel deploy --prod -S timedivision
 ```
 
-The desktop client config for M4 is then simply the deployed base URL
-(`RemoteSignalingConfig::new("https://<deployment>.vercel.app", device, token)`).
+### Production-only facts (each cost a failed deploy to learn)
+
+1. **The functions ship as esbuild bundles** (`pnpm build:api` ->
+   `api/*.js`, gitignored, sources excluded from uploads via
+   `.vercelignore`). Raw `.ts` sources with NodeNext `.ts`-extension imports
+   deploy as ESM that cannot resolve `./lib/x.ts` at runtime
+   (ERR_MODULE_NOT_FOUND). Bundling sidesteps specifier rewriting entirely.
+   NOTE: Vercel matches `functions` patterns BEFORE any build command, so
+   the bundles must exist pre-deploy — hence the `deploy:prod` script.
+2. **Do not call `server.listen()` in the API entries.** A bare `listen()`
+   binds a random port and keeps the worker alive ->
+   INTERNAL_FUNCTION_INVOCATION_FAILED with no runtime logs. Just
+   `export default server`; the runtime bridges it (WS works).
+3. **Pipeline wire shape**: `POST /pipeline` takes an array of command
+   ARRAYS (`[["SET","k","v"]]`), not `[{command:[...]}]` objects. Real
+   Upstash rejects the object shape; the local emulator now enforces the
+   production shape so it can never drift again.
+4. **Builder install**: the exact-pinned `@vercel/node@15.0.0` peers on
+   `@vercel/build-utils@14.12.0` while the build image bundles a newer one;
+   the project env `NPM_CONFIG_LEGACY_PEER_DEPS=true` (production) works
+   around the ERESOLVE. The `vercel` CLI is NOT a devDependency (it
+   conflicts with the pinned runtime on cloud installs).
+5. **Plan-cap check (QA F42a) still applies**: if the effective
+   maxDuration is clamped below 300 s, set
+   `SIGNALING_MAX_CONNECTION_SECONDS = <effective-cap> - 10` and redeploy,
+   or WS connections get hard-killed without a bye frame.
+6. Domain: attached with `vercel domains add signaling.deepflux.space
+   remote-signaling` (never a bare `vercel alias set` — SSO trap).
+
+### The original first-deploy runbook (historical, for reprovisioning)
+
+```bash
+cd services/signaling
+vercel link                                            # or: vercel integration resource connect <upstash-resource> <project>
+vercel env add UPSTASH_REDIS_REST_URL production       # or rely on KV_REST_API_* from the marketplace resource
+vercel env add UPSTASH_REDIS_REST_TOKEN production
+pnpm deploy:prod
+# then the smokes above (health, WS hello, account round-trip)
+```
+
+The desktop default signaling URL is `https://signaling.deepflux.space`
+(`DEFAULT_SIGNALING_BASE_URL` in `apps/desktop/src-tauri/src/store.rs`).
 
 ## Known limitations (verified locally, 2026-09-24)
 

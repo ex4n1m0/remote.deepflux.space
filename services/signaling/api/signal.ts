@@ -9,8 +9,10 @@ import { createSignalingServer } from '../lib/server.ts';
 
 const signaling = createSignalingServer();
 
-// The @vercel/node dev builder and the Vercel runtime capture the exported
-// server by intercepting `listen` — no real bind happens in either place.
-signaling.server.listen();
-
+// The Vercel runtime bridges an exported http.Server directly (WS +
+// HTTP fallback on one path). Do NOT call `listen()` here: with no
+// arguments it binds a random port and keeps the worker alive, which
+// surfaces in production as INTERNAL_FUNCTION_INVOCATION_FAILED (first
+// deploy, 2026-10-01). `vercel dev` and the standalone dev server wrap
+// this same export without it.
 export default signaling.server;

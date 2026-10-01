@@ -40,7 +40,7 @@ pub struct AppSettings {
 
 /// Default signaling service (accounts phase): the deployed Vercel
 /// control plane. Overridable in settings; empty = explicit opt-out.
-pub const DEFAULT_SIGNALING_BASE_URL: &str = "https://remote.deepflux.space";
+pub const DEFAULT_SIGNALING_BASE_URL: &str = "https://signaling.deepflux.space";
 
 fn new_token() -> String {
     node_runtime::signaling_remote::RemoteSignalingConfig::new_token()

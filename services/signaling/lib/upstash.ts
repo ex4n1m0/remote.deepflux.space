@@ -4,7 +4,7 @@
  * Speaks the documented Upstash REST pipeline protocol:
  *   POST {url}/pipeline
  *   Authorization: Bearer {token}
- *   body: [{"command":["SET","key","value","EX","30"]}, ...]
+ *   body: [["SET","key","value","EX","30"], ...]
  *   reply: [{"result":"OK"}] | [{"error":"ERR ..."}]
  *
  * The same driver runs against production Upstash and against the local
@@ -32,11 +32,17 @@ export class UpstashRestStore implements Store {
   }
 
   static fromEnv(): UpstashRestStore {
-    const url = process.env['UPSTASH_REDIS_REST_URL'];
-    const token = process.env['UPSTASH_REDIS_REST_TOKEN'];
+    // Two credential namespaces, both official: Upstash-native
+    // UPSTASH_REDIS_REST_* and the Vercel Marketplace integration's
+    // legacy KV_* names (what `vercel integration resource connect
+    // upstash-kv` injects). UPSTASH_* wins when both exist. The read-only
+    // KV_REST_API_READ_ONLY_TOKEN is deliberately never considered — the
+    // service needs write access.
+    const url = process.env['UPSTASH_REDIS_REST_URL'] ?? process.env['KV_REST_API_URL'];
+    const token = process.env['UPSTASH_REDIS_REST_TOKEN'] ?? process.env['KV_REST_API_TOKEN'];
     if (!url || !token) {
       throw new Error(
-        'missing UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN (see .env.example; never print real values)',
+        'missing UPSTASH_REDIS_REST_URL/TOKEN (or KV_REST_API_URL/TOKEN from the Vercel Upstash integration; see .env.example; never print real values)',
       );
     }
     return new UpstashRestStore(url, token);
@@ -50,7 +56,11 @@ export class UpstashRestStore implements Store {
         authorization: `Bearer ${this.token}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify(commands.map((command) => ({ command }))),
+      // Wire shape verified against production Upstash (first deploy,
+      // 2026-10-01): an array of command arrays — NOT [{command:[...]}]
+      // objects, which real Upstash rejects with
+      // "ERR failed to parse pipeline command".
+      body: JSON.stringify(commands),
     });
     if (!res.ok) {
       throw new Error(`store pipeline http ${res.status}`);

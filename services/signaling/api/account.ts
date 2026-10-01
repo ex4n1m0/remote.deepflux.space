@@ -10,8 +10,8 @@ import { createAccountServer } from '../lib/account-server.ts';
 
 const account = createAccountServer();
 
-// The @vercel/node dev builder and the Vercel runtime capture the exported
-// server by intercepting `listen` — no real bind happens in either place.
-account.server.listen();
-
+// The Vercel runtime bridges an exported http.Server directly. Do NOT
+// call `listen()` here: with no arguments it binds a random port and
+// keeps the worker alive (INTERNAL_FUNCTION_INVOCATION_FAILED in
+// production, first deploy 2026-10-01).
 export default account.server;

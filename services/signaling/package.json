@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Vercel signaling/control-plane service (M3, RD-009/RD-010). Control plane only: IDs, presence, SDP/ICE envelopes \u2014 never frames, input, cursor payloads, or file data.",
+  "description": "Vercel signaling/control-plane service (M3, RD-009/RD-010). Control plane only: IDs, presence, SDP/ICE envelopes — never frames, input, cursor payloads, or file data.",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "emulator": "node tools/upstash-emulator.mjs",
     "dev:standalone": "node --import tsx tools/dev-server.mjs",
+    "build:api": "node scripts/bundle-api.mjs",
+    "deploy:prod": "pnpm build:api && vercel deploy --prod -S timedivision",
     "typecheck": "tsc --noEmit",
     "validate:wires": "node --import tsx scripts/validate-wires.mjs",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
@@ -26,8 +28,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vercel": "60.0.0"
+    "typescript": "^5.7.0"
   }
 }
