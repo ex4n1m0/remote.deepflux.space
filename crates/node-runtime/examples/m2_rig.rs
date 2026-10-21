@@ -1726,11 +1726,11 @@ impl NodeObserver for RigObserver {
         eprintln!("[{}] {} -> {state}", self.device, machine.name());
     }
 
-    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str) {
+    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str, ai_session: bool) {
         self.last_activity = Instant::now();
         self.prompts += 1;
         eprintln!(
-            "[{}] consent prompt #{}, session {session_id} (auto-accept in 300 ms)",
+            "[{}] consent prompt #{}, session {session_id} (ai={ai_session}, auto-accept in 300 ms)",
             self.device, self.prompts
         );
         let _ = controller_device_id;

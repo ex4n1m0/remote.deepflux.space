@@ -35,11 +35,15 @@ export function HostPanel({
       {view.can.accept && consent ? (
         <div className="consent" role="alertdialog" aria-label="Connection request">
           <p>
-            <strong>{consent.controller_device_id}</strong> asks to control this machine.
+            <strong>{consent.controller_device_id}</strong>{" "}
+            {consent.ai_session
+              ? "requests AI-agent control of this machine."
+              : "asks to control this machine."}
           </p>
           <p className="muted">
-            Accepting hands over screen viewing and keyboard/mouse control for this one
-            session. The other side sees nothing until you accept.
+            {consent.ai_session
+              ? "An AI agent will see the screen and drive mouse/keyboard for this one session. You can watch and take over at any time; the agent cannot type your passwords."
+              : "Accepting hands over screen viewing and keyboard/mouse control for this one session. The other side sees nothing until you accept."}
           </p>
           <div className="row">
             <button type="button" className="primary" onClick={onAccept} autoFocus>

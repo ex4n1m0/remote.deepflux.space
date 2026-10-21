@@ -40,7 +40,7 @@ describe("HostPanel consent prompt", () => {
     rerender(
       <HostPanel
         hostState="ConsentPrompted"
-        consent={{ controller_device_id: "ctrl-9", session_id: "s1" }}
+        consent={{ controller_device_id: "ctrl-9", session_id: "s1", ai_session: false }}
         connectionCode="code"
         onStart={() => {}}
         onStop={() => {}}
@@ -50,8 +50,41 @@ describe("HostPanel consent prompt", () => {
     );
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(screen.getByText("ctrl-9")).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === "P" && (el.textContent ?? "") === "ctrl-9 asks to control this machine.",
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the distinct AI-agent prompt when the controller advertises AI_SESSION", () => {
+    render(
+      <HostPanel
+        hostState="ConsentPrompted"
+        consent={{ controller_device_id: "ctrl-ai", session_id: "s2", ai_session: true }}
+        connectionCode="code"
+        onStart={() => {}}
+        onStop={() => {}}
+        onAccept={() => {}}
+        onReject={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === "P" &&
+          (el.textContent ?? "") === "ctrl-ai requests AI-agent control of this machine.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === "P" && (el.textContent ?? "").includes("take over at any time"),
+      ),
+    ).toBeTruthy();
   });
 
   it("offers Share when idle and Stop when online", () => {

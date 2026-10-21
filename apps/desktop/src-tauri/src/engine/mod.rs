@@ -93,6 +93,8 @@ pub enum EngineEvent {
     ConsentRequested {
         controller_device_id: String,
         session_id: String,
+        /// ADR-004: the controller advertised `FeatureFlags::AI_SESSION`.
+        ai_session: bool,
     },
     SessionEstablished {
         session_id: String,

@@ -176,6 +176,20 @@ connect item above is **explicitly deferred** — the one-time consent gate is u
 phase. Contract: `crates/protocol/src/account.rs`; service: `services/signaling` `/api/account`;
 client: `node-runtime::{account_crypto, account_remote}` + `apps/desktop`.
 
+**Activation record (2026-10-21, user direction — ADR-004).** AI-agent remote control: the
+user's local AI agent (cloud or local model) performs actions on the remote machine. Deep
+study: `docs/research/ai-agent-remote-control.md` (market validated 2026 — HopToDesk/Jump/
+TeamViewer shipped, RustDesk open). Decisions per ADR-004: the agent runs **on the controller**
+(never the host), reusing the existing `InputEvent` wire path unchanged — no `WIRE_VERSION`
+bump, one additive `FeatureFlags::AI_SESSION = 1<<4` bit that only changes the host consent
+prompt's wording; the agent is fronted by a local stdio MCP server (`rmcp`, RD-018) so the
+user's coding agent drives the remote machine as a tool; supervision by default, no remote
+shell in v1. First slice **RD-015 (this commit): the flag + consent plumbing end-to-end**
+(protocol → session `Action::PromptConsent` → `NodeObserver` → engine event → Tauri → HostPanel
+wording + tests). Remaining slices: RD-016 frame tap (readback → downscale → PNG/JPEG, ≤2 fps,
+opt-in), RD-017 agent driver core (provider trait, action journal with redacted `Text`), RD-018
+MCP bridge, RD-019 eval harness on the m2_rig.
+
 ## 5. Orchestration model
 
 - **Main session (me):** integrator and only merger of cross-module change. Dispatches subagents,

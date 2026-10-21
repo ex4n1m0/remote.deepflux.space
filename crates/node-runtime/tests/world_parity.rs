@@ -140,12 +140,11 @@ impl NodeObserver for Recorder {
             .push(format!("{:?} -> {state}", machine));
     }
 
-    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str) {
+    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str, ai_session: bool) {
         self.prompts.fetch_add(1, Ordering::Relaxed);
-        self.log
-            .lock()
-            .expect("recorder")
-            .push(format!("PromptConsent {controller_device_id} {session_id}"));
+        self.log.lock().expect("recorder").push(format!(
+            "PromptConsent {controller_device_id} {session_id} ai={ai_session}"
+        ));
     }
 
     fn session_established(&mut self, session_id: &str) {

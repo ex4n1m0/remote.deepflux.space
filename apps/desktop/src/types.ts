@@ -215,6 +215,8 @@ export interface StateEvent {
 export interface ConsentEvent {
   controller_device_id: string;
   session_id: string;
+  /** ADR-004: controller advertised `FeatureFlags::AI_SESSION`. */
+  ai_session: boolean;
 }
 
 export interface SessionEstablishedEvent {

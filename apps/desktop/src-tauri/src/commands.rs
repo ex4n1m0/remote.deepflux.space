@@ -159,11 +159,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         EngineEvent::ConsentRequested {
             controller_device_id,
             session_id,
+            ai_session,
         } => emit(
             events::CONSENT,
             Some(serde_json::json!({
                 "controller_device_id": controller_device_id,
-                "session_id": session_id
+                "session_id": session_id,
+                "ai_session": ai_session
             })),
         ),
         EngineEvent::SessionEstablished { session_id, peer } => emit(

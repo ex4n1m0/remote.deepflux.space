@@ -144,7 +144,7 @@ impl NodeObserver for Recorder {
             .push(format!("{machine:?}->{state}"));
     }
 
-    fn prompt_consent(&mut self, controller: &str, _session: &str) {
+    fn prompt_consent(&mut self, controller: &str, _session: &str, _ai_session: bool) {
         self.log
             .lock()
             .expect("recorder")

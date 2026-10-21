@@ -99,6 +99,7 @@ fn full_session_state_flow_through_the_command_layer() {
         EngineEvent::ConsentRequested {
             controller_device_id,
             session_id,
+            ..
         } => Some((controller_device_id.clone(), session_id.clone())),
         _ => None,
     });

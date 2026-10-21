@@ -145,7 +145,7 @@ impl NodeObserver for EngineObserver {
         });
     }
 
-    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str) {
+    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str, ai_session: bool) {
         self.shared
             .set_pending_consent(Some(controller_device_id.to_owned()));
         self.shared
@@ -153,6 +153,7 @@ impl NodeObserver for EngineObserver {
         self.emit(EngineEvent::ConsentRequested {
             controller_device_id: controller_device_id.to_owned(),
             session_id: session_id.to_owned(),
+            ai_session,
         });
         self.emit(EngineEvent::PeerOnline {
             device_id: controller_device_id.to_owned(),

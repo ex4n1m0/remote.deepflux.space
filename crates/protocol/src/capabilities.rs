@@ -72,6 +72,10 @@ impl FeatureFlags {
     pub const INPUT_FAST_CHANNEL: u32 = 1 << 2;
     /// Hardware H.264 encode/decode path available on this device.
     pub const H264_HARDWARE: u32 = 1 << 3;
+    /// Controller requests AI-agent control for this session (ADR-004): the
+    /// host consent prompt distinguishes an agent from a human driver.
+    /// Additive — a peer that predates the bit parses and ignores it.
+    pub const AI_SESSION: u32 = 1 << 4;
 
     pub const fn empty() -> Self {
         Self(0)
@@ -145,6 +149,18 @@ mod tests {
         assert!(f.has(FeatureFlags::TRICKLE_ICE));
         assert!(!f.has(FeatureFlags::CURSOR_CHANNEL));
         assert_eq!(f, FeatureFlags(1));
+    }
+
+    #[test]
+    fn ai_session_is_additive_bit_four() {
+        assert_eq!(FeatureFlags::AI_SESSION, 1 << 4);
+        let f = FeatureFlags::empty().with(FeatureFlags::AI_SESSION);
+        assert!(f.has(FeatureFlags::AI_SESSION));
+        // A peer that predates the bit is still an ordinary u32 value:
+        // it parses and round-trips, it just won't interpret the bit.
+        let json = serde_json::to_string(&f).expect("serialize");
+        let back: FeatureFlags = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, f);
     }
 
     #[test]

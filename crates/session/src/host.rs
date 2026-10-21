@@ -5,7 +5,7 @@
 //! for the diagram and the full legal-transition table; the table test at the
 //! bottom of this file enforces that every illegal pair is rejected.
 
-use protocol::capabilities::Capabilities;
+use protocol::capabilities::{Capabilities, FeatureFlags};
 use protocol::signaling::{
     CancelReason, DeviceId, DisconnectReason as SignalingDisconnectReason, MessageId, RejectReason,
     SIGNALING_SERVICE_ID, SessionId, SessionSecret, SignalingBody,
@@ -78,10 +78,13 @@ pub enum HostEvent {
     /// Runtime heartbeat cadence tick (presence keep-alive).
     HeartbeatDue,
     /// A controller sent `connect_request`. Deduplicated by `message_id`.
+    /// Carries the controller's advertised capabilities so the consent
+    /// prompt can distinguish AI-agent control (ADR-004).
     IncomingRequest {
         message_id: MessageId,
         controller_device_id: DeviceId,
         session_id: SessionId,
+        capabilities: Capabilities,
     },
     /// Host user accepted the prompt; carries the one-time secret to hand over.
     ConsentAccepted { secret: SessionSecret },
@@ -233,8 +236,10 @@ impl HostSession {
                 HostEvent::IncomingRequest {
                     controller_device_id,
                     session_id,
+                    capabilities,
                     ..
                 } => {
+                    let ai_session = capabilities.features.has(FeatureFlags::AI_SESSION);
                     self.state = HostState::ConsentPrompted {
                         info: PendingRequest {
                             session_id: session_id.clone(),
@@ -245,6 +250,7 @@ impl HostSession {
                         Action::PromptConsent {
                             controller_device_id,
                             session_id,
+                            ai_session,
                         },
                         Action::ScheduleTimer {
                             id: TimerId::HostConsent,
@@ -791,6 +797,7 @@ mod tests {
                 message_id: "e1".to_owned(),
                 controller_device_id: "ctrl-b".to_owned(),
                 session_id: "ctrl-b-1".to_owned(),
+                capabilities: caps(),
             },
             HostEvent::ConsentAccepted {
                 secret: SessionSecret("s".to_owned()),
@@ -920,6 +927,7 @@ mod tests {
                     message_id: "dup-1".to_owned(),
                     controller_device_id: "ctrl-b".to_owned(),
                     session_id: "ctrl-b-1".to_owned(),
+                    capabilities: caps(),
                 },
                 10,
             )
@@ -932,6 +940,7 @@ mod tests {
                     message_id: "dup-1".to_owned(),
                     controller_device_id: "ctrl-b".to_owned(),
                     session_id: "ctrl-b-1".to_owned(),
+                    capabilities: caps(),
                 },
                 11,
             )
@@ -949,6 +958,7 @@ mod tests {
                 message_id: "r1".to_owned(),
                 controller_device_id: "ctrl-b".to_owned(),
                 session_id: "ctrl-b-1".to_owned(),
+                capabilities: caps(),
             },
             10,
         )
@@ -959,6 +969,7 @@ mod tests {
                     message_id: "r2".to_owned(),
                     controller_device_id: "ctrl-c".to_owned(),
                     session_id: "ctrl-c-1".to_owned(),
+                    capabilities: caps(),
                 },
                 20,
             )
@@ -981,6 +992,56 @@ mod tests {
         assert!(matches!(m.state(), HostState::ConsentPrompted { .. }));
     }
 
+    /// ADR-004: the consent prompt carries `ai_session` derived from the
+    /// controller's advertised capabilities — presentation only, and a
+    /// spoofed flag grants nothing beyond the label.
+    #[test]
+    fn consent_prompt_reflects_ai_session_flag() {
+        let mut m = machine();
+        m.force_state(HostState::Online);
+        let mut ai_caps = caps();
+        ai_caps.features = ai_caps.features.with(FeatureFlags::AI_SESSION);
+        let actions = m
+            .step(
+                HostEvent::IncomingRequest {
+                    message_id: "ai-1".to_owned(),
+                    controller_device_id: "ctrl-ai".to_owned(),
+                    session_id: "ctrl-ai-1".to_owned(),
+                    capabilities: ai_caps,
+                },
+                10,
+            )
+            .expect("legal");
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            Action::PromptConsent {
+                ai_session: true,
+                ..
+            }
+        )));
+
+        let mut m2 = machine();
+        m2.force_state(HostState::Online);
+        let actions2 = m2
+            .step(
+                HostEvent::IncomingRequest {
+                    message_id: "human-1".to_owned(),
+                    controller_device_id: "ctrl-human".to_owned(),
+                    session_id: "ctrl-human-1".to_owned(),
+                    capabilities: caps(),
+                },
+                10,
+            )
+            .expect("legal");
+        assert!(actions2.iter().any(|a| matches!(
+            a,
+            Action::PromptConsent {
+                ai_session: false,
+                ..
+            }
+        )));
+    }
+
     /// QA F10: busy rejections carry the requester's session id in *every*
     /// host state, so consumers can correlate them uniformly.
     #[test]
@@ -998,6 +1059,7 @@ mod tests {
                         message_id: "r9".to_owned(),
                         controller_device_id: "ctrl-c".to_owned(),
                         session_id: "ctrl-c-7".to_owned(),
+                        capabilities: caps(),
                     },
                     20,
                 )
@@ -1025,6 +1087,7 @@ mod tests {
                 message_id: "r1".to_owned(),
                 controller_device_id: "ctrl-b".to_owned(),
                 session_id: "ctrl-b-1".to_owned(),
+                capabilities: caps(),
             },
             10,
         )
@@ -1053,6 +1116,7 @@ mod tests {
                 message_id: "r1".to_owned(),
                 controller_device_id: "ctrl-b".to_owned(),
                 session_id: "ctrl-b-1".to_owned(),
+                capabilities: caps(),
             },
             10,
         )

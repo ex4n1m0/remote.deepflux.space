@@ -46,7 +46,7 @@ describe("engineReducer", () => {
     let state = initialUiState();
     state = engineReducer(state, {
       type: "consent",
-      event: { controller_device_id: "ctrl-1", session_id: "s1" },
+      event: { controller_device_id: "ctrl-1", session_id: "s1", ai_session: false },
     });
     expect(state.consent?.controller_device_id).toBe("ctrl-1");
     state = engineReducer(state, { type: "session-established", session_id: "s1" });

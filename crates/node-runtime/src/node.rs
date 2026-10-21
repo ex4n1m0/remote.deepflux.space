@@ -82,7 +82,13 @@ pub trait NodeObserver {
     /// A machine changed state (names only — `HostState::name()`).
     fn state_changed(&mut self, _machine: MachineKind, _state: &str) {}
     /// Host machine asked for a consent decision (`PromptConsent`).
-    fn prompt_consent(&mut self, _controller_device_id: &str, _session_id: &str) {}
+    fn prompt_consent(
+        &mut self,
+        _controller_device_id: &str,
+        _session_id: &str,
+        _ai_session: bool,
+    ) {
+    }
     fn session_established(&mut self, _session_id: &str) {}
     fn session_ended(&mut self, _cause: &DisconnectCause) {}
     /// Pipeline control (the runtime starts/stops real stage threads).
@@ -440,12 +446,13 @@ impl Node {
         } = inbound;
 
         match body {
-            SignalingBody::ConnectRequest { .. } => {
+            SignalingBody::ConnectRequest { capabilities } => {
                 self.step_host(
                     HostEvent::IncomingRequest {
                         message_id,
                         controller_device_id: from_device_id.clone(),
                         session_id: session_id.unwrap_or_default(),
+                        capabilities,
                     },
                     observer,
                 );
@@ -783,8 +790,9 @@ impl Node {
                 Action::PromptConsent {
                     controller_device_id,
                     session_id,
+                    ai_session,
                 } => {
-                    observer.prompt_consent(&controller_device_id, &session_id);
+                    observer.prompt_consent(&controller_device_id, &session_id, ai_session);
                 }
                 Action::ComposeAnswer { offer_sdp } => {
                     match self.transport_as_mut() {
