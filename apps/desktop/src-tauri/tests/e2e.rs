@@ -32,6 +32,10 @@
 //! ```bash
 //! M4_E2E=1 cargo test -p remote-desktop-app --test e2e -- --nocapture
 //! ```
+//!
+//! Both tests share the emulator/signaling ports, and each pre-kills
+//! whatever listens on them — run them serially (`-- --test-threads=1`)
+//! or the parallel pre-kill can take down the sibling's server.
 
 use std::io::Read;
 use std::net::TcpStream;
@@ -223,6 +227,9 @@ fn two_instances_full_session_over_local_signaling() {
         .arg("high")
         .arg("--stream-secs")
         .arg(STREAM_SECS.to_string())
+        // ADR-004 (RD-019): agent-path probe (screenshot tap + synthetic
+        // input through EngineCmd::AgentInput).
+        .arg("--agent-probe")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -338,6 +345,28 @@ fn two_instances_full_session_over_local_signaling() {
     assert!(
         get_u64(&host, "/input/all_keys_up") >= 1,
         "host pump saw the AllKeysUp release"
+    );
+
+    // ADR-004 (RD-019): agent-path probe — a real JPEG screenshot of the
+    // decoded stream, and synthetic agent input applied through the normal
+    // wire path into the host's recording sink.
+    assert!(
+        get_bool(&ctrl, "/verdict/agent_shot_ok"),
+        "agent screenshot tap produced a JPEG (dims: {:?}, bytes: {})",
+        get_str(&ctrl, "/verdict/agent_shot_dims"),
+        get_u64(&ctrl, "/verdict/agent_shot_bytes")
+    );
+    assert!(
+        get_u64(&ctrl, "/verdict/agent_shot_bytes") > 100,
+        "agent screenshot JPEG has plausible size"
+    );
+    assert!(
+        get_bool(&ctrl, "/verdict/agent_input_sent"),
+        "EngineCmd::AgentInput accepted by the engine"
+    );
+    assert!(
+        get_u64(&host, "/input/applied") >= 1,
+        "host pump applied the agent's synthetic input (moves + reliable events)"
     );
 
     // F49: the swapchain followed the scripted 1600x1000 client resize

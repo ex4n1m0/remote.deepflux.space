@@ -40,10 +40,15 @@ windows = "=0.62.2"
 # not re-exported by `webrtc`.
 webrtc = "=0.21.0"
 rtc = "=0.21.0"
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "time", "sync"] }
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "time", "sync", "io-std"] }
 bytes = "=1.12.1"
 async-trait = "=0.1.92"
 openh264 = "=0.9.8"
+# Agent frame tap (ADR-004, RD-016): JPEG encoding of readback screenshots
+# in `node-runtime::screenshot`. Pure Rust, no build tooling.
+image = { version = "=0.25.6", default-features = false, features = ["jpeg"] }
+# MCP image content (ADR-004, RD-018): base64 of screenshot JPEGs.
+base64 = "=0.22.1"
 # M3 remote signaling client (`node-runtime::signaling_remote`): WebSocket
 # primary + HTTP polling fallback against the Vercel service. native-tls =
 # schannel on Windows (no extra build tooling), matching the workspace's

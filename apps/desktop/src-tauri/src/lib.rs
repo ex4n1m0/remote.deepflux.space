@@ -8,6 +8,7 @@ pub mod commands;
 pub mod credstore;
 pub mod engine;
 pub mod ipc;
+pub mod mcp;
 pub mod store;
 
 use std::sync::Mutex;
@@ -17,6 +18,11 @@ use tauri::Manager;
 use commands::AppServices;
 
 pub fn run() {
+    // ADR-004 (RD-018): `--mcp` runs the stdio MCP bridge alongside the
+    // shell, auto-starts the engine, and advertises `AI_SESSION` so the
+    // host consent prompt distinguishes the agent.
+    let mcp_mode = std::env::args().any(|arg| arg == "--mcp");
+    engine::set_mcp_mode(mcp_mode);
     tauri::Builder::default()
         .setup(|app| {
             let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -33,6 +39,16 @@ pub fn run() {
                 engine: Mutex::new(None),
                 account: Mutex::new(account),
             });
+            if engine::mcp_mode() {
+                // The bridge is the front door in this mode: start the
+                // engine without UI interaction (errors surface on the
+                // bridge tools) and serve stdio.
+                let handle = app.handle().clone();
+                if let Err(err) = commands::start_engine(&handle) {
+                    eprintln!("[mcp] engine auto-start failed: {err}");
+                }
+                mcp::spawn(handle);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

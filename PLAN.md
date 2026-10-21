@@ -184,11 +184,17 @@ TeamViewer shipped, RustDesk open). Decisions per ADR-004: the agent runs **on t
 bump, one additive `FeatureFlags::AI_SESSION = 1<<4` bit that only changes the host consent
 prompt's wording; the agent is fronted by a local stdio MCP server (`rmcp`, RD-018) so the
 user's coding agent drives the remote machine as a tool; supervision by default, no remote
-shell in v1. First slice **RD-015 (this commit): the flag + consent plumbing end-to-end**
-(protocol → session `Action::PromptConsent` → `NodeObserver` → engine event → Tauri → HostPanel
-wording + tests). Remaining slices: RD-016 frame tap (readback → downscale → PNG/JPEG, ≤2 fps,
-opt-in), RD-017 agent driver core (provider trait, action journal with redacted `Text`), RD-018
-MCP bridge, RD-019 eval harness on the m2_rig.
+shell in v1. First slices landed together (2026-10-21): **RD-015** flag + consent
+plumbing end-to-end (protocol → session `Action::PromptConsent` → `NodeObserver`
+→ engine event → Tauri → HostPanel wording + tests); **RD-016** frame tap
+(`node-runtime::screenshot`: readback → NV12→RGB → bilinear downscale →
+JPEG; `ShotSlot` published by the decode thread, `EngineHandle::capture_screenshot`);
+**RD-017** synthetic input (`AgentInput` + `agent_to_wire_events`, shared
+per-channel seq, 512-event drop-oldest cap, redacted Debug); **RD-018** the
+stdio MCP bridge (`apps/desktop/src-tauri/src/mcp.rs`, official `rmcp` SDK,
+`--mcp` launch mode auto-starts the engine and advertises `AI_SESSION`).
+Remaining slice: **RD-019** eval harness/extended soak on the m2_rig +
+usage doc `docs/ai-agent-mcp-usage.md`.
 
 ## 5. Orchestration model
 

@@ -23,10 +23,10 @@ use std::sync::mpsc::TryRecvError;
 use std::time::{Duration, Instant};
 
 use node_runtime::signaling_remote::{RemoteSignaling, RemoteSignalingConfig};
-use protocol::wire::QualityPreset;
+use protocol::wire::{ButtonState, MouseButton, QualityPreset};
 
 use remote_desktop_app_lib::engine::{
-    self, EngineCmd, EngineConfig, EngineEvent, preset_from_name,
+    self, AgentInput, EngineCmd, EngineConfig, EngineEvent, preset_from_name,
 };
 
 #[derive(Debug, Clone)]
@@ -53,6 +53,10 @@ struct Args {
     /// hanging until the test deadline (clean teardown, no consent-
     /// timeout linger).
     expect_no_session: bool,
+    /// ADR-004 (RD-019): after Connected, run the agent-path probe —
+    /// screenshot tap + synthetic `EngineCmd::AgentInput` — and record
+    /// the outcome in the verdict.
+    agent_probe: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -68,6 +72,7 @@ fn parse_args() -> Result<Args, String> {
         blackhole_candidates: false,
         expect_connect_failure: false,
         expect_no_session: false,
+        agent_probe: false,
     };
     let raw: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -124,6 +129,10 @@ fn parse_args() -> Result<Args, String> {
                 args.expect_no_session = true;
                 i += 1;
             }
+            "--agent-probe" => {
+                args.agent_probe = true;
+                i += 1;
+            }
             other => return Err(format!("unknown flag {other:?}")),
         }
     }
@@ -155,6 +164,11 @@ struct Verdict {
     /// M6 connect-failure case (host): sharing stopped through the normal
     /// command after a bounded no-session wait.
     no_session_bailed: bool,
+    /// ADR-004 (RD-019): agent-path probe outcomes.
+    agent_shot_ok: bool,
+    agent_shot_bytes: u64,
+    agent_shot_dims: String,
+    agent_input_sent: bool,
 }
 
 fn main() {
@@ -378,6 +392,51 @@ fn run_controller(
         return 1;
     }
     eprintln!("[e2e-ctrl] Connected; streaming");
+    // ADR-004 (RD-019): agent-path probe — the screenshot tap serves a
+    // real JPEG of the decoded stream, and synthetic agent input reaches
+    // the host's recording sink through the normal wire path.
+    if args.agent_probe {
+        let shot = handle.capture_screenshot(Duration::from_secs(8));
+        match shot {
+            Some(meta) => {
+                verdict.agent_shot_ok = meta.jpeg.len() > 100
+                    && meta.width > 0
+                    && meta.height > 0
+                    && meta.frame_width > 0
+                    && meta.jpeg[0] == 0xFF
+                    && meta.jpeg[1] == 0xD8;
+                verdict.agent_shot_bytes = meta.jpeg.len() as u64;
+                verdict.agent_shot_dims = format!(
+                    "{}x{}@{}x{}",
+                    meta.width, meta.height, meta.frame_width, meta.frame_height
+                );
+            }
+            None => verdict.agent_shot_ok = false,
+        }
+        let sent = handle.send(EngineCmd::AgentInput(vec![
+            AgentInput::MouseMove {
+                x: 20_000,
+                y: 20_000,
+            },
+            AgentInput::MouseButton {
+                button: MouseButton::Left,
+                state: ButtonState::Pressed,
+            },
+            AgentInput::MouseButton {
+                button: MouseButton::Left,
+                state: ButtonState::Released,
+            },
+            AgentInput::Text("agent-probe".to_owned()),
+        ]));
+        verdict.agent_input_sent = sent.is_ok();
+        eprintln!(
+            "[e2e-ctrl] agent probe: shot_ok={} bytes={} dims={} input_sent={}",
+            verdict.agent_shot_ok,
+            verdict.agent_shot_bytes,
+            verdict.agent_shot_dims,
+            verdict.agent_input_sent
+        );
+    }
     let started = Instant::now();
     let mut quality_changed = false;
     let mut monitor_picked = false;
@@ -595,6 +654,10 @@ fn write_verdict(args: &Args, verdict: Verdict) {
         "connect_fail_hint_ok": verdict.connect_fail_hint_ok,
         "connect_fail_secs": verdict.connect_fail_secs,
         "no_session_bailed": verdict.no_session_bailed,
+        "agent_shot_ok": verdict.agent_shot_ok,
+        "agent_shot_bytes": verdict.agent_shot_bytes,
+        "agent_shot_dims": verdict.agent_shot_dims,
+        "agent_input_sent": verdict.agent_input_sent,
     });
     let tmp = args.status_file.with_extension("tmp");
     if std::fs::write(

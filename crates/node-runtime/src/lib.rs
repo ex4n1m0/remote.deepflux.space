@@ -45,6 +45,7 @@ pub mod input;
 pub mod metrics;
 pub mod node;
 pub mod pacing;
+pub mod screenshot;
 pub mod signaling;
 pub mod signaling_remote;
 pub mod timers;

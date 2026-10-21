@@ -25,8 +25,9 @@ pub mod quality;
 pub mod viewer;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use diagnostics::{CounterRecord, FrameTiming, LinkSample, Origin, PerfSink};
@@ -37,12 +38,15 @@ use node_runtime::clock::MonotonicClock;
 use node_runtime::input::InputPump;
 use node_runtime::metrics::SessionSlot;
 use node_runtime::node::Node;
+use node_runtime::screenshot::ShotMeta;
 use node_runtime::signaling::SignalingIo;
 use node_runtime::timers::MachineKind;
 use protocol::capabilities::{
     Capabilities, EncoderCapabilities, EncoderKind, FeatureFlags, MonitorInfo,
 };
-use protocol::wire::{AllKeysUpTrigger, InputEvent, QualityPreset, WireMessage};
+use protocol::wire::{
+    AllKeysUpTrigger, ButtonState, InputEvent, MouseButton, QualityPreset, WireMessage,
+};
 use render_windows::ScaleMode;
 use session::{ControllerState, HostState, SessionConfig};
 use transport_webrtc::{Channel, VideoFrame, WebrtcTransport, WebrtcTransportRole};
@@ -70,16 +74,246 @@ pub enum EngineCmd {
     HostStop,
     ControllerStart,
     ControllerStop,
-    Connect { code: String },
+    Connect {
+        code: String,
+    },
     CancelConnect,
     Disconnect,
     ConsentAccept,
     ConsentReject,
     SetQuality(QualityPreset),
-    SelectMonitor { monitor_id: String },
+    SelectMonitor {
+        monitor_id: String,
+    },
     ViewerScale(ScaleMode),
     ViewerFullscreen,
+    /// ADR-004 (RD-017): synthetic input from the local AI agent. Batches
+    /// are capped at [`MAX_AGENT_BATCH`] events (drop-oldest) and routed
+    /// to the same wire channels as viewer input with shared per-channel
+    /// seq counters.
+    AgentInput(Vec<AgentInput>),
     Shutdown,
+}
+
+/// One high-level agent action (ADR-004, RD-017). Coordinates are already
+/// normalized 0..=65535 over the frame. `Debug` is manual: text payloads
+/// are redacted (invariant 6 — input is never logged).
+#[derive(Clone, PartialEq)]
+pub enum AgentInput {
+    MouseMove {
+        x: u16,
+        y: u16,
+    },
+    MouseButton {
+        button: MouseButton,
+        state: ButtonState,
+    },
+    Wheel {
+        delta_v: i32,
+        delta_h: i32,
+    },
+    Key {
+        scan_code: u16,
+        extended: bool,
+        state: ButtonState,
+    },
+    Text(String),
+}
+
+impl std::fmt::Debug for AgentInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MouseMove { x, y } => f
+                .debug_struct("MouseMove")
+                .field("x", x)
+                .field("y", y)
+                .finish(),
+            Self::MouseButton { button, state } => f
+                .debug_struct("MouseButton")
+                .field("button", button)
+                .field("state", state)
+                .finish(),
+            Self::Wheel { delta_v, delta_h } => f
+                .debug_struct("Wheel")
+                .field("delta_v", delta_v)
+                .field("delta_h", delta_h)
+                .finish(),
+            Self::Key {
+                scan_code,
+                extended,
+                state,
+            } => f
+                .debug_struct("Key")
+                .field("scan_code", scan_code)
+                .field("extended", extended)
+                .field("state", state)
+                .finish(),
+            Self::Text(text) => f
+                .debug_struct("Text")
+                .field("code_points", &text.encode_utf16().count())
+                .finish(),
+        }
+    }
+}
+
+/// Per-command cap for [`EngineCmd::AgentInput`] batches (invariant 3:
+/// bounded, explicit drop-oldest — the newest actions win, like input-fast).
+pub const MAX_AGENT_BATCH: usize = 512;
+
+/// Convert agent actions into wire input events with the same per-channel
+/// seq discipline as viewer input (`viewer::to_wire_events`): fast moves
+/// share one counter, reliable events another. Text is chunked into UTF-16
+/// code-unit groups (surrogate pairs never split) of ≤
+/// [`AGENT_TEXT_CHUNK`] units.
+const AGENT_TEXT_CHUNK: usize = 4096;
+
+pub fn agent_to_wire_events(
+    batch: &[AgentInput],
+    fast_seq: &mut u64,
+    reliable_seq: &mut u64,
+) -> Vec<(Channel, InputEvent)> {
+    let mut out = Vec::with_capacity(batch.len());
+    for action in batch {
+        match action {
+            AgentInput::MouseMove { x, y } => {
+                *fast_seq += 1;
+                out.push((
+                    Channel::InputFast,
+                    InputEvent::MouseMove {
+                        seq: *fast_seq,
+                        x: *x,
+                        y: *y,
+                    },
+                ));
+            }
+            AgentInput::MouseButton { button, state } => {
+                *reliable_seq += 1;
+                out.push((
+                    Channel::InputReliable,
+                    InputEvent::MouseButton {
+                        seq: *reliable_seq,
+                        button: *button,
+                        state: *state,
+                    },
+                ));
+            }
+            AgentInput::Wheel { delta_v, delta_h } => {
+                *reliable_seq += 1;
+                out.push((
+                    Channel::InputReliable,
+                    InputEvent::Wheel {
+                        seq: *reliable_seq,
+                        delta_v: *delta_v,
+                        delta_h: *delta_h,
+                    },
+                ));
+            }
+            AgentInput::Key {
+                scan_code,
+                extended,
+                state,
+            } => {
+                *reliable_seq += 1;
+                out.push((
+                    Channel::InputReliable,
+                    InputEvent::Key {
+                        seq: *reliable_seq,
+                        scan_code: *scan_code,
+                        extended: *extended,
+                        state: *state,
+                    },
+                ));
+            }
+            AgentInput::Text(text) => {
+                let units: Vec<u16> = text.encode_utf16().collect();
+                for chunk in units.chunks(AGENT_TEXT_CHUNK) {
+                    *reliable_seq += 1;
+                    out.push((
+                        Channel::InputReliable,
+                        InputEvent::Text {
+                            seq: *reliable_seq,
+                            code_points: String::from_utf16_lossy(chunk),
+                        },
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// ADR-004 (RD-016): the agent screenshot slot. The controller decode
+/// thread publishes one shot per request (latest-wins like the cursor
+/// slot); [`EngineHandle::capture_screenshot`] blocks the caller for at
+/// most `timeout` on the same condition variable. Bounded by construction:
+/// one pending request, one stored shot, one waiter.
+pub struct ShotSlot {
+    pending: AtomicBool,
+    generation: AtomicU64,
+    slot: Mutex<Option<ShotMeta>>,
+    cond: Condvar,
+}
+
+impl Default for ShotSlot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShotSlot {
+    pub fn new() -> Self {
+        Self {
+            pending: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            slot: Mutex::new(None),
+            cond: Condvar::new(),
+        }
+    }
+
+    /// Decode thread: consume one pending request and publish the result
+    /// (or a failure marker — the generation still bumps so a waiter
+    /// unblocks with the previous/absent shot).
+    pub fn publish(&self, result: Result<ShotMeta, String>) {
+        let mut slot = self.slot.lock().expect("shot slot");
+        if let Ok(meta) = result {
+            *slot = Some(meta);
+        }
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        self.cond.notify_all();
+    }
+
+    /// Caller: request one fresh shot and wait ≤ `timeout`.
+    pub fn capture(&self, timeout: Duration) -> Option<ShotMeta> {
+        self.pending.store(true, Ordering::Release);
+        let start = self.generation.load(Ordering::Acquire);
+        let slot = self.slot.lock().expect("shot slot");
+        let (slot, _) = self
+            .cond
+            .wait_timeout_while(slot, timeout, |_| {
+                self.generation.load(Ordering::Acquire) == start
+            })
+            .expect("shot condvar");
+        slot.clone()
+    }
+
+    /// Decode thread: is a request outstanding? (Consumes it — one publish
+    /// per request by construction.)
+    pub fn take_pending(&self) -> bool {
+        self.pending.swap(false, Ordering::AcqRel)
+    }
+}
+
+/// `--mcp` launch mode (ADR-004, RD-018): the controller advertises
+/// `FeatureFlags::AI_SESSION` so the host consent prompt distinguishes the
+/// agent, and the MCP bridge runs alongside the shell.
+static MCP_MODE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_mcp_mode(on: bool) {
+    MCP_MODE.store(on, Ordering::Relaxed);
+}
+
+pub fn mcp_mode() -> bool {
+    MCP_MODE.load(Ordering::Relaxed)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -501,6 +735,7 @@ pub struct EngineHandle {
     counters: Arc<Mutex<EngineCounters>>,
     viewer: Arc<Mutex<ViewerFacts>>,
     input: Arc<Mutex<diag::InputStat>>,
+    shot: Arc<ShotSlot>,
 }
 
 impl EngineHandle {
@@ -510,6 +745,13 @@ impl EngineHandle {
             TrySendError::Full(_) => "engine command queue full".to_owned(),
             TrySendError::Disconnected(_) => "engine stopped".to_owned(),
         })
+    }
+
+    /// ADR-004 (RD-016): request one agent screenshot from the decode
+    /// thread and wait ≤ `timeout`. `None` on timeout, when no session is
+    /// streaming, or when the capture failed.
+    pub fn capture_screenshot(&self, timeout: Duration) -> Option<ShotMeta> {
+        self.shot.capture(timeout)
     }
 
     /// Authoritative status snapshot (pull counterpart of the events).
@@ -542,6 +784,7 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
     let counters = Arc::new(Mutex::new(EngineCounters::default()));
     let viewer = Arc::new(Mutex::new(ViewerFacts::default()));
     let input = Arc::new(Mutex::new(diag::InputStat::default()));
+    let shot = Arc::new(ShotSlot::new());
     let join = std::thread::Builder::new()
         .name("engine".into())
         .spawn({
@@ -549,7 +792,8 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
             let counters = Arc::clone(&counters);
             let viewer = Arc::clone(&viewer);
             let input = Arc::clone(&input);
-            move || run(cfg, cmd_rx, event_tx, shared, counters, viewer, input)
+            let shot = Arc::clone(&shot);
+            move || run(cfg, cmd_rx, event_tx, shared, counters, viewer, input, shot)
         })
         .expect("spawn engine thread");
     (
@@ -560,6 +804,7 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
             counters,
             viewer,
             input,
+            shot,
         },
         event_rx,
     )
@@ -633,8 +878,12 @@ struct Engine {
     last_uipi_emit: Option<Instant>,
     clock_origin: (Instant, u64),
     caps_cache: Option<Capabilities>,
+    /// Agent screenshot slot (ADR-004): decode thread publishes on
+    /// request; `EngineHandle::capture_screenshot` waits on it.
+    shot: Arc<ShotSlot>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     cfg: EngineConfig,
     cmd_rx: Receiver<EngineCmd>,
@@ -643,6 +892,7 @@ fn run(
     counters_arc: Arc<Mutex<EngineCounters>>,
     viewer_arc: Arc<Mutex<ViewerFacts>>,
     input_arc: Arc<Mutex<diag::InputStat>>,
+    shot: Arc<ShotSlot>,
 ) {
     let device_id = cfg.device_id.clone();
     let clock = Arc::new(MonotonicClock::new());
@@ -775,6 +1025,7 @@ fn run(
         last_uipi_emit: None,
         clock_origin: (Instant::now(), 0),
         caps_cache: None,
+        shot,
     };
     engine.clock_origin = (Instant::now(), engine.clock.now_ns());
 
@@ -932,6 +1183,7 @@ impl Engine {
                     pipeline.viewer_ctl.request_fullscreen_toggle();
                 }
             }
+            EngineCmd::AgentInput(batch) => self.send_agent_input(batch),
             EngineCmd::Shutdown => unreachable!("handled by the loop"),
         }
     }
@@ -1373,6 +1625,7 @@ impl Engine {
             1280,
             720,
             scale,
+            Arc::clone(&self.shot),
         );
         match started {
             Ok(pipeline) => {
@@ -1508,6 +1761,27 @@ impl Engine {
             let msg = WireMessage::Input(event);
             if let Err(err) = self.node.send_wire(channel, &msg) {
                 eprintln!("[engine] viewer input send: {err}");
+            }
+        }
+    }
+
+    /// ADR-004 (RD-017): synthetic agent input rides the same wire channels
+    /// and shared per-channel seq counters as viewer input. The batch is
+    /// capped drop-oldest (invariant 3 — newest actions win, exactly the
+    /// input-fast semantics) and dropped entirely when no controller
+    /// pipeline (and therefore no session) exists.
+    fn send_agent_input(&mut self, mut batch: Vec<AgentInput>) {
+        if self.controller_pipeline.is_none() {
+            return;
+        }
+        if batch.len() > MAX_AGENT_BATCH {
+            batch = batch.split_off(batch.len() - MAX_AGENT_BATCH);
+        }
+        let wire = agent_to_wire_events(&batch, &mut self.fast_seq, &mut self.reliable_seq);
+        for (channel, event) in wire {
+            let msg = WireMessage::Input(event);
+            if let Err(err) = self.node.send_wire(channel, &msg) {
+                eprintln!("[engine] agent input send: {err}");
             }
         }
     }
@@ -2112,11 +2386,17 @@ fn shared_features() -> FeatureFlags {
 }
 
 fn controller_caps() -> Capabilities {
+    let mut features = shared_features();
+    // ADR-004: in `--mcp` mode this instance is driven by a local AI
+    // agent — advertise it so the host consent prompt is distinct.
+    if mcp_mode() {
+        features = features.with(FeatureFlags::AI_SESSION);
+    }
     Capabilities {
         encoders: vec![],
         monitors: vec![],
         max_bitrate_kbps: 50_000,
-        features: shared_features(),
+        features,
     }
 }
 

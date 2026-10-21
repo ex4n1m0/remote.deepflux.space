@@ -69,6 +69,12 @@ fn with_account<T>(
 /// Create the engine thread (signaling connection + runtime). Idempotent.
 #[tauri::command]
 pub fn engine_start(app: AppHandle) -> CmdResult<EngineStatusDto> {
+    start_engine(&app)
+}
+
+/// Shared engine-start path: the typed command above and the MCP bridge's
+/// auto-start (ADR-004, RD-018) both call this.
+pub(crate) fn start_engine(app: &AppHandle) -> CmdResult<EngineStatusDto> {
     {
         let services = app.state::<AppServices>();
         let guard = services.engine.lock().expect("engine slot");

@@ -88,6 +88,7 @@ impl ControllerPipeline {
         viewer_width: i32,
         viewer_height: i32,
         initial_scale: render_windows::ScaleMode,
+        shot: Arc<super::ShotSlot>,
     ) -> Result<Self, String> {
         let session_for_present = Arc::clone(&session);
         let decoder_pool = Arc::clone(&codec_pool.decoder);
@@ -137,10 +138,15 @@ impl ControllerPipeline {
             let keyframe_needed = Arc::clone(&keyframe_needed);
             let clock = Arc::clone(&clock);
             let device = device.clone();
+            let shot = Arc::clone(&shot);
             joins.push(
                 std::thread::Builder::new()
                     .name("decode".into())
                     .spawn(move || {
+                        // Separate device clone for the agent screenshot
+                        // tap (ADR-004): the decoder takes ownership of
+                        // `device` below.
+                        let tap_device = device.clone();
                         let mut decoder = match decoder_pool.lock().expect("decoder pool").take() {
                             Some(mut decoder) => {
                                 // MF threading: this thread is the MFT's
@@ -198,6 +204,16 @@ impl ControllerPipeline {
                             ) {
                                 Ok(decoded) => {
                                     counters.decoded.fetch_add(1, Ordering::Relaxed);
+                                    // ADR-004 (RD-016): agent screenshot tap
+                                    // — one capture per request, on the
+                                    // decode thread, off the video path.
+                                    if shot.take_pending() {
+                                        let capture =
+                                            node_runtime::screenshot::Screenshotter::new()
+                                                .capture(&tap_device, &decoded)
+                                                .map_err(|err| format!("{err:?}"));
+                                        shot.publish(capture);
+                                    }
                                     let done_ns = clock.now_ns();
                                     let _ = q_out.push(DecItem {
                                         frame_id: frame_id.unwrap_or(u64::MAX),

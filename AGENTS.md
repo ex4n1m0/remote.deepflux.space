@@ -48,6 +48,13 @@ Key docs: `docs/adr/ADR-001-architecture.md`,
 ## Non-negotiable invariants
 
 1. No frame bytes through Tauri IPC, React state, JSON, or canvas — ever.
+   **Sanctioned exception (ADR-004, 2026-10-21):** the controller-side
+   agent frame tap (`node_runtime::screenshot` → `ShotSlot` → the local
+   MCP bridge in `apps/desktop` `--mcp` mode) turns a decoded frame into a
+   downscaled JPEG served **only** to the local, explicitly authorized
+   stdio MCP client, at agent rates (≤ 2 fps), opt-in per session — never
+   through Tauri IPC, never on the real-time video path. ADR-004 §4 is the
+   gate; code claiming this exception must cite it.
 2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes, and —
    since ADR-003 (2026-10-01) — account verifiers plus encrypted-roster
    ciphertext. Never frame, input, or cursor bytes; never plaintext user
@@ -122,6 +129,13 @@ ADR-003):
    `account_fixtures` test. Binary fields are lowercase `*_hex`. The
    `RosterDoc` plaintext (also in `crates/protocol`) is a durable
    client-side format: it only ever travels inside AES-256-GCM ciphertext.
+
+Capability flags (`protocol::capabilities::FeatureFlags`, a JSON u32
+bitmask re-negotiated in binary on the direct path) are additive: a peer
+that predates a bit parses and ignores it. Current bits: trickle-ice,
+cursor-channel, input-fast, h264-hardware, and — ADR-004 (2026-10-21) —
+`AI_SESSION = 1<<4`, which changes only the host consent prompt's wording
+(an agent-driven controller), never a capability.
 
 Rules:
 

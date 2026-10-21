@@ -47,3 +47,6 @@ scrypt = { workspace = true }
 aes-gcm = { workspace = true }
 zeroize = { workspace = true }
 hex = { workspace = true }
+
+# Agent frame tap (ADR-004, RD-016): JPEG screenshot encoding, pure Rust.
+image = { workspace = true }
