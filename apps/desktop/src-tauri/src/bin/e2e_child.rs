@@ -168,6 +168,8 @@ struct Verdict {
     agent_shot_ok: bool,
     agent_shot_bytes: u64,
     agent_shot_dims: String,
+    agent_shot_ms: u64,
+    agent_shot2_ms: u64,
     agent_input_sent: bool,
 }
 
@@ -394,9 +396,22 @@ fn run_controller(
     eprintln!("[e2e-ctrl] Connected; streaming");
     // ADR-004 (RD-019): agent-path probe — the screenshot tap serves a
     // real JPEG of the decoded stream, and synthetic agent input reaches
-    // the host's recording sink through the normal wire path.
+    // the host's recording sink through the normal wire path. The tap
+    // duration is recorded: it is the agent-loop latency floor (screenshot
+    // request → JPEG in hand), reported in docs/reports.
     if args.agent_probe {
+        let shot_started = Instant::now();
         let shot = handle.capture_screenshot(Duration::from_secs(8));
+        verdict.agent_shot_ms = shot_started.elapsed().as_millis() as u64;
+        // Steady-state capture one second later: the cold number above
+        // includes waiting for the stream's first frames after connect;
+        // this one measures the loop's real floor (frame cadence +
+        // readback + convert + resize + JPEG).
+        std::thread::sleep(Duration::from_secs(1));
+        let shot2_started = Instant::now();
+        let shot2 = handle.capture_screenshot(Duration::from_secs(8));
+        verdict.agent_shot2_ms = shot2_started.elapsed().as_millis() as u64;
+        let shot = shot.or(shot2);
         match shot {
             Some(meta) => {
                 verdict.agent_shot_ok = meta.jpeg.len() > 100
@@ -430,10 +445,12 @@ fn run_controller(
         ]));
         verdict.agent_input_sent = sent.is_ok();
         eprintln!(
-            "[e2e-ctrl] agent probe: shot_ok={} bytes={} dims={} input_sent={}",
+            "[e2e-ctrl] agent probe: shot_ok={} bytes={} dims={} tap_ms={} steady_tap_ms={} input_sent={}",
             verdict.agent_shot_ok,
             verdict.agent_shot_bytes,
             verdict.agent_shot_dims,
+            verdict.agent_shot_ms,
+            verdict.agent_shot2_ms,
             verdict.agent_input_sent
         );
     }
@@ -657,6 +674,8 @@ fn write_verdict(args: &Args, verdict: Verdict) {
         "agent_shot_ok": verdict.agent_shot_ok,
         "agent_shot_bytes": verdict.agent_shot_bytes,
         "agent_shot_dims": verdict.agent_shot_dims,
+        "agent_shot_ms": verdict.agent_shot_ms,
+        "agent_shot2_ms": verdict.agent_shot2_ms,
         "agent_input_sent": verdict.agent_input_sent,
     });
     let tmp = args.status_file.with_extension("tmp");

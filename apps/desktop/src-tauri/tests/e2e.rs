@@ -352,9 +352,10 @@ fn two_instances_full_session_over_local_signaling() {
     // wire path into the host's recording sink.
     assert!(
         get_bool(&ctrl, "/verdict/agent_shot_ok"),
-        "agent screenshot tap produced a JPEG (dims: {:?}, bytes: {})",
+        "agent screenshot tap produced a JPEG (dims: {:?}, bytes: {}, tap ms: {})",
         get_str(&ctrl, "/verdict/agent_shot_dims"),
-        get_u64(&ctrl, "/verdict/agent_shot_bytes")
+        get_u64(&ctrl, "/verdict/agent_shot_bytes"),
+        get_u64(&ctrl, "/verdict/agent_shot_ms")
     );
     assert!(
         get_u64(&ctrl, "/verdict/agent_shot_bytes") > 100,

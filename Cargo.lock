@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "capture-windows"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "codec-windows",
  "diagnostics",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "codec-windows"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "diagnostics",
  "frame-surface",
@@ -926,7 +926,7 @@ dependencies = [
 
 [[package]]
 name = "diagnostics"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1250,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "frame-surface"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "windows 0.62.2",
 ]
@@ -1977,7 +1977,7 @@ dependencies = [
 
 [[package]]
 name = "input-windows"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "protocol",
  "windows 0.62.2",
@@ -2452,7 +2452,7 @@ dependencies = [
 
 [[package]]
 name = "node-runtime"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes-gcm",
  "capture-windows",
@@ -3170,7 +3170,7 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bincode",
  "serde",
@@ -3394,7 +3394,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "remote-desktop-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "capture-windows",
@@ -3429,7 +3429,7 @@ dependencies = [
 
 [[package]]
 name = "render-windows"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "diagnostics",
  "frame-surface",
@@ -4234,7 +4234,7 @@ dependencies = [
 
 [[package]]
 name = "session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "protocol",
 ]
@@ -5109,7 +5109,7 @@ dependencies = [
 
 [[package]]
 name = "transport-webrtc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "bytes",

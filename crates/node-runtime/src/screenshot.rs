@@ -150,33 +150,47 @@ pub fn scale_dims(w: u32, h: u32, max_edge: u32) -> (u32, u32) {
 
 /// Bilinear downscale of a tight RGB buffer (also fine for upscale-safe
 /// same-size paths; callers only use it when `scale_dims` shrank).
+/// Fixed-point (8 fractional bits) so a 1080p desktop screenshot resizes
+/// in a few milliseconds on the agent loop.
 pub fn resize_rgb_bilinear(src: &[u8], w: u32, h: u32, sw: u32, sh: u32) -> Vec<u8> {
+    const FRAC: u32 = 8;
+    const SCALE: u32 = 1 << FRAC;
+    const MASK: u32 = SCALE - 1;
     let (w, h, sw, sh) = (w as usize, h as usize, sw as usize, sh as usize);
     let mut out = vec![0u8; sw * sh * 3];
+    // Fixed-point source position per output pixel, center-biased (+0.5).
+    let step_x = (w as u64 * SCALE as u64 / sw as u64) as u32;
+    let step_y = (h as u64 * SCALE as u64 / sh as u64) as u32;
     for dy in 0..sh {
-        let sy = (dy as f64 + 0.5) * h as f64 / sh as f64 - 0.5;
-        let y0 = sy.floor().max(0.0) as usize;
+        let pos_y = (dy as u32 * step_y + (SCALE >> 1)).min((h - 1) as u32 * SCALE);
+        let y0 = (pos_y >> FRAC) as usize;
         let y1 = (y0 + 1).min(h - 1);
-        let fy = (sy - y0 as f64).clamp(0.0, 1.0);
+        let fy = pos_y & MASK;
         for dx in 0..sw {
-            let sx = (dx as f64 + 0.5) * w as f64 / sw as f64 - 0.5;
-            let x0 = sx.floor().max(0.0) as usize;
+            let pos_x = (dx as u32 * step_x + (SCALE >> 1)).min((w - 1) as u32 * SCALE);
+            let x0 = (pos_x >> FRAC) as usize;
             let x1 = (x0 + 1).min(w - 1);
-            let fx = (sx - x0 as f64).clamp(0.0, 1.0);
-            let (mut r, mut g, mut b) = (0.0f64, 0.0f64, 0.0f64);
-            for (yi, wy) in [(y0, 1.0 - fy), (y1, fy)] {
-                for (xi, wx) in [(x0, 1.0 - fx), (x1, fx)] {
-                    let p = (yi * w + xi) * 3;
-                    let weight = wy * wx;
-                    r += src[p] as f64 * weight;
-                    g += src[p + 1] as f64 * weight;
-                    b += src[p + 2] as f64 * weight;
-                }
-            }
+            let fx = pos_x & MASK;
+            let (w00, w01, w10, w11) = (
+                (SCALE - fx) * (SCALE - fy),
+                fx * (SCALE - fy),
+                (SCALE - fx) * fy,
+                fx * fy,
+            );
+            let (p00, p01, p10, p11) = (
+                (y0 * w + x0) * 3,
+                (y0 * w + x1) * 3,
+                (y1 * w + x0) * 3,
+                (y1 * w + x1) * 3,
+            );
             let out_px = (dy * sw + dx) * 3;
-            out[out_px] = r.round() as u8;
-            out[out_px + 1] = g.round() as u8;
-            out[out_px + 2] = b.round() as u8;
+            for c in 0..3 {
+                let v = src[p00 + c] as u32 * w00
+                    + src[p01 + c] as u32 * w01
+                    + src[p10 + c] as u32 * w10
+                    + src[p11 + c] as u32 * w11;
+                out[out_px + c] = ((v + ((SCALE * SCALE) >> 1)) >> (2 * FRAC)) as u8;
+            }
         }
     }
     out
@@ -247,5 +261,36 @@ mod tests {
         let jpeg = encode_jpeg(&rgb, 16, 16, 80).expect("encode");
         assert_eq!(&jpeg[..2], &[0xFF, 0xD8]);
         assert!(jpeg.len() > 100);
+    }
+
+    /// Timing reference for the agent loop's local cost (ADR-004, RD-016):
+    /// resize + JPEG of one 1080p frame, no GPU. Run in release:
+    /// `cargo test -p node-runtime --lib screenshot --release -- --ignored --nocapture`
+    #[test]
+    #[ignore = "timing reference only (no assertions)"]
+    fn timing_reference_1080p_resize_and_encode() {
+        let (w, h) = (1920u32, 1088u32);
+        let mut rgb = vec![0u8; w as usize * h as usize * 3];
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let p = (y * w as usize + x) * 3;
+                rgb[p] = (x % 256) as u8;
+                rgb[p + 1] = (y % 256) as u8;
+                rgb[p + 2] = ((x ^ y) % 256) as u8;
+            }
+        }
+        let (sw, sh) = scale_dims(w, h, 1600);
+        let started = std::time::Instant::now();
+        let resized = resize_rgb_bilinear(&rgb, w, h, sw, sh);
+        let jpeg = encode_jpeg(&resized, sw, sh, 80).expect("encode");
+        eprintln!(
+            "resize {}x{} -> {}x{} + jpeg(q80, {} bytes): {:?}",
+            w,
+            h,
+            sw,
+            sh,
+            jpeg.len(),
+            started.elapsed()
+        );
     }
 }

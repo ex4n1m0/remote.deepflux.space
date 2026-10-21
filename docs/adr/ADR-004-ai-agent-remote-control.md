@@ -1,6 +1,10 @@
 # ADR-004: AI-agent control of the remote machine
 
-- Status: Accepted (post-MVP, 2026-10-21)
+- Status: Accepted (post-MVP, 2026-10-21); **RD-015–RD-018 landed
+  2026-10-21** (`d44abd3` consent plumbing, `ae93b2b` frame tap + agent
+  input + MCP bridge). Delivery report: `docs/reports/rd15-ai-agent-control.md`;
+  usage: `docs/ai-agent-mcp-usage.md`. The §5 safety posture below was
+  amended in the same release (v1 panic-control resolution).
 - Deciders: main session (integrator), on the user's 2026-10-20 directive to
   act on the deep study
 - Sources: `docs/research/ai-agent-remote-control.md` (the study),
@@ -82,13 +86,18 @@ Recording them here is the gate; code that claims them must cite this ADR.
 
 ### 5. Safety requirements v1 (RD-017 gates)
 
-Supervision by default (the human viewer can always take over; host-side
-local input preempts agent input); a host-side panic control that
-immediately stops agent control; **no remote shell** — pixels and input
-only (the same line HopToDesk drew); step budgets and rate limits reusing
-the existing bounded-queue drop policy; screenshots treated as untrusted
-input (prompt-injection posture) — credentials are typed by the human,
-never by the agent. A future exec channel would be its own ADR.
+Supervision by default: the viewer window is the supervision surface, and
+the host user can always take over with their own pointer or end the
+session. **v1's panic control is exactly that takeover plus Stop sharing /
+disconnect** (which triggers gap→AllKeysUp, releasing stuck keys): agent
+input is indistinguishable from human input at the wire by design, and an
+in-band input-source tag would be a wire change — deferred to a future
+`WIRE_VERSION` bump. **No remote shell** — pixels and input only (the same
+line HopToDesk drew); step budgets and rate limits reusing the existing
+bounded-queue drop policy (`MAX_AGENT_BATCH` drop-oldest); screenshots
+treated as untrusted input (prompt-injection posture) — credentials are
+typed by the human, never by the agent. A future exec channel would be its
+own ADR.
 
 ### 6. Phasing
 
