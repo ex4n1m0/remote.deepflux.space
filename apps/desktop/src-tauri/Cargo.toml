@@ -69,4 +69,6 @@ tokio = { workspace = true }
 base64 = { workspace = true }
 # Assistant provider client (ADR-005): OpenAI-compatible chat completions.
 ureq = { workspace = true }
+# Machine-chat sealing (ADR-005, RD-022): AES-256-GCM under pairing keys.
+aes-gcm = { workspace = true }
 

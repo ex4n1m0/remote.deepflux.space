@@ -178,6 +178,40 @@ pub fn tool_specs() -> Vec<Value> {
                 "required": ["delta_v"]
             }),
         ),
+        f(
+            "chat_send",
+            "Send a chat message to a machine (works with or without a session; paired machines only outside sessions). Use to_agent=true to address the other machine's assistant with an instruction (it will execute and reply).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "code": { "type": "string", "description": "The machine's connection code" },
+                    "text": { "type": "string" },
+                    "to_agent": { "type": "boolean", "description": "Address the peer's assistant (agent-to-agent instructions)" }
+                },
+                "required": ["code", "text"]
+            }),
+        ),
+        f(
+            "chat_read",
+            "Read chat history with a machine (newest last).",
+            json!({
+                "type": "object",
+                "properties": { "code": { "type": "string" } },
+                "required": ["code"]
+            }),
+        ),
+        f(
+            "local_task",
+            "Run a named maintenance recipe ON THIS MACHINE (the local user's own request, or an instruction from a paired machine's assistant). Recipes: temp_clean (delete temp files older than 24h + empty Recycle Bin), set_display_language (Windows display language, needs tag like pt-PT), system_info (disk space, memory, Windows version). Journaled; nothing else is executable.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "recipe": { "type": "string", "enum": ["temp_clean", "set_display_language", "system_info"] },
+                    "tag": { "type": "string", "description": "BCP-47 language tag for set_display_language, e.g. pt-PT or en-US" }
+                },
+                "required": ["recipe"]
+            }),
+        ),
     ]
 }
 
@@ -449,8 +483,147 @@ pub fn execute(
                 Err(e) => ToolOutput::text(format!("scroll failed: {e}")),
             }
         }
+        "chat_send" => {
+            let (Some(code), Some(text)) = (
+                args.get("code").and_then(|v| v.as_str()),
+                args.get("text").and_then(|v| v.as_str()),
+            ) else {
+                return ToolOutput::text("chat_send requires code and text");
+            };
+            let to_agent = args
+                .get("to_agent")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let result = (|| -> Result<(), String> {
+                let (base_url, token, me) = {
+                    let services = app.state::<crate::commands::AppServices>();
+                    let store = services.store.lock().expect("store");
+                    let s = store.settings().clone();
+                    (s.signaling_base_url, s.device_token, s.device_id)
+                };
+                let code = code.trim().to_lowercase();
+                let sender = if to_agent { "agent" } else { "user" };
+                crate::chat::record_outgoing(app, &code, sender, text);
+                // In-session rides the direct channel; otherwise the inbox.
+                let in_session = {
+                    let services = app.state::<crate::commands::AppServices>();
+                    services
+                        .engine
+                        .lock()
+                        .expect("engine slot")
+                        .as_ref()
+                        .is_some_and(|handle| {
+                            let s = handle.status();
+                            s.controller_state == "Connected" || s.host_state == "Connected"
+                        })
+                };
+                if in_session {
+                    let services = app.state::<crate::commands::AppServices>();
+                    let slot = services.engine.lock().expect("engine slot");
+                    if let Some(handle) = slot.as_ref() {
+                        return handle
+                            .send(engine::EngineCmd::ChatSend {
+                                body: text.to_owned(),
+                                agent: to_agent,
+                            })
+                            .map_err(|e| e.to_string());
+                    }
+                }
+                crate::chat::inbox_send(app, &base_url, &token, &me, &code, text)
+            })();
+            match result {
+                Ok(()) => ToolOutput::text(if to_agent {
+                    format!(
+                        "instruction sent to the assistant on {code} — poll chat_read for its reply"
+                    )
+                } else {
+                    format!("message sent to {code}")
+                }),
+                Err(e) => ToolOutput::text(format!("chat_send failed: {e}")),
+            }
+        }
+        "chat_read" => {
+            let Some(code) = args.get("code").and_then(|v| v.as_str()) else {
+                return ToolOutput::text("chat_read requires code");
+            };
+            let lines = crate::chat::history(app, &code.trim().to_lowercase());
+            let rendered = lines
+                .iter()
+                .map(|l| format!("[{}] {}: {}", l.sender, l.ts_ms, l.body))
+                .collect::<Vec<_>>()
+                .join("\n");
+            ToolOutput::text(if rendered.is_empty() {
+                "(no history with this machine)".to_owned()
+            } else {
+                rendered
+            })
+        }
+        "local_task" => local_task(args),
         other => ToolOutput::text(format!("unknown tool: {other}")),
     }
+}
+
+/// Allowlisted local maintenance recipes (ADR-005 §6, user decision 3,
+/// 2026-10-24). Fixed PowerShell command strings — the model picks a name
+/// and (for language) a validated BCP-47 tag; nothing else is executable.
+/// Every run is journaled (append-only local log) and its output returned.
+fn local_task(args: &Value) -> ToolOutput {
+    let Some(recipe) = args.get("recipe").and_then(|v| v.as_str()) else {
+        return ToolOutput::text("local_task requires {\"recipe\": ...}");
+    };
+    let (label, ps_script) = match recipe {
+        "temp_clean" => (
+            "temp files older than 24h + Recycle Bin".to_owned(),
+            "$cut=(Get-Date).AddDays(-1); Get-ChildItem $env:TEMP -Recurse -File -ErrorAction SilentlyContinue | Where-Object {$_.LastWriteTime -lt $cut} | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue } catch {}; 'temp cleanup done'".to_owned(),
+        ),
+        "set_display_language" => {
+            let Some(tag) = args.get("tag").and_then(|v| v.as_str()) else {
+                return ToolOutput::text("set_display_language requires {\"tag\": \"pt-PT\"}");
+            };
+            let tag = tag.trim();
+            // BCP-47 shape guard: letters/digits/hyphen, 2-10 per subtag.
+            let valid = tag.len() <= 20
+                && tag.split('-').all(|s| (2..=10).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric()));
+            if !valid {
+                return ToolOutput::text(format!("invalid language tag: {tag} (expected e.g. pt-PT)"));
+            }
+            (
+                format!("display language -> {tag}"),
+                format!("Set-WinUILanguageOverride -Language {tag}; Set-Culture {tag}; Set-SystemPreferredUILanguage {tag}; 'language set to {tag} (sign-out applies it)'"),
+            )
+        }
+        "system_info" => (
+            "disk + memory + OS info".to_owned(),
+            "Get-PSDrive -PSProvider FileSystem | Select-Object Name,@{n='UsedGB';e={[math]::Round($_.Used/1GB,1)}},@{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}} | ConvertTo-Json -Compress; (Get-CimInstance Win32_OperatingSystem).Caption + ' ' + (Get-CimInstance Win32_OperatingSystem).Version; 'RAM free GB: ' + [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)".to_owned(),
+        ),
+        other => return ToolOutput::text(format!("unknown recipe: {other}")),
+    };
+    let journal = format!(
+        "[{}] local_task {} ({label})",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0),
+        recipe
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output();
+    let result = match output {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let mut text = stdout.trim().to_owned();
+            if !stderr.trim().is_empty() {
+                text.push_str("\n[stderr] ");
+                text.push_str(stderr.trim());
+            }
+            text.truncate(4000);
+            format!("{label}: {text}")
+        }
+        Err(e) => format!("{label}: failed to run powershell: {e}"),
+    };
+    ToolOutput::text(format!("{result}\n[journal] {journal}"))
 }
 
 fn with_engine<T>(

@@ -39,6 +39,12 @@ pub struct ObserverFlags {
     pub force_keyframe: bool,
     /// Capabilities learned from `Hello`/`HelloAck` (the peer's).
     pub peer_caps: Option<Capabilities>,
+    /// RD-022: chat messages received on the `chat` channel (consumed by
+    /// the engine loop; persisted + emitted by the app layer).
+    pub chat_in: Vec<protocol::wire::ChatMessage>,
+    /// RD-023: host received a pairing offer — the loop auto-acks it
+    /// (the session's consent click was the trust ceremony).
+    pub pair_offer_in: Option<String>,
 }
 
 pub struct EngineObserver {
@@ -234,6 +240,29 @@ impl NodeObserver for EngineObserver {
             }
             (Channel::Control, WireMessage::KeyframeRequest) => {
                 self.flags.lock().expect("observer flags").force_keyframe = true;
+            }
+            (Channel::Chat, WireMessage::Chat(chat)) => {
+                // RD-022: hand to the loop → app-layer persistence/events.
+                self.flags
+                    .lock()
+                    .expect("observer flags")
+                    .chat_in
+                    .push(chat.clone());
+            }
+            (Channel::Control, WireMessage::PairOffer { secret_hex }) => {
+                // RD-023: host side — record + auto-ack (loop sends the ack;
+                // the app layer persists the pairing from the event below).
+                self.flags.lock().expect("observer flags").pair_offer_in = Some(secret_hex.clone());
+                self.emit(EngineEvent::PairOfferReceived {
+                    controller_device_id: self.shared.current_peer().unwrap_or_default(),
+                    secret_hex: secret_hex.clone(),
+                });
+            }
+            (Channel::Control, WireMessage::PairAck) => {
+                // RD-023: controller side — the host recorded our offer.
+                self.emit(EngineEvent::PairAckReceived {
+                    host_device_id: self.shared.current_peer().unwrap_or_default(),
+                });
             }
             (Channel::Control, WireMessage::SetQuality { preset }) => {
                 self.shared.set_quality(*preset);

@@ -13,6 +13,10 @@
     "api/account.js": {
       "runtime": "@vercel/node@15.0.0",
       "maxDuration": 10
+    },
+    "api/chat.js": {
+      "runtime": "@vercel/node@15.0.0",
+      "maxDuration": 10
     }
   }
 }

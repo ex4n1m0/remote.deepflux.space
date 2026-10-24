@@ -36,6 +36,17 @@ export const ASSISTANT_EVENT = {
   error: "assistant://error",
 } as const;
 
+/** Machine chat (RD-022): the engine://chat event payload + APIs. */
+export const CHAT_EVENT = "engine://chat";
+
+export interface ChatLine {
+  id: number;
+  ts_ms: number;
+  /** user | agent | peer-user | peer-agent (this machine's perspective). */
+  sender: string;
+  body: string;
+}
+
 export interface AssistantStatus {
   configured: boolean;
   busy: boolean;
@@ -107,6 +118,14 @@ export const api = {
     invoke("agent_configure", { args }),
   agentSend: (text: string): Promise<void> => invoke("agent_send", { args: { text } }),
   agentReset: (): Promise<void> => invoke("agent_reset"),
+
+  // Machine chat + pairing (RD-022/RD-023).
+  chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
+    invoke("chat_send", { args: { code, text, agent } }),
+  chatHistory: (code: string): Promise<ChatLine[]> => invoke("chat_history", { code }),
+  pairingsList: (): Promise<Array<{ code: string; created_ms: number; pending_ack: boolean }>> =>
+    invoke("pairings_list"),
+  pairingRemove: (code: string): Promise<void> => invoke("pairing_remove", { code }),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

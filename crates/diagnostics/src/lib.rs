@@ -95,6 +95,8 @@ pub enum QueueKind {
     ChannelInputReliable,
     ChannelControl,
     ChannelCursor,
+    /// RD-022: the machine-to-machine chat channel.
+    ChannelChat,
 }
 
 /// One queue-depth sample with cumulative lifetime counters (QA F5).

@@ -2503,6 +2503,7 @@ fn run(args: Args) -> i32 {
                         Channel::InputFast => QueueKind::ChannelInputFast,
                         Channel::InputReliable => QueueKind::ChannelInputReliable,
                         Channel::Cursor => QueueKind::ChannelCursor,
+                        Channel::Chat => QueueKind::ChannelChat,
                     };
                     let at_ns =
                         now_ns.saturating_sub(uptime_now.saturating_sub(entry.at_uptime_ns));

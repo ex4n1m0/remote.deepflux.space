@@ -5,6 +5,7 @@
 
 pub mod account;
 pub mod agent;
+pub mod chat;
 pub mod commands;
 pub mod credstore;
 pub mod engine;
@@ -46,6 +47,9 @@ pub fn run() {
             app.state::<AppServices>()
                 .assistant
                 .spawn(app.handle().clone());
+            // Machine-chat inbox poller (RD-022): out-of-session chat is
+            // always available while the app runs.
+            chat::spawn_poller(app.handle().clone());
             if engine::mcp_mode() {
                 // The bridge is the front door in this mode: start the
                 // engine without UI interaction (errors surface on the
@@ -108,6 +112,10 @@ pub fn run() {
             agent::agent_status,
             agent::agent_send,
             agent::agent_reset,
+            commands::chat_send,
+            commands::chat_history,
+            commands::pairings_list,
+            commands::pairing_remove,
         ])
         .run(tauri::generate_context!())
         .expect("tauri shell run");

@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import { useEngine } from "./hooks/useEngine";
 import { useAccount } from "./hooks/useAccount";
 import { useAssistant } from "./hooks/useAssistant";
+import { useChat } from "./hooks/useChat";
 import { SettingsPanel } from "./components/IdentityCard";
 import { MachinesRail, unifiedMachines } from "./components/MachinesRail";
 import { AssistantPanel } from "./components/AssistantPanel";
+import { Conversation } from "./components/Conversation";
 import { Onboarding } from "./components/Onboarding";
 import { ConnectPanel, SessionControls } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
@@ -28,6 +30,7 @@ export default function App() {
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const chat = useChat(selectedCode);
 
   // Ctrl+Shift+D toggles the diagnostics overlay (keyboard accessibility).
   useEffect(() => {
@@ -309,6 +312,8 @@ export default function App() {
               </p>
             </div>
           )}
+
+          <Conversation name={selected?.name ?? null} chat={chat} />
 
           <ConnectPanel
             controllerState={ui.controllerState}

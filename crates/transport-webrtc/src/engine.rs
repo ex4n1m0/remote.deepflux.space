@@ -328,6 +328,9 @@ impl ChannelSlot {
             Channel::Control | Channel::InputReliable => (RELIABLE_QUEUE_CAPACITY, false),
             Channel::InputFast => (FAST_QUEUE_CAPACITY, true),
             Channel::Cursor => (CURSOR_QUEUE_CAPACITY, true),
+            // Chat (RD-022): reliable, small bounded queue (text is tiny;
+            // the bound exists so a runaway sender cannot grow memory).
+            Channel::Chat => (RELIABLE_QUEUE_CAPACITY, false),
         };
         Self {
             channel,

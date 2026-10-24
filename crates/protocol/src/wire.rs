@@ -43,7 +43,13 @@ use crate::capabilities::Capabilities;
 
 /// Current binary wire version. Bump is an explicit contract change and must
 /// update the compatibility tests in this module.
-pub const WIRE_VERSION: u8 = 0;
+///
+/// v1 (RD-022, ADR-005): added the `chat` channel carrying
+/// [`WireMessage::Chat`] and the pairing handshake
+/// ([`WireMessage::PairOffer`]/[`WireMessage::PairAck`]) on `control`.
+/// Appended at the end of the enum — v0 peers reject v1 framing with a
+/// typed version error (no garbage decode).
+pub const WIRE_VERSION: u8 = 1;
 
 /// Decode limit for a single data-channel message. Input/control messages are
 /// a few dozen bytes; cursor shapes are bounded by the largest Windows cursor
@@ -87,6 +93,48 @@ pub enum WireMessage {
 
     // ---- `cursor` channel (latest-state oriented) ----
     Cursor(CursorMessage),
+
+    // ---- `chat` channel (ordered, reliable; RD-022 / ADR-005) ----
+    /// One chat message between the machines (in-session). The channel is
+    /// DTLS-encrypted; `sender` distinguishes the human from the agent so
+    /// the peer's assistant can act on agent-addressed instructions
+    /// (ADR-005 §4). Body is user text — never logged (invariant 6).
+    Chat(ChatMessage),
+
+    // ---- pairing handshake on `control` (RD-023 / ADR-005 §5) ----
+    /// Controller → host, once per session when not yet paired: a fresh
+    /// 32-byte pairing secret (hex). The host's consent click on this
+    /// session is the trust ceremony; both sides store the secret for
+    /// silent reconnects + out-of-session chat sealing.
+    PairOffer {
+        secret_hex: String,
+    },
+    /// Host → controller: pairing recorded. The controller keeps the
+    /// secret it offered.
+    PairAck,
+}
+
+/// Who authored a chat message (drives UI styling + agent handling).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatSender {
+    /// The human at the sending machine.
+    User,
+    /// The sending machine's assistant (ADR-005 §4 agent-to-agent flow).
+    Agent,
+}
+
+/// One machine-to-machine chat message (RD-022).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatMessage {
+    /// Sender-minted id (millisecond timestamp; dedupe/ordering hint).
+    pub id: u64,
+    /// Wall-clock ms at the sender (display only; clocks may differ).
+    pub ts_ms: u64,
+    pub sender: ChatSender,
+    /// Plain user text. Sealed under the pairing key off-session; inside a
+    /// session the DTLS channel already encrypts it.
+    pub body: String,
 }
 
 /// Quality presets understood by the host encoder controller.
@@ -482,7 +530,7 @@ mod tests {
     #[test]
     fn unknown_variant_index_is_corrupted_not_garbage() {
         // Claim an out-of-range variant index (varint-encoded 999; the enum
-        // has 10 variants). Layout: [version][varint variant index][...].
+        // has 13 variants). Layout: [version][varint variant index][...].
         let mut bytes = vec![WIRE_VERSION, 0xE7, 0x07];
         bytes.extend_from_slice(&[0u8; 8]);
         assert!(matches!(
@@ -623,7 +671,7 @@ mod tests {
         }
         let cases: Vec<(WireMessage, &str)> = vec![
             // Ping: [version][variant 2][nonce 42]
-            (WireMessage::Ping { nonce: 42 }, "00022a"),
+            (WireMessage::Ping { nonce: 42 }, "01022a"),
             // Input/Key: [version][variant 8][InputEvent::Key=3][seq 10]
             // [scan 29][extended false][Pressed=0]
             (
@@ -633,14 +681,50 @@ mod tests {
                     extended: false,
                     state: ButtonState::Pressed,
                 }),
-                "0008030a1d0000",
+                "0108030a1d0000",
             ),
             // Cursor/Hide: [version][variant 9][CursorMessage::Hide=2]
-            (WireMessage::Cursor(CursorMessage::Hide), "000902"),
+            (WireMessage::Cursor(CursorMessage::Hide), "010902"),
         ];
         for (message, expected) in cases {
             let encoded = encode(&message);
             assert_eq!(hex(&encoded), expected, "layout drift for {message:?}");
         }
+    }
+
+    /// RD-022: v1 added Chat (variant 10) and PairOffer/PairAck (11/12).
+    /// Round-trips must work and the version byte must be 1; the byte
+    /// layouts below pin v1 exactly (regenerate deliberately, never
+    /// silently).
+    #[test]
+    fn v1_chat_and_pairing_round_trip_and_pin() {
+        fn hex(bytes: &[u8]) -> String {
+            bytes.iter().map(|b| format!("{b:02x}")).collect()
+        }
+        let chat = WireMessage::Chat(ChatMessage {
+            id: 7,
+            ts_ms: 9,
+            sender: ChatSender::User,
+            body: "hi mom".to_owned(),
+        });
+        let encoded = encode(&chat);
+        assert_eq!(encoded[0], 1, "v1 framing");
+        assert_eq!(
+            hex(&encoded),
+            "010a070900066869206d6f6d",
+            "Chat pin: [v1][variant 10][id 7][ts 9][User=0][len 6][utf-8]"
+        );
+        assert_eq!(decode(&encoded).unwrap(), chat);
+
+        let offer = WireMessage::PairOffer {
+            secret_hex: "ab".to_owned(),
+        };
+        let encoded = encode(&offer);
+        assert_eq!(encoded[0], 1);
+        assert_eq!(hex(&encoded), "010b026162");
+        assert_eq!(decode(&encoded).unwrap(), offer);
+        let ack = encode(&WireMessage::PairAck);
+        assert_eq!(hex(&ack), "010c");
+        assert_eq!(decode(&ack).unwrap(), WireMessage::PairAck);
     }
 }

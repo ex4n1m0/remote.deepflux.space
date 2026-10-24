@@ -40,13 +40,16 @@ use protocol::wire::WireMessage;
 /// controller `FrameTiming` halves on this value).
 pub const FRAME_ID_EXTENSION_URI: &str = "urn:rd:frame-id";
 
-/// Data-channel selectors. Exactly the four channels from the source plan.
+/// Data-channel selectors. The five session channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {
     Control,
     InputFast,
     InputReliable,
     Cursor,
+    /// Machine-to-machine chat (RD-022 / ADR-005): ordered + reliable,
+    /// lossless like `control`.
+    Chat,
 }
 
 impl Channel {
@@ -57,6 +60,7 @@ impl Channel {
             Channel::InputFast => "input-fast",
             Channel::InputReliable => "input-reliable",
             Channel::Cursor => "cursor",
+            Channel::Chat => "chat",
         }
     }
 
@@ -253,7 +257,7 @@ pub struct ChannelDepthSample {
 }
 
 /// Channel labels in the fixed order used by [`ChannelQueues`] arrays.
-pub const CHANNEL_LABELS: [&str; 4] = ["control", "input-fast", "input-reliable", "cursor"];
+pub const CHANNEL_LABELS: [&str; 5] = ["control", "input-fast", "input-reliable", "cursor", "chat"];
 
 /// Events surfaced by the transport to the node runtime. The runtime
 /// translates these into `session::HostEvent`/`ControllerEvent` and pipeline
@@ -462,13 +466,15 @@ mod tests {
         assert_eq!(Channel::InputFast.label(), "input-fast");
         assert_eq!(Channel::InputReliable.label(), "input-reliable");
         assert_eq!(Channel::Cursor.label(), "cursor");
+        assert_eq!(Channel::Chat.label(), "chat");
         assert_eq!(
             CHANNEL_LABELS,
-            ["control", "input-fast", "input-reliable", "cursor"]
+            ["control", "input-fast", "input-reliable", "cursor", "chat"]
         );
         assert!(Channel::InputFast.is_lossy());
         assert!(Channel::Cursor.is_lossy());
         assert!(!Channel::Control.is_lossy());
         assert!(!Channel::InputReliable.is_lossy());
+        assert!(!Channel::Chat.is_lossy());
     }
 }

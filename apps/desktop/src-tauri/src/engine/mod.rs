@@ -92,6 +92,18 @@ pub enum EngineCmd {
     /// to the same wire channels as viewer input with shared per-channel
     /// seq counters.
     AgentInput(Vec<AgentInput>),
+    /// ADR-005 (RD-022): send one chat message to the connected peer (the
+    /// loop routes it onto the `chat` channel; out-of-session sending is
+    /// the app layer's inbox path, not this command).
+    ChatSend {
+        body: String,
+        agent: bool,
+    },
+    /// ADR-005 (RD-023): controller side — offer pairing to the connected
+    /// host (fresh 32-byte secret hex).
+    SendPairOffer {
+        secret_hex: String,
+    },
     Shutdown,
 }
 
@@ -362,6 +374,26 @@ pub enum EngineEvent {
     },
     Info {
         message: String,
+    },
+    /// ADR-005 (RD-022): chat message received from the connected peer.
+    ChatReceived {
+        /// Peer device id (= connection code) of the sender.
+        peer: String,
+        id: u64,
+        ts_ms: u64,
+        /// "user" | "agent" (wire `ChatSender`).
+        sender: String,
+        body: String,
+    },
+    /// ADR-005 (RD-023): host received a pairing offer (auto-acked; the
+    /// app layer persists it).
+    PairOfferReceived {
+        controller_device_id: String,
+        secret_hex: String,
+    },
+    /// ADR-005 (RD-023): the host acknowledged our pairing offer.
+    PairAckReceived {
+        host_device_id: String,
     },
 }
 
@@ -1064,6 +1096,7 @@ fn run(
         engine.drain_host_output();
         engine.drain_controller_input();
         engine.drain_viewer_input();
+        engine.drain_chat_and_pairing();
 
         // ---- channel depth trail (F63): every depth change leaves a
         // sample even when the burst enqueues and drains between polls
@@ -1184,6 +1217,13 @@ impl Engine {
                 }
             }
             EngineCmd::AgentInput(batch) => self.send_agent_input(batch),
+            EngineCmd::ChatSend { body, agent } => self.send_chat(body, agent),
+            EngineCmd::SendPairOffer { secret_hex } => {
+                let msg = WireMessage::PairOffer { secret_hex };
+                if let Err(err) = self.node.send_wire(Channel::Control, &msg) {
+                    eprintln!("[engine] pair offer send: {err}");
+                }
+            }
             EngineCmd::Shutdown => unreachable!("handled by the loop"),
         }
     }
@@ -1317,6 +1357,8 @@ impl Engine {
             viewer_closed,
             force_keyframe,
             peer_caps,
+            chat_in,
+            pair_offer_in,
         } = flags;
         if let Some(caps) = peer_caps {
             self.peer_caps_seen(caps);
@@ -1324,6 +1366,8 @@ impl Engine {
         let mut next = observer::ObserverFlags {
             want_streaming,
             want_rendering,
+            chat_in,
+            pair_offer_in,
             ..observer::ObserverFlags::default()
         };
 
@@ -1786,6 +1830,56 @@ impl Engine {
         }
     }
 
+    /// ADR-005 (RD-022): send one chat message on the `chat` channel.
+    fn send_chat(&mut self, body: String, agent: bool) {
+        let message = protocol::wire::ChatMessage {
+            id: self.clock.now_ms(),
+            ts_ms: self.clock.now_ms(),
+            sender: if agent {
+                protocol::wire::ChatSender::Agent
+            } else {
+                protocol::wire::ChatSender::User
+            },
+            body,
+        };
+        let msg = WireMessage::Chat(message);
+        if let Err(err) = self.node.send_wire(Channel::Chat, &msg) {
+            eprintln!("[engine] chat send: {err}");
+        }
+    }
+
+    /// ADR-005 (RD-022/023): drain observer-side chat input + pairing
+    /// offers. Chat becomes events (app layer persists); a pairing offer
+    /// is auto-acked — the session's consent click was the ceremony.
+    fn drain_chat_and_pairing(&mut self) {
+        let (chat_in, pair_offer) = {
+            let mut flags = self.observer.flags.lock().expect("observer flags");
+            (
+                std::mem::take(&mut flags.chat_in),
+                flags.pair_offer_in.take(),
+            )
+        };
+        let peer = self.observer.current_peer().unwrap_or_default();
+        for chat in chat_in {
+            let _ = self.events.try_send(EngineEvent::ChatReceived {
+                peer: peer.clone(),
+                id: chat.id,
+                ts_ms: chat.ts_ms,
+                sender: match chat.sender {
+                    protocol::wire::ChatSender::User => "user".to_owned(),
+                    protocol::wire::ChatSender::Agent => "agent".to_owned(),
+                },
+                body: chat.body,
+            });
+        }
+        if pair_offer.is_some() {
+            let ack = WireMessage::PairAck;
+            if let Err(err) = self.node.send_wire(Channel::Control, &ack) {
+                eprintln!("[engine] pair ack send: {err}");
+            }
+        }
+    }
+
     fn sample_link_stats(&mut self) {
         if !self.node.has_transport() {
             return;
@@ -1862,6 +1956,7 @@ impl Engine {
                     diagnostics::QueueKind::ChannelInputReliable
                 }
                 transport_webrtc::Channel::Cursor => diagnostics::QueueKind::ChannelCursor,
+                transport_webrtc::Channel::Chat => diagnostics::QueueKind::ChannelChat,
             };
             let at_ns = now_ns.saturating_sub(uptime_now.saturating_sub(entry.at_uptime_ns));
             let (capacity, high_water, dropped, replaced) = match gauges.as_ref() {

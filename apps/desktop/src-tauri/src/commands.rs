@@ -25,6 +25,8 @@ pub mod events {
     pub const DIAGNOSTICS: &str = "engine://diagnostics";
     pub const ERROR: &str = "engine://error";
     pub const INFO: &str = "engine://info";
+    pub const CHAT: &str = "engine://chat";
+    pub const PAIRING: &str = "engine://pairing";
 }
 
 pub struct AppServices {
@@ -168,18 +170,30 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             controller_device_id,
             session_id,
             ai_session,
-        } => emit(
-            events::CONSENT,
-            Some(serde_json::json!({
-                "controller_device_id": controller_device_id,
-                "session_id": session_id,
-                "ai_session": ai_session
-            })),
-        ),
-        EngineEvent::SessionEstablished { session_id, peer } => emit(
-            events::SESSION_ESTABLISHED,
-            Some(serde_json::json!({ "session_id": session_id, "peer": peer })),
-        ),
+        } => {
+            // RD-023 (user decision 2, 2026-10-24): paired controllers are
+            // auto-accepted — silent full control. The emitted event still
+            // fires; the state change resolves any prompt within a tick.
+            crate::chat::auto_accept_if_paired(app, &controller_device_id);
+            emit(
+                events::CONSENT,
+                Some(serde_json::json!({
+                    "controller_device_id": controller_device_id,
+                    "session_id": session_id,
+                    "ai_session": ai_session
+                })),
+            );
+        }
+        EngineEvent::SessionEstablished { session_id, peer } => {
+            // RD-023: controller side — offer pairing on first contact.
+            if let Some(peer) = peer.as_deref() {
+                crate::chat::offer_pairing_if_new(app, peer);
+            }
+            emit(
+                events::SESSION_ESTABLISHED,
+                Some(serde_json::json!({ "session_id": session_id, "peer": peer })),
+            );
+        }
         EngineEvent::SessionEnded {
             cause,
             code,
@@ -223,6 +237,40 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             events::INFO,
             Some(serde_json::json!({ "message": message })),
         ),
+        // ADR-005 (RD-022/023): chat + pairing are persisted app-side (the
+        // engine only transports), then forwarded to the webview.
+        EngineEvent::ChatReceived {
+            peer,
+            id,
+            ts_ms,
+            sender,
+            body,
+        } => {
+            crate::chat::record_incoming(app, &peer, id, ts_ms, &sender, &body);
+            emit(
+                events::CHAT,
+                Some(serde_json::json!({
+                    "peer": peer, "id": id, "ts_ms": ts_ms, "sender": sender, "body": body
+                })),
+            );
+        }
+        EngineEvent::PairOfferReceived {
+            controller_device_id,
+            secret_hex,
+        } => {
+            crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
+            emit(
+                events::PAIRING,
+                Some(serde_json::json!({ "device_id": controller_device_id, "paired": true })),
+            );
+        }
+        EngineEvent::PairAckReceived { host_device_id } => {
+            crate::chat::pairing_ack(app, &host_device_id);
+            emit(
+                events::PAIRING,
+                Some(serde_json::json!({ "device_id": host_device_id, "paired": true })),
+            );
+        }
     }
     true
 }
@@ -561,4 +609,79 @@ pub fn list_monitors(app: AppHandle) -> CmdResult<serde_json::Value> {
             "peer": status.peer_monitors,
         }))
     })
+}
+
+// -- machine chat + pairing (ADR-005, RD-022/RD-023) -----------------------
+
+#[derive(serde::Deserialize)]
+pub struct ChatSendArgs {
+    pub code: String,
+    pub text: String,
+    /// True when the local assistant authors the message (agent-to-agent).
+    #[serde(default)]
+    pub agent: bool,
+}
+
+/// Send one chat message to a machine: in-session over the direct `chat`
+/// channel, otherwise sealed through the signaling inbox.
+#[tauri::command]
+pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
+    let code = args.code.trim().to_lowercase();
+    let text = args.text.trim();
+    if text.is_empty() {
+        return Err("empty message".to_owned());
+    }
+    let sender = if args.agent { "agent" } else { "user" };
+    crate::chat::record_outgoing(&app, &code, sender, text);
+    let (in_session, base_url, token, me) = {
+        let services = app.state::<AppServices>();
+        let store = services.store.lock().expect("store");
+        let in_session = services
+            .engine
+            .lock()
+            .expect("engine slot")
+            .as_ref()
+            .is_some_and(|handle| {
+                let s = handle.status();
+                s.controller_state == "Connected" && s.session_id.is_some()
+                    || s.host_state == "Connected"
+            });
+        let settings = store.settings().clone();
+        (
+            in_session,
+            settings.signaling_base_url,
+            settings.device_token,
+            settings.device_id,
+        )
+    };
+    if in_session {
+        return with_engine(&app, |handle| {
+            handle
+                .send(EngineCmd::ChatSend {
+                    body: text.to_owned(),
+                    agent: args.agent,
+                })
+                .map_err(|e| e.to_string())
+        });
+    }
+    crate::chat::inbox_send(&app, &base_url, &token, &me, &code, text)
+}
+
+/// Chat history with one machine.
+#[tauri::command]
+pub fn chat_history(app: AppHandle, code: String) -> CmdResult<Vec<crate::chat::ChatLine>> {
+    Ok(crate::chat::history(&app, &code.trim().to_lowercase()))
+}
+
+/// Established pairings (trusted machines: silent reconnect + chat keys).
+#[tauri::command]
+pub fn pairings_list(app: AppHandle) -> CmdResult<Vec<crate::chat::Pairing>> {
+    Ok(crate::chat::pairings(&app))
+}
+
+/// Revoke a pairing: future connects prompt for consent again.
+#[tauri::command]
+pub fn pairing_remove(app: AppHandle, code: String) -> CmdResult<()> {
+    crate::chat::remove_pairing(&app, &code);
+    Ok(())
 }
