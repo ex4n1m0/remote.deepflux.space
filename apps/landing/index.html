@@ -36,13 +36,13 @@ nav ul{display:flex;gap:26px;list-style:none;font-size:14px;color:var(--muted)}
 nav ul a{color:var(--muted)}
 nav ul a:hover{color:var(--text);text-decoration:none}
 @media(max-width:640px){nav ul{display:none}}
-.hero{padding:96px 0 72px;position:relative;overflow:hidden}
+.hero{padding:64px 0 72px;position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;inset:-40% -20% auto;height:130%;background:
   radial-gradient(600px 300px at 30% 20%,rgba(91,140,255,.16),transparent 70%),
   radial-gradient(500px 280px at 75% 30%,rgba(56,208,198,.10),transparent 70%);pointer-events:none}
 .hero .wrap{position:relative}
-.hero-logo{display:block;width:min(420px,72vw);height:auto;border-radius:16px;margin:0 0 28px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.45)}
-@media(max-width:640px){.hero-logo{width:min(300px,80vw);margin:0 auto 24px}}
+.hero-logo{display:block;width:100%;height:auto;border-radius:18px;margin:0 0 32px;border:1px solid var(--line);box-shadow:0 24px 70px rgba(0,0,0,.5)}
+@media(max-width:640px){.hero{padding:40px 0 56px}.hero-logo{margin:0 0 24px}}
 .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg2);
   border-radius:999px;padding:5px 14px;font-size:13px;color:var(--muted);margin-bottom:28px}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
