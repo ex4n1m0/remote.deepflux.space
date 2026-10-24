@@ -1,15 +1,15 @@
 /** The shell: webview control surface only — video lives in the native
- * viewer window owned by the engine (invariant 1). The accounts phase
- * adds the onboarding gate (sign in / create / saved-account unlock) in
- * front of the main grid. */
+ * viewer window owned by the engine (invariant 1). Agent-first layout
+ * (ADR-005): machines rail (left) · selected machine / session (center) ·
+ * assistant panel (right). The accounts onboarding gate stays in front. */
 import { useEffect, useState } from "react";
 import { useEngine } from "./hooks/useEngine";
 import { useAccount } from "./hooks/useAccount";
-import { IdentityCard, SettingsPanel } from "./components/IdentityCard";
-import { Favorites } from "./components/Favorites";
-import { Computers } from "./components/Computers";
+import { useAssistant } from "./hooks/useAssistant";
+import { SettingsPanel } from "./components/IdentityCard";
+import { MachinesRail, unifiedMachines } from "./components/MachinesRail";
+import { AssistantPanel } from "./components/AssistantPanel";
 import { Onboarding } from "./components/Onboarding";
-import { HostPanel } from "./components/HostPanel";
 import { ConnectPanel, SessionControls } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
 import { ErrorBanner, StatusChip } from "./components/Common";
@@ -22,11 +22,12 @@ export default function App() {
   const [ui] = engine.ui;
   const account = useAccount();
   const [accountUi] = account.ui;
+  const assistant = useAssistant();
   const [showDiag, setShowDiag] = useState(false);
-  const [settingsOpenHint, setSettingsOpenHint] = useState(false);
-  // The onboarding card is also reachable later via the header's Sign in.
+  const [showSettings, setShowSettings] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
   // Ctrl+Shift+D toggles the diagnostics overlay (keyboard accessibility).
   useEffect(() => {
@@ -43,17 +44,10 @@ export default function App() {
   const host = hostView(ui.hostState);
   const controller = controllerView(ui.controllerState);
   const endCopy = ui.lastEnd ? disconnectCopy(ui.lastEnd.code) : null;
-  // Both inputs of the gate must be loaded (the skip flag lives in
-  // settings.json) or a restart could flash the onboarding card.
   const gate =
     engine.settings === null
       ? ("loading" as const)
       : accountGate(accountUi, engine.settings.skipped_onboarding, signInOpen);
-
-  const startEngine = () =>
-    engine.run(async () => {
-      await api.engineStart();
-    });
 
   const ensureEngine = async (): Promise<boolean> => {
     if (ui.engineStarted) {
@@ -67,12 +61,10 @@ export default function App() {
       engine.run(async () => {
         throw err;
       });
-      setSettingsOpenHint(true);
       return false;
     }
   };
 
-  /** Persist the skip flag so the gate opens straight into the main UI. */
   const skipOnboarding = async () => {
     setSignInOpen(false);
     if (engine.settings && !engine.settings.skipped_onboarding) {
@@ -80,8 +72,6 @@ export default function App() {
     }
   };
 
-  /** After a successful auth action: close the card + resync favorites
-   * (the roster write-back keeps the logged-out list coherent). */
   const afterAuth = async (error: string | null) => {
     if (error === null) {
       setSignInOpen(false);
@@ -91,8 +81,6 @@ export default function App() {
 
   const signOut = async () => {
     await account.logout();
-    // Sign-out behaves as an explicit skip: the main UI stays available
-    // (guest mode); "Sign in" in the header re-opens the card.
     if (engine.settings && !engine.settings.skipped_onboarding) {
       await engine.saveSettings({ ...engine.settings, skipped_onboarding: true });
     }
@@ -144,11 +132,26 @@ export default function App() {
   }
 
   const signedIn = accountUi.status === "logged_in";
+  const machines = unifiedMachines(
+    engine.favorites,
+    signedIn ? accountUi.computers : null,
+    signedIn ? accountUi.online : [],
+    ui.peerOnline,
+    selectedCode,
+  );
+  const selected = machines.find((m) => m.code === selectedCode) ?? null;
+  const sharing = ui.hostState !== "Idle" && ui.hostState !== "Registering";
+
+  const share = async () => {
+    if (await ensureEngine()) {
+      await engine.run(() => api.hostStart());
+    }
+  };
 
   return (
-    <div className="app">
+    <div className="app agent-first">
       <header className="app-head">
-        <h1>Remote Desktop</h1>
+        <h1>DeepFlux</h1>
         <div className="chips">
           <StatusChip tone={host.tone} label="Host" text={ui.hostState} />
           <StatusChip tone={controller.tone} label="Controller" text={ui.controllerState} />
@@ -177,6 +180,14 @@ export default function App() {
           <button
             type="button"
             className="ghost"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-pressed={showSettings}
+          >
+            Settings
+          </button>
+          <button
+            type="button"
+            className="ghost"
             onClick={() => setShowDiag((v) => !v)}
             aria-pressed={showDiag}
           >
@@ -197,58 +208,118 @@ export default function App() {
           message={ui.lastError.message}
           hint={ui.lastError.hint}
           onDismiss={() => {
-            /* engine errors are informational; the banner is replaced by the next one */
+            /* engine errors are informational; replaced by the next one */
           }}
         />
-      ) : null}
-      {endCopy && ui.controllerState === "Disconnected" ? (
-        <div className="banner banner-info" role="status">
-          <p>{endCopy.title}</p>
-          {endCopy.hint ? <p className="hint">{endCopy.hint}</p> : null}
-        </div>
       ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
 
       {!ui.engineStarted ? (
         <div className="banner banner-info" role="status">
           <p>
-            The engine is not started yet.{" "}
-            {settingsOpenHint ? "Configure the signaling URL in Settings, then " : ""}
-            press <strong>Start engine</strong> once the signaling service is configured.
+            The engine is not started yet — press <strong>Start engine</strong> once
+            the signaling service is configured (Settings), or just ask the
+            assistant to connect: it starts the engine for you.
           </p>
-          <button type="button" className="primary" onClick={startEngine}>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => engine.run(() => api.engineStart())}
+          >
             Start engine
           </button>
         </div>
       ) : null}
 
-      <main className="grid">
-        <HostPanel
+      <main className="workspace">
+        <MachinesRail
+          machines={machines}
+          thisCode={engine.identity?.connection_code ?? "…"}
           hostState={ui.hostState}
-          consent={ui.consent}
-          connectionCode={engine.identity?.connection_code ?? "…"}
-          onStart={async () => {
-            if (await ensureEngine()) {
-              await engine.run(() => api.hostStart());
-            }
+          sharing={sharing}
+          canConnect={controller.can.connect || ui.controllerState === "Online"}
+          onPick={(code) => setSelectedCode(code)}
+          onConnect={(code) => {
+            setSelectedCode(code);
+            void connectByCode(normalizeCode(code));
           }}
-          onStop={() => engine.run(() => api.hostStop())}
-          onAccept={() => engine.run(() => api.consentAccept())}
-          onReject={() => engine.run(() => api.consentReject())}
+          onAdd={async (name, code) => {
+            await api.addFavorite(name, code);
+            await engine.refreshFavorites();
+            setSelectedCode(code);
+          }}
+          onShare={() => void share()}
+          onStopShare={() => engine.run(() => api.hostStop())}
         />
-        <div>
+
+        <section className="center" aria-label="Selected machine">
+          {/* Host-side consent prompt: the one modal-ish interruption. */}
+          {host.can.accept && ui.consent ? (
+            <div className="consent center-card" role="alertdialog" aria-label="Connection request">
+              <p>
+                <strong>{ui.consent.controller_device_id}</strong>{" "}
+                {ui.consent.ai_session
+                  ? "requests AI-agent control of this machine."
+                  : "asks to control this machine."}
+              </p>
+              <p className="muted">
+                {ui.consent.ai_session
+                  ? "An AI agent will see the screen and drive mouse/keyboard for this one session. You can watch and take over at any time; the agent cannot type your passwords."
+                  : "Accepting hands over screen viewing and keyboard/mouse control for this one session. The other side sees nothing until you accept."}
+              </p>
+              <div className="row">
+                <button
+                  type="button"
+                  className="primary"
+                  autoFocus
+                  onClick={() => engine.run(() => api.consentAccept())}
+                >
+                  Accept
+                </button>
+                <button type="button" onClick={() => engine.run(() => api.consentReject())}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {selected ? (
+            <div className="machine-head">
+              <h2>{selected.name}</h2>
+              <p className="muted">
+                code <code className="code">{selected.code}</code> ·{" "}
+                {selected.online === true ? "online" : selected.online === false ? "offline" : "presence unknown"}
+              </p>
+              {controller.can.connect || ui.controllerState === "Online" ? (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void connectByCode(normalizeCode(selected.code))}
+                >
+                  Connect
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="machine-head">
+              <h2>Pick a machine</h2>
+              <p className="muted">
+                Select one on the left, paste a code below, or ask the assistant
+                to set things up.
+              </p>
+            </div>
+          )}
+
           <ConnectPanel
             controllerState={ui.controllerState}
             onConnect={async (code) => {
-              if (await ensureEngine()) {
-                await engine.run(async () => {
-                  await api.controllerStart();
-                  await api.connect(normalizeCode(code));
-                });
-              }
+              const normalized = normalizeCode(code);
+              setSelectedCode((current) => current ?? normalized);
+              await connectByCode(normalized);
             }}
             onCancel={() => engine.run(() => api.cancelConnect())}
           />
+
           {controller.can.controls ? (
             <SessionControls
               monitors={ui.peerMonitors}
@@ -267,89 +338,30 @@ export default function App() {
               onDisconnect={() => engine.run(() => api.disconnect())}
             />
           ) : null}
-        </div>
-        <div>
-          <div id="identity">
-            <IdentityCard identity={engine.identity} />
-          </div>
-          {signedIn ? (
-            <Computers
-              computers={accountUi.computers}
-              online={accountUi.online}
-              canConnect={controller.can.connect || ui.controllerState === "Online"}
-              onConnect={(code) => void connectByCode(code)}
-              onAdd={async (name, code) => {
-                const error = await account.addComputer(name, code);
-                if (error !== null) {
-                  throw new Error(accountErrorCopy(error));
-                }
-              }}
-              onAddThis={async () => {
-                const error = await account.addThisComputer();
-                if (error !== null) {
-                  engine.run(async () => {
-                    throw new Error(accountErrorCopy(error));
-                  });
-                  return;
-                }
-                // Immediately shareable: start host mode.
-                if (await ensureEngine()) {
-                  await engine.run(() => api.hostStart());
-                }
-              }}
-              onRemove={(id) => {
-                void account.removeComputer(id).then((error) => {
-                  if (error !== null) {
-                    engine.run(async () => {
-                      throw new Error(accountErrorCopy(error));
-                    });
-                  }
-                });
-              }}
-              onRename={(id, name) => {
-                void account.renameComputer(id, name).then((error) => {
-                  if (error !== null) {
-                    engine.run(async () => {
-                      throw new Error(accountErrorCopy(error));
-                    });
-                  }
-                });
-              }}
-              onViewCode={() => {
-                document.getElementById("identity")?.scrollIntoView({ behavior: "smooth" });
-              }}
-            />
-          ) : (
-            <Favorites
-              favorites={engine.favorites}
-              peerOnline={ui.peerOnline}
-              canConnect={controller.can.connect || ui.controllerState === "Online"}
-              onConnect={async (code) => {
-                await connectByCode(code);
-              }}
-              onAdd={async (name, code) => {
-                await api.addFavorite(name, code);
-                await engine.refreshFavorites();
-              }}
-              onRemove={async (id) => {
-                await engine.run(async () => {
-                  const next = await api.removeFavorite(id);
-                  return next;
-                });
-              }}
-              onRename={async (id, name) => {
-                await engine.run(async () => {
-                  const next = await api.renameFavorite(id, name);
-                  return next;
-                });
-              }}
-            />
-          )}
-          <SettingsPanel settings={engine.settings} onSave={engine.saveSettings} />
-        </div>
+
+          {endCopy && ui.controllerState === "Disconnected" ? (
+            <div className="banner banner-info" role="status">
+              <p>{endCopy.title}</p>
+              {endCopy.hint ? <p className="hint">{endCopy.hint}</p> : null}
+            </div>
+          ) : null}
+
+          {showSettings ? (
+            <div className="center-card">
+              <SettingsPanel settings={engine.settings} onSave={engine.saveSettings} />
+            </div>
+          ) : null}
+        </section>
+
+        <AssistantPanel assistant={assistant} />
       </main>
 
       {showDiag ? <DiagnosticsOverlay snapshot={ui.diagnostics} /> : null}
     </div>
   );
 }
+
+// Re-exported for the account-error copy used by the Computers flow (kept
+// from the previous layout; the roster Computers list rejoins the rail
+// with the chat phase).
+export { accountErrorCopy };

@@ -33,6 +33,8 @@ pub struct AppServices {
     /// Account/roster state (post-MVP accounts). Lock order when both are
     /// held: store first, then account (see `with_account`).
     pub account: Mutex<crate::account::AccountManager>,
+    /// In-app assistant (ADR-005): worker thread + busy flag.
+    pub assistant: crate::agent::AssistantState,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -281,6 +283,10 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_viewer_scale: patch.default_viewer_scale,
         device_token: store.settings().device_token.clone(),
         skipped_onboarding: patch.skipped_onboarding,
+        // Assistant provider fields are managed via `agent_configure`,
+        // not the settings patch — preserve them here.
+        agent_base_url: store.settings().agent_base_url.clone(),
+        agent_model: store.settings().agent_model.clone(),
     };
     store.update_settings(next)?;
     let s = store.settings().clone();

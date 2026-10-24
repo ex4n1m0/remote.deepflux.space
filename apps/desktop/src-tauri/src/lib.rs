@@ -4,6 +4,7 @@
 //! engine's controller pipeline (AGENTS.md invariant 1).
 
 pub mod account;
+pub mod agent;
 pub mod commands;
 pub mod credstore;
 pub mod engine;
@@ -38,7 +39,13 @@ pub fn run() {
                 store: Mutex::new(store),
                 engine: Mutex::new(None),
                 account: Mutex::new(account),
+                assistant: agent::AssistantState::new(),
             });
+            // The assistant is live from app start (ADR-005): its worker
+            // only calls the provider once a key is configured.
+            app.state::<AppServices>()
+                .assistant
+                .spawn(app.handle().clone());
             if engine::mcp_mode() {
                 // The bridge is the front door in this mode: start the
                 // engine without UI interaction (errors surface on the
@@ -97,6 +104,10 @@ pub fn run() {
             commands::list_monitors,
             commands::viewer_set_scale,
             commands::viewer_toggle_fullscreen,
+            agent::agent_configure,
+            agent::agent_status,
+            agent::agent_send,
+            agent::agent_reset,
         ])
         .run(tauri::generate_context!())
         .expect("tauri shell run");

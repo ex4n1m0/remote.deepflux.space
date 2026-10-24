@@ -67,4 +67,6 @@ rmcp = { version = "=3.6.0", default-features = false, features = ["server", "tr
 tokio = { workspace = true }
 # Base64 for MCP image content (screenshot JPEGs).
 base64 = { workspace = true }
+# Assistant provider client (ADR-005): OpenAI-compatible chat completions.
+ureq = { workspace = true }
 

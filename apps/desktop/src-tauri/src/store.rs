@@ -36,6 +36,26 @@ pub struct AppSettings {
     /// gate opens straight into the main UI; signing in later still works).
     #[serde(default)]
     pub skipped_onboarding: bool,
+    /// In-app assistant provider (ADR-005): any OpenAI-compatible base
+    /// URL. Default DeepSeek. The API key is NOT here — it lives in the
+    /// Windows Credential Manager (`agent-api-key` seam).
+    #[serde(default = "default_agent_base_url")]
+    pub agent_base_url: String,
+    /// Assistant model id. Default vision-capable so screenshot tools work
+    /// (`deepseek-flash`); text-only `deepseek-chat` is a settings option.
+    #[serde(default = "default_agent_model")]
+    pub agent_model: String,
+}
+
+/// Default assistant provider (ADR-005): DeepSeek, OpenAI-compatible.
+pub const DEFAULT_AGENT_BASE_URL: &str = "https://api.deepseek.com/v1";
+
+fn default_agent_base_url() -> String {
+    DEFAULT_AGENT_BASE_URL.to_owned()
+}
+
+fn default_agent_model() -> String {
+    "deepseek-flash".to_owned()
 }
 
 /// Default signaling service (accounts phase): the deployed Vercel
@@ -56,6 +76,8 @@ impl Default for AppSettings {
             default_viewer_scale: "fit".to_owned(),
             device_token: new_token(),
             skipped_onboarding: false,
+            agent_base_url: default_agent_base_url(),
+            agent_model: default_agent_model(),
         }
     }
 }

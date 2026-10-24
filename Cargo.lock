@@ -3414,6 +3414,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "transport-webrtc",
+ "ureq",
  "windows 0.62.2",
  "zeroize",
 ]

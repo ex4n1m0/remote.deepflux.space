@@ -27,6 +27,22 @@ export const EVENT = {
   info: "engine://info",
 } as const;
 
+/** Assistant worker events (ADR-005): text + metadata only. */
+export const ASSISTANT_EVENT = {
+  message: "assistant://message",
+  tool: "assistant://tool",
+  busy: "assistant://busy",
+  done: "assistant://done",
+  error: "assistant://error",
+} as const;
+
+export interface AssistantStatus {
+  configured: boolean;
+  busy: boolean;
+  base_url: string;
+  model: string;
+}
+
 export const api = {
   getIdentity: (): Promise<Identity> => invoke("get_identity"),
   getSettings: (): Promise<Settings> => invoke("get_settings"),
@@ -83,6 +99,14 @@ export const api = {
 
   viewerSetScale: (scale: string): Promise<void> => invoke("viewer_set_scale", { scale }),
   viewerToggleFullscreen: (): Promise<void> => invoke("viewer_toggle_fullscreen"),
+
+  // In-app assistant (ADR-005). The API key argument goes straight to the
+  // Credential Manager on the Rust side — it is never stored in TS state.
+  agentStatus: (): Promise<AssistantStatus> => invoke("agent_status"),
+  agentConfigure: (args: { apiKey?: string; model?: string }): Promise<AssistantStatus> =>
+    invoke("agent_configure", { args }),
+  agentSend: (text: string): Promise<void> => invoke("agent_send", { args: { text } }),
+  agentReset: (): Promise<void> => invoke("agent_reset"),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */
