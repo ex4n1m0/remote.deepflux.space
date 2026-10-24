@@ -9,6 +9,10 @@
 <meta property="og:description" content="Direct and encrypted. Screen and input never touch a server. Sign in to sync your computers, or just use a code.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://remote.deepflux.space/">
+<meta property="og:image" content="https://remote.deepflux.space/assets/logo.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="64x64" href="./assets/logo-64.png">
+<link rel="apple-touch-icon" href="./assets/logo-256.png">
 <style>
 :root{
   --bg:#0a0e14; --bg2:#0d131c; --panel:#111825; --line:#1d2736;
@@ -26,6 +30,7 @@ nav{position:sticky;top:0;z-index:10;background:rgba(10,14,20,.82);backdrop-filt
 nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
 .logo{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.2px}
 .logo svg{display:block}
+.logo img{display:block;width:26px;height:26px;border-radius:7px}
 .logo .by{color:var(--dim);font-weight:400;font-size:13px}
 nav ul{display:flex;gap:26px;list-style:none;font-size:14px;color:var(--muted)}
 nav ul a{color:var(--muted)}
@@ -36,6 +41,8 @@ nav ul a:hover{color:var(--text);text-decoration:none}
   radial-gradient(600px 300px at 30% 20%,rgba(91,140,255,.16),transparent 70%),
   radial-gradient(500px 280px at 75% 30%,rgba(56,208,198,.10),transparent 70%);pointer-events:none}
 .hero .wrap{position:relative}
+.hero-logo{display:block;width:min(420px,72vw);height:auto;border-radius:16px;margin:0 0 28px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+@media(max-width:640px){.hero-logo{width:min(300px,80vw);margin:0 auto 24px}}
 .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg2);
   border-radius:999px;padding:5px 14px;font-size:13px;color:var(--muted);margin-bottom:28px}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
@@ -82,11 +89,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 <nav>
   <div class="wrap">
     <div class="logo">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <rect x="2" y="5" width="13" height="10" rx="2" stroke="#5b8cff" stroke-width="1.8"/>
-        <rect x="9" y="9" width="13" height="10" rx="2" stroke="#38d0c6" stroke-width="1.8" fill="#0a0e14"/>
-        <path d="M6 19h5" stroke="#5b8cff" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
+      <img src="./assets/logo-64.png" alt="" aria-hidden="true">
       Remote <span class="by">by DeepFlux</span>
     </div>
     <ul>
@@ -100,6 +103,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 
 <header class="hero">
   <div class="wrap">
+    <img class="hero-logo" src="./assets/logo.png" width="1536" height="1024" alt="Remote by DeepFlux — interlocking blue and teal screens on midnight navy">
     <div class="pill"><span class="dot"></span> v0.4.0 beta — Windows 10/11</div>
     <h1>Your screen. Your network.<br><em>Nobody in between.</em></h1>
     <p class="lede">
