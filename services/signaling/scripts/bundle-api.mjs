@@ -17,8 +17,8 @@
 import { build } from 'esbuild';
 import { rmSync } from 'node:fs';
 
-const entries = ['api/signal.ts', 'api/health.ts', 'api/account.ts'];
-const outputs = ['api/signal.js', 'api/health.js', 'api/account.js'];
+const entries = ['api/signal.ts', 'api/health.ts', 'api/account.ts', 'api/chat.ts'];
+const outputs = ['api/signal.js', 'api/health.js', 'api/account.js', 'api/chat.js'];
 
 for (const out of outputs) rmSync(out, { force: true });
 
