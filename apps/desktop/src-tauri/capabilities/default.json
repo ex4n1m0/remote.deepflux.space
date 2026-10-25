@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "shell-core",
+  "description": "Shell webview IPC. App-defined invoke commands are not ACL-gated, but core plugin APIs are: without this capability every event listen() is denied and the UI hears nothing from Rust (engine://*, assistant://*, chat). core:default grants the event/webview/window/app defaults — nothing more.",
+  "windows": ["shell"],
+  "permissions": ["core:default"]
+}
