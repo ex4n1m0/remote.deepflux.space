@@ -171,11 +171,27 @@ impl LocalStore {
     /// a temp dir in tests).
     pub fn load(dir: &Path) -> StoreResult<Self> {
         std::fs::create_dir_all(dir).map_err(|err| format!("create {}: {err}", dir.display()))?;
-        let mut settings = read_json::<AppSettings>(&dir.join(SETTINGS_FILE))?.unwrap_or_default();
-        // Identity is never absent after first load.
+        let settings_path = dir.join(SETTINGS_FILE);
+        let had_settings = settings_path.exists();
+        let mut settings = read_json::<AppSettings>(&settings_path)?.unwrap_or_default();
+        // Identity is never absent after first load. `default()` already
+        // mints a random device_id/token, so the empty checks only catch
+        // old files parsed without those keys — the missing-file case is
+        // `!had_settings`. Either way the minted identity must be PERSISTED
+        // here: until a settings change writes the file, every launch would
+        // otherwise regenerate the connection code (favorites and pairing
+        // key on it staying stable).
+        let mut fresh_identity = false;
         if settings.device_id.trim().is_empty() {
             settings.device_id = crate::engine::ids::new_device_id();
-            write_json_atomic(&dir.join(SETTINGS_FILE), &settings)?;
+            fresh_identity = true;
+        }
+        if settings.device_token.trim().is_empty() {
+            settings.device_token = new_token();
+            fresh_identity = true;
+        }
+        if fresh_identity || !had_settings {
+            write_json_atomic(&settings_path, &settings)?;
         }
         let favorites = read_json::<FavoritesDoc>(&dir.join(FAVORITES_FILE))?.unwrap_or_default();
         let account = read_json::<AccountDoc>(&dir.join(ACCOUNT_FILE))?;
@@ -322,6 +338,33 @@ mod tests {
             "http://127.0.0.1:38013"
         );
         assert!(reloaded.settings().skipped_onboarding);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn first_load_persists_identity_without_any_settings_change() {
+        // Regression (0.4.3): `unwrap_or_default()` mints a random device_id
+        // in memory, so the old empty-check never fired and settings.json
+        // was not written until a manual settings change — every launch
+        // minted a NEW connection code and device token, silently breaking
+        // saved machines and pairing across restarts.
+        let dir = temp_dir("first-load-identity");
+        let first = LocalStore::load(&dir).unwrap();
+        assert!(
+            dir.join(SETTINGS_FILE).exists(),
+            "first load must persist settings.json"
+        );
+        let second = LocalStore::load(&dir).unwrap();
+        assert_eq!(
+            second.settings().device_id,
+            first.settings().device_id,
+            "connection code survives a relaunch with zero settings changes"
+        );
+        assert_eq!(
+            second.settings().device_token,
+            first.settings().device_token,
+            "device token survives a relaunch"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
