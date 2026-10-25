@@ -41,6 +41,7 @@ pub mod account_crypto;
 pub mod account_remote;
 pub mod clock;
 pub mod congestion;
+pub mod http;
 pub mod input;
 pub mod metrics;
 pub mod node;

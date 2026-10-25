@@ -351,9 +351,10 @@ pub fn inbox_send(
     let ts = now_ms();
     let env =
         seal(&pairing.secret_hex, from, to, ts, body).ok_or_else(|| "sealing failed".to_owned())?;
-    let response = ureq::post(&chat_api(base_url))
+    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    let response = agent
+        .post(&chat_api(base_url))
         .set("Authorization", format!("Bearer {token}").as_str())
-        .timeout(Duration::from_secs(15))
         .send_json(json!({ "to": to, "envelope": env }))
         .map_err(|e| format!("inbox send: {e}"))?;
     if response.status() != 200 {
@@ -365,9 +366,10 @@ pub fn inbox_send(
 /// Drain our inbox; every decryptable envelope becomes a stored line +
 /// webview event. Returns the count delivered.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
-    let Ok(response) = ureq::get(&chat_api(base_url))
+    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    let Ok(response) = agent
+        .get(&chat_api(base_url))
         .set("Authorization", format!("Bearer {token}").as_str())
-        .timeout(Duration::from_secs(15))
         .call()
     else {
         return 0;

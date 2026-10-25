@@ -475,7 +475,7 @@ impl Drop for RemoteSignaling {
 // ---------------------------------------------------------------------------
 
 fn http_json(url: &str, token: &str, body: &Value) -> Result<Value, String> {
-    let agent = ureq::AgentBuilder::new().timeout(HTTP_TIMEOUT).build();
+    let agent = crate::http::https_agent(HTTP_TIMEOUT, "remote-desktop-app");
     let response = agent
         .post(url)
         .set("authorization", &format!("Bearer {token}"))

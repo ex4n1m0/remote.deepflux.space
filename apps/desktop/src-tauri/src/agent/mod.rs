@@ -318,10 +318,14 @@ fn run_turn(
             "tools": tools::tool_specs(),
             "max_tokens": 4096,
         });
-        let response: Value = ureq::post(&url)
+        let agent = node_runtime::http::https_agent(
+            std::time::Duration::from_secs(120),
+            "remote-desktop-assistant",
+        );
+        let response: Value = agent
+            .post(&url)
             .set("Authorization", format!("Bearer {key}").as_str())
             .set("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(120))
             .send_json(body)
             .map_err(|e| format!("provider request failed: {e}"))?
             .into_json()

@@ -151,10 +151,7 @@ impl AccountClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_owned(),
-            agent: ureq::AgentBuilder::new()
-                .timeout(HTTP_TIMEOUT)
-                .user_agent("remote-desktop-app")
-                .build(),
+            agent: crate::http::https_agent(HTTP_TIMEOUT, "remote-desktop-app"),
         }
     }
 
