@@ -3,6 +3,7 @@
  * (ADR-005): machines rail (left) · selected machine / session (center) ·
  * assistant panel (right). The accounts onboarding gate stays in front. */
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAccount } from "./hooks/useAccount";
 import { useAssistant } from "./hooks/useAssistant";
@@ -18,6 +19,7 @@ import { ErrorBanner, StatusChip } from "./components/Common";
 import { api, normalizeCode } from "./ipc";
 import { accountErrorCopy, accountGate } from "./state/account";
 import { controllerView, disconnectCopy, hostView } from "./state/mapping";
+import mark from "./assets/mark.png";
 
 export default function App() {
   const engine = useEngine();
@@ -31,6 +33,15 @@ export default function App() {
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const chat = useChat(selectedCode);
+
+  // Shell version for the Settings label; tauri.conf is the single source
+  // of truth. jsdom/tests have no Tauri bridge — stays null there.
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    getVersion()
+      .then((v) => setAppVersion(v))
+      .catch(() => setAppVersion(null));
+  }, []);
 
   // Ctrl+Shift+D toggles the diagnostics overlay (keyboard accessibility).
   useEffect(() => {
@@ -154,7 +165,10 @@ export default function App() {
   return (
     <div className="app agent-first">
       <header className="app-head">
-        <h1>DeepFlux</h1>
+        <div className="brand">
+          <img className="brand-mark" src={mark} alt="" width="28" height="28" />
+          <h1>DeepFlux</h1>
+        </div>
         <div className="chips">
           <StatusChip tone={host.tone} label="Host" text={ui.hostState} />
           <StatusChip tone={controller.tone} label="Controller" text={ui.controllerState} />
@@ -353,7 +367,11 @@ export default function App() {
 
           {showSettings ? (
             <div className="center-card">
-              <SettingsPanel settings={engine.settings} onSave={engine.saveSettings} />
+              <SettingsPanel
+                settings={engine.settings}
+                onSave={engine.saveSettings}
+                version={appVersion}
+              />
             </div>
           ) : null}
         </section>

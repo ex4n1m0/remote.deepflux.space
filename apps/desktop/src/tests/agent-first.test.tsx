@@ -117,4 +117,17 @@ describe("AssistantPanel", () => {
     expect(screen.getByText("Saved it.")).toBeTruthy();
     expect(screen.getByText("provider down")).toBeTruthy();
   });
+
+  it("error cards are loud: alert role, heading, and the message", () => {
+    render(
+      <AssistantPanel
+        assistant={makeAssistant({
+          messages: [{ kind: "error", message: "provider request failed", id: 1 }],
+        })}
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Something went wrong");
+    expect(alert.textContent).toContain("provider request failed");
+  });
 });

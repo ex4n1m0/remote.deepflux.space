@@ -40,9 +40,12 @@ export function IdentityCard({ identity }: { identity: Identity | null }) {
 export function SettingsPanel({
   settings,
   onSave,
+  version,
 }: {
   settings: Settings | null;
   onSave: (patch: Settings) => Promise<Settings | null>;
+  /** Shell version (from tauri.conf via getVersion); null in tests/jsdom. */
+  version?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -70,9 +73,16 @@ export function SettingsPanel({
       }
     >
       {!open ? (
-        <p className="muted">
-          Signaling service: <code className="code">{settings?.signaling_base_url || "not configured"}</code>
-        </p>
+        <>
+          <p className="muted">
+            Signaling service: <code className="code">{settings?.signaling_base_url || "not configured"}</code>
+          </p>
+          {version ? (
+            <p className="muted">
+              App version: <code className="code">{version}</code>
+            </p>
+          ) : null}
+        </>
       ) : (
         <form
           className="settings-form"
@@ -135,6 +145,11 @@ export function SettingsPanel({
           <button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save settings"}
           </button>
+          {version ? (
+            <p className="muted">
+              App version: <code className="code">{version}</code>
+            </p>
+          ) : null}
         </form>
       )}
     </Section>

@@ -7,6 +7,7 @@ import { Favorites } from "../components/Favorites";
 import { SessionControls } from "../components/ControllerPanel";
 import { DiagnosticsOverlay } from "../components/DiagnosticsOverlay";
 import { ErrorBanner } from "../components/Common";
+import { SettingsPanel } from "../components/IdentityCard";
 import type { DiagSnapshot, Favorite } from "../types";
 
 const monitor = (id: string, primary = false) => ({
@@ -262,5 +263,36 @@ describe("ErrorBanner", () => {
     expect(screen.getByText(/direct connections only/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SettingsPanel", () => {
+  const settings = {
+    device_id: "0011223344556677",
+    device_name: "Office",
+    signaling_base_url: "https://signaling.deepflux.space",
+    default_quality: "balanced",
+    default_viewer_scale: "fit",
+    device_token: "t",
+    skipped_onboarding: true,
+    agent_base_url: "https://api.deepseek.com/v1",
+    agent_model: "deepseek-flash",
+  } as const;
+
+  it("shows the app version label (collapsed and open) when provided", () => {
+    const { rerender } = render(
+      <SettingsPanel settings={settings} onSave={vi.fn(async () => null)} version="0.4.4" />,
+    );
+    expect(screen.getByText(/App version:/).textContent).toContain("0.4.4");
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    rerender(
+      <SettingsPanel settings={settings} onSave={vi.fn(async () => null)} version="0.4.4" />,
+    );
+    expect(screen.getByText(/App version:/).textContent).toContain("0.4.4");
+  });
+
+  it("hides the version label when the version is unavailable (tests/jsdom)", () => {
+    render(<SettingsPanel settings={settings} onSave={vi.fn(async () => null)} version={null} />);
+    expect(screen.queryByText(/App version:/)).toBeNull();
   });
 });

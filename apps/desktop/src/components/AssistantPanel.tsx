@@ -129,7 +129,11 @@ export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
             }
             return (
               <div key={m.id} className="msg error-msg" role="alert">
-                {m.message}
+                <span className="err-glyph" aria-hidden="true">⚠</span>
+                <span className="err-body">
+                  <b>Something went wrong</b>
+                  {m.message}
+                </span>
               </div>
             );
           })

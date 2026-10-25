@@ -31,15 +31,13 @@ export interface AssistantBinding {
   reset: () => Promise<void>;
 }
 
-let nextId = 1;
-
 /** Distributive Omit so each union member keeps its own fields. */
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 
 export function useAssistant(): AssistantBinding {
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [status, setStatus] = useState<AssistantStatus | null>(null);
-  const idRef = useRef(nextId);
+  const idRef = useRef(1);
 
   const push = useCallback((m: WithoutId<AssistantMessage>) => {
     setMessages((prev) => [...prev, { ...m, id: idRef.current++ } as AssistantMessage]);
@@ -90,7 +88,6 @@ export function useAssistant(): AssistantBinding {
       void Promise.all(unbinds).then((fns) => fns.forEach((fn) => fn()));
     };
     // status in deps would rebind listeners each busy flip; bind once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keep busy in sync via polling status (the push above may race mount).
@@ -101,23 +98,40 @@ export function useAssistant(): AssistantBinding {
 
   const send = useCallback(
     async (text: string) => {
-      await api.agentSend(text);
+      // A rejected agent_send (worker stopped / queue full) must surface in
+      // the log — nothing else would show it (the 0.4.2 lesson: silent
+      // failures read as "no results").
+      try {
+        await api.agentSend(text);
+      } catch (e) {
+        push({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      }
     },
-    [],
+    [push],
   );
 
   const configure = useCallback(
     async (args: { apiKey?: string; model?: string }) => {
-      await api.agentConfigure(args);
+      try {
+        await api.agentConfigure(args);
+      } catch (e) {
+        push({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+        return;
+      }
       await refreshStatus();
     },
-    [refreshStatus],
+    [push, refreshStatus],
   );
 
   const reset = useCallback(async () => {
-    await api.agentReset();
+    try {
+      await api.agentReset();
+    } catch (e) {
+      push({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      return;
+    }
     setMessages([]);
-  }, []);
+  }, [push]);
 
   return {
     messages,

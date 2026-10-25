@@ -47,6 +47,19 @@ body {
   margin: 0;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  height: 28px;
+  width: 28px;
+  border-radius: 7px;
+  flex: none;
+}
+
 .chips {
   display: flex;
   align-items: center;
@@ -791,8 +804,31 @@ legend {
 
 .msg.error-msg {
   align-self: stretch;
-  background: #7f1d1d33;
-  border: 1px solid #b91c1c66;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #7f1d1d80;
+  border: 1px solid #ef4444b3;
+  color: #fecaca;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.err-glyph {
+  flex: none;
+  line-height: 1.4;
+}
+
+.err-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.err-body b {
   color: #fca5a5;
 }
 
