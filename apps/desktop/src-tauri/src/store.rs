@@ -36,6 +36,10 @@ pub struct AppSettings {
     /// gate opens straight into the main UI; signing in later still works).
     #[serde(default)]
     pub skipped_onboarding: bool,
+    /// ADR-006 always-ready: launch at Windows login (drives the autostart
+    /// plugin; the family build turns it on once at first run).
+    #[serde(default)]
+    pub launch_at_login: bool,
     /// In-app assistant provider (ADR-005): any OpenAI-compatible base
     /// URL. Default DeepSeek. The API key is NOT here — it lives in the
     /// Windows Credential Manager (`agent-api-key` seam).
@@ -76,6 +80,7 @@ impl Default for AppSettings {
             default_viewer_scale: "fit".to_owned(),
             device_token: new_token(),
             skipped_onboarding: false,
+            launch_at_login: false,
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
         }

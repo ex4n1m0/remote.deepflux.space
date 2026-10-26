@@ -445,11 +445,14 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         default_quality: s.default_quality.clone(),
         default_viewer_scale: s.default_viewer_scale.clone(),
         skipped_onboarding: s.skipped_onboarding,
+        launch_at_login: s.launch_at_login,
     })
 }
 
 #[tauri::command]
 pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsDto> {
+    // ADR-006: the login-autostart toggle drives the plugin immediately.
+    set_launch_at_login(&app, patch.launch_at_login)?;
     let services = app.state::<AppServices>();
     let mut store = services.store.lock().expect("store");
     let next = AppSettings {
@@ -462,6 +465,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_viewer_scale: patch.default_viewer_scale,
         device_token: store.settings().device_token.clone(),
         skipped_onboarding: patch.skipped_onboarding,
+        launch_at_login: patch.launch_at_login,
         // Assistant provider fields are managed via `agent_configure`,
         // not the settings patch — preserve them here.
         agent_base_url: store.settings().agent_base_url.clone(),
@@ -476,6 +480,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_quality: s.default_quality,
         default_viewer_scale: s.default_viewer_scale,
         skipped_onboarding: s.skipped_onboarding,
+        launch_at_login: s.launch_at_login,
     })
 }
 
@@ -947,4 +952,44 @@ pub fn circle_set_shared(app: AppHandle, args: CircleShareArgs) -> CmdResult<Cir
 pub fn directory_refresh(app: AppHandle) -> CmdResult<Vec<crate::directory::DirectoryMachineDto>> {
     crate::directory::refresh(&app)?;
     Ok(crate::directory::machines(&app))
+}
+
+// ---------------------------------------------------------------------------
+// Login autostart (ADR-006 always-ready)
+// ---------------------------------------------------------------------------
+
+fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    let result = if enabled {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    };
+    // The plugin can fail on exotic setups — surface it but never block
+    // saving the rest of the settings.
+    if let Err(err) = result {
+        eprintln!("[autostart] {} failed: {err}", if enabled { "enable" } else { "disable" });
+    }
+    Ok(())
+}
+
+/// One-time family-build default: the embedded-key first run turns login
+/// autostart on once (ADR-006: family machines are reachable at login).
+pub fn enable_autostart_default(app: &AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+    let services = app.state::<AppServices>();
+    let already = {
+        let store = services.store.lock().expect("store");
+        store.settings().launch_at_login
+    };
+    if already {
+        return;
+    }
+    let _ = set_launch_at_login(app, true);
+    if let Ok(mut store) = services.store.lock() {
+        let mut next = store.settings().clone();
+        next.launch_at_login = true;
+        let _ = store.update_settings(next);
+    }
 }

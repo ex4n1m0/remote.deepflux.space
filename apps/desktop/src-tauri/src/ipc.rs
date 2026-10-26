@@ -21,6 +21,8 @@ pub struct SettingsPatch {
     pub default_viewer_scale: String,
     /// First-run onboarding skip flag (persisted; see store::AppSettings).
     pub skipped_onboarding: bool,
+    #[serde(default)]
+    pub launch_at_login: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -128,6 +130,8 @@ pub struct SettingsDto {
     pub default_quality: String,
     pub default_viewer_scale: String,
     pub skipped_onboarding: bool,
+    #[serde(default)]
+    pub launch_at_login: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

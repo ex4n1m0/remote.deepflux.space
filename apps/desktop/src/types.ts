@@ -72,6 +72,8 @@ export interface Settings {
   default_viewer_scale: string;
   /** First-run onboarding skip flag (persisted in settings.json). */
   skipped_onboarding: boolean;
+  /** ADR-006 always-ready: launch at Windows login (tray keeps it alive). */
+  launch_at_login: boolean;
 }
 
 export interface Favorite {

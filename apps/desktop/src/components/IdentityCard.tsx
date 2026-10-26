@@ -52,6 +52,7 @@ export function SettingsPanel({
   const [name, setName] = useState("");
   const [quality, setQuality] = useState("balanced");
   const [scale, setScale] = useState("fit");
+  const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
@@ -61,6 +62,7 @@ export function SettingsPanel({
     setName(settings.device_name);
     setQuality(settings.default_quality);
     setScale(settings.default_viewer_scale);
+    setLaunchAtLogin(settings.launch_at_login);
   }
 
   return (
@@ -98,6 +100,7 @@ export function SettingsPanel({
               signaling_base_url: normalizeBaseUrl(url),
               default_quality: quality,
               default_viewer_scale: scale,
+              launch_at_login: launchAtLogin,
             });
             setSaving(false);
           }}
@@ -118,6 +121,14 @@ export function SettingsPanel({
             (<code className="code">http://127.0.0.1:38013</code>) for testing. Clear the field
             to opt out (accounts and the engine then need a URL set before use).
           </p>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={launchAtLogin}
+              onChange={(event) => setLaunchAtLogin(event.target.checked)}
+            />
+            Launch at Windows login (stay reachable in the tray)
+          </label>
           <label>
             This machine's display name
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Office PC" />

@@ -277,6 +277,7 @@ describe("SettingsPanel", () => {
     skipped_onboarding: true,
     agent_base_url: "https://api.deepseek.com/v1",
     agent_model: "deepseek-flash",
+    launch_at_login: false,
   } as const;
 
   it("shows the app version label (collapsed and open) when provided", () => {

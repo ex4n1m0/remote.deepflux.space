@@ -354,13 +354,17 @@ pub fn invite(app: &AppHandle) -> Result<String, String> {
 /// Family-build first run: auto-join from the embedded key. The embedded
 /// installer IS the consent moment for sharing (the first-run banner in
 /// the UI explains it and Settings can revoke).
-pub fn auto_join_embedded(app: &AppHandle) {
+pub fn auto_join_embedded(app: &AppHandle) -> bool {
     let embedded = EMBEDDED_CIRCLE_KEY.trim();
     if embedded.is_empty() || read_circle(app).is_some() {
-        return;
+        return false;
     }
-    if let Err(err) = join(app, embedded, true) {
-        eprintln!("[directory] embedded auto-join failed: {err}");
+    match join(app, embedded, true) {
+        Ok(_) => true,
+        Err(err) => {
+            eprintln!("[directory] embedded auto-join failed: {err}");
+            false
+        }
     }
 }
 

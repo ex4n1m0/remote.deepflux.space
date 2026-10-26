@@ -30,7 +30,10 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # Shell (tauri tree; pinned here per the M4 work package — root
 # [workspace.dependencies] stays untouched for the integrator to consolidate).
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
+# ADR-006 always-ready: login autostart + single instance (tray is core).
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 
 # The engine (source of truth; the shell is a thin veneer over it).
 node-runtime = { path = "../../../crates/node-runtime" }
