@@ -65,6 +65,12 @@ export function directoryReducer(
   }
 }
 
+/** "Joined but the service can't see us" — the put was refused because
+ * presence is gone (machine offline). Shared by the error copy and the
+ * joined-but-not-loaded hint in CircleSettings. */
+export const CIRCLE_OFFLINE_HINT =
+  "You'll show up in the circle once this machine is online — click Share this machine or restart the app.";
+
 /** Friendly copy for circle errors (the `accountErrorCopy` pattern). */
 export function circleErrorCopy(raw: string): string {
   if (raw.includes("64 hex")) {
@@ -75,6 +81,15 @@ export function circleErrorCopy(raw: string): string {
   }
   if (raw.includes("circle_full")) {
     return "The circle is full (128 machines). Ask the owner to remove unused machines or create a new circle.";
+  }
+  // The service authenticates (device, token) via live presence — an
+  // offline machine's puts come back 401. That is an "offline" state,
+  // not an auth problem to troubleshoot.
+  if (raw.includes("unauthorized") || raw.includes("401")) {
+    return CIRCLE_OFFLINE_HINT;
+  }
+  if (raw.includes("rate_limited")) {
+    return "Too many attempts — wait a minute and try again.";
   }
   if (raw.includes("network") || raw.includes("Connection") || raw.includes("http")) {
     return "Couldn't reach the signaling service — check your connection and try again.";

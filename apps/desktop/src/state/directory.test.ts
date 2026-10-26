@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  CIRCLE_OFFLINE_HINT,
   circleErrorCopy,
   directoryReducer,
   initialDirectoryState,
@@ -72,6 +73,20 @@ describe("circleErrorCopy", () => {
     expect(circleErrorCopy("service error 409 circle_full")).toContain("full");
     expect(circleErrorCopy("network error: dial")).toContain("signaling service");
     expect(circleErrorCopy("something else")).toBe("something else");
+  });
+
+  it("explains 401/unauthorized as offline, not an auth problem", () => {
+    // The service authenticates (device, token) via live presence — an
+    // offline machine's toggle comes back 401.
+    expect(circleErrorCopy("service error 401 unauthorized")).toBe(CIRCLE_OFFLINE_HINT);
+    expect(circleErrorCopy("service error 401 unauthorized")).toContain("once this machine is online");
+    expect(circleErrorCopy("unauthorized")).toBe(CIRCLE_OFFLINE_HINT);
+  });
+
+  it("maps rate limiting to wait-a-minute copy", () => {
+    const copy = circleErrorCopy("service error 429 rate_limited");
+    expect(copy).toContain("Too many attempts");
+    expect(copy).toContain("wait a minute");
   });
 });
 

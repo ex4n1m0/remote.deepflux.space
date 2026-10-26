@@ -212,7 +212,20 @@ remember choice, and the signaling send path gains rate limits. Contract:
 `crates/protocol/src/directory.rs` (+ `protocol::chat` folded in);
 service: `/api/directory`; client: `node-runtime::directory_remote` +
 `apps/desktop` directory/circle UI. Reviewed by the architecture,
-security, signaling, and UI seats before acceptance; slices 0–9 in the
+security, signaling, and UI seats before acceptance; **Hotfixes 0.5.1/0.5.2 (2026-10-26, first full agent review round).**
+0.5.1: pre-0.5 settings with an empty signaling URL (the old opt-out)
+migrate once to the production default — it silently killed login,
+engine, and circle registration on upgraded machines; family builds
+self-heal every launch. 0.5.2 (code/UX/security/release agents):
+pairing-proof v2 binds the envelope message_id + freshness timestamp
+(v1 proofs refused — replay after id-squat degrades to prompting); chat
+surface fold-in completed (duplicate struct removed); Pairing Debug
+redacted; stale re-offers against established pairings no longer acked;
+the consent prompt raises the tray-hidden window; offline targets read
+as offline (no NAT jargon); first-run circle banner (ADR-006 §5 consent
+moment); family autostart default is a persisted one-shot. Tags: v0.5.1,
+v0.5.2 (annotated — new house style; older tags stay lightweight).
+slices 0–9 in the
 ADR-006 execution order, release 0.5.0.
 
 ## 5. Orchestration model

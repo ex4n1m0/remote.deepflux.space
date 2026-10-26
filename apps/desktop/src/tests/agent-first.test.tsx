@@ -1,7 +1,12 @@
 /** Agent-first UI tests (ADR-005): machines unification + assistant panel. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MachinesRail, filterMachines, unifiedMachines } from "../components/MachinesRail";
+import {
+  MachinesRail,
+  excludeSelf,
+  filterMachines,
+  unifiedMachines,
+} from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
 import type { AssistantBinding } from "../hooks/useAssistant";
 
@@ -36,9 +41,8 @@ describe("unifiedMachines (ADR-003 union)", () => {
 describe("MachinesRail", () => {
   const base = {
     thisCode: "abcd1234efgh5678",
-    hostState: "Idle",
+    hostState: "Idle" as const,
     sharing: false,
-    canConnect: true,
     onPick: vi.fn(),
     onConnect: vi.fn(),
     onAdd: vi.fn(async () => {}),
@@ -64,9 +68,44 @@ describe("MachinesRail", () => {
     expect(screen.getByRole("button", { name: "Share this machine" })).toBeTruthy();
   });
 
+  it("labels the This-machine chip with the friendly host status, not the state name", () => {
+    render(
+      <MachinesRail
+        {...base}
+        hostState="ConsentPrompted"
+        machines={[]}
+      />,
+    );
+    expect(screen.getByText("Connection request")).toBeTruthy();
+    expect(screen.queryByText("ConsentPrompted")).toBeNull();
+  });
+
+  it("never claims connecting is unavailable (every Connect auto-starts)", () => {
+    render(<MachinesRail {...base} machines={[]} />);
+    expect(screen.queryByText(/connecting unavailable/i)).toBeNull();
+  });
+
   it("empty state teaches the next action", () => {
     render(<MachinesRail {...base} machines={[]} />);
     expect(screen.getByText(/No machines yet/i)).toBeTruthy();
+  });
+});
+
+describe("excludeSelf (self is never a connectable contact)", () => {
+  const dir = [
+    { device: "aaaaaaaaaaaaaaaa", name: "Mom's PC", online: true, refreshed_ms: 1, is_self: false },
+    { device: "bbbbbbbbbbbbbbbb", name: "This PC", online: true, refreshed_ms: 1, is_self: true },
+    { device: "cccccccccccccccc", name: "Lab", online: false, refreshed_ms: 1, is_self: false },
+  ];
+
+  it("drops the own row by is_self and by device id", () => {
+    const rows = excludeSelf(dir, "cccccccccccccccc");
+    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa"]);
+  });
+
+  it("keeps peers when identity has not loaded yet (is_self still applies)", () => {
+    const rows = excludeSelf(dir, null);
+    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"]);
   });
 });
 

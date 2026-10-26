@@ -36,6 +36,25 @@ describe("consentCopy", () => {
 });
 
 describe("ConsentDialog", () => {
+  it("is a non-modal dialog (no alertdialog) with a polite live announcement", () => {
+    render(
+      <ConsentDialog
+        consent={consent({ requester_name: "Mom's PC" })}
+        onAccept={() => {}}
+        onReject={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Connection request" });
+    expect(dialog).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // The incoming request itself is spoken: aria-live region above the
+    // card carries the request text.
+    const live = document.querySelector('p[aria-live="polite"]');
+    expect(live?.textContent).toContain("Mom's PC (0123456789abcdef) asks to control");
+    const position = live?.compareDocumentPosition(dialog) ?? 0;
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("defaults remember ON for humans and wires the choice", () => {
     const onAccept = vi.fn();
     render(<ConsentDialog consent={consent({})} onAccept={onAccept} onReject={() => {}} />);

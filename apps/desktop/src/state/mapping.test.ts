@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   controllerView,
   disconnectCopy,
+  engineErrorCopy,
   formatMonitorLabel,
   hostView,
   TRANSITION_TRIGGERS,
@@ -162,6 +163,74 @@ describe("disconnect copy (every DisconnectCause code)", () => {
 
   it("falls back for unknown codes", () => {
     expect(disconnectCopy("something_new").title).toContain("ended");
+  });
+});
+
+describe("disconnect copy: reject reasons split by cause", () => {
+  // The code collapses every RejectReason into "rejected"; the engine's
+  // `cause` Debug string ("Rejected(Declined)", ...) carries the reason.
+  it.each([
+    ["Rejected(Declined)", "They clicked Reject on the other machine."],
+    ["Rejected(Timeout)", "No one answered on the other machine — try calling them first."],
+    ["Rejected(Busy)", "That machine is already in a session — try again in a few minutes."],
+    ["Rejected(Unavailable)", "That machine isn't accepting connections right now."],
+  ] as const)("maps %s to distinct copy", (cause, title) => {
+    expect(disconnectCopy("rejected", cause).title).toBe(title);
+    expect(disconnectCopy("rejected", cause).hint).toBeNull();
+  });
+
+  it("without a cause, rejected degrades to the declined copy", () => {
+    expect(disconnectCopy("rejected").title).toBe("They clicked Reject on the other machine.");
+  });
+
+  it("the session-level timeout keeps its direct-only hint (distinct cause)", () => {
+    expect(disconnectCopy("timeout", "Timeout").hint).toContain("direct connections only");
+    expect(disconnectCopy("timeout", "Timeout").title).not.toContain("No one answered");
+  });
+});
+
+describe("disconnect copy: offline peer (unknown_target)", () => {
+  it("classifies unknown_target as machine-off, never a NAT problem", () => {
+    const copy = disconnectCopy("unknown_target");
+    expect(copy.title).toBe("That machine isn't online");
+    expect(copy.hint).not.toBeNull();
+    expect(copy.hint).not.toContain("direct connections only");
+    expect(copy.hint).toContain("open DeepFlux");
+    // Same classification when the reason rides along in the cause text.
+    const viaCause = disconnectCopy("transport_error", "signaling: unknown_target");
+    expect(viaCause.title).toBe("That machine isn't online");
+    expect(viaCause.hint).not.toContain("direct connections only");
+  });
+
+  it("transport errors without the offline marker keep the direct-only hint", () => {
+    const copy = disconnectCopy("transport_error", "peer connection failed");
+    expect(copy.hint).toContain("direct connections only");
+  });
+});
+
+describe("engineErrorCopy (ErrorBanner mapping)", () => {
+  it("maps the raw signaling unknown_target to plain machine-off copy", () => {
+    const copy = engineErrorCopy({
+      code: "transport_failure",
+      message: "signaling: unknown_target",
+      hint: "This build supports direct connections only (no relay). …",
+    });
+    expect(copy.title).toBe("That machine isn't online");
+    expect(copy.message).toContain("open DeepFlux");
+    expect(copy.message).toContain("starts automatically");
+    // The NAT/TURN hint is suppressed for this classification.
+    expect(copy.hint).toBeNull();
+  });
+
+  it("passes other engine errors through with a neutral title", () => {
+    const copy = engineErrorCopy({
+      code: "transport_failure",
+      message: "peer connection failed",
+      hint: "hint text",
+    });
+    expect(copy.title).toBe("Something went wrong");
+    expect(copy.message).toBe("peer connection failed");
+    expect(copy.hint).toBe("hint text");
   });
 });
 

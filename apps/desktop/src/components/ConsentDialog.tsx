@@ -58,47 +58,51 @@ export function ConsentDialog({
   const copy = consentCopy(consent);
 
   return (
-    <div
-      className="consent center-card"
-      role="alertdialog"
-      aria-label="Connection request"
-    >
-      <p>
-        <strong>{copy.title}</strong>
+    <>
+      {/* Incoming-request announcement for screen readers: the card below
+       * is NOT a modal alertdialog (no focus trap/Escape — the shell stays
+       * usable), so the request itself is spoken via this polite region. */}
+      <p className="sr-only" aria-live="polite">
+        {copy.title}
       </p>
-      {consent.paired && !consent.pairing_proof_ok ? (
-        <p className="hint" role="note">
-          This machine claims to be trusted but could not prove it — treat it
-          as a new machine. (Someone may be reusing its code.)
+      <div className="consent center-card" role="dialog" aria-label="Connection request">
+        <p>
+          <strong>{copy.title}</strong>
         </p>
-      ) : null}
-      <p className="muted">{copy.detail}</p>
-      <label className="consent-remember">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-        />
-        <span>
-          {copy.rememberLabel}
-          <br />
-          <span className="hint">{copy.rememberHint}</span>
-        </span>
-      </label>
-      <div className="row">
-        <button
-          type="button"
-          className="primary"
-          autoFocus
-          onClick={() => onAccept(remember)}
-        >
-          {remember ? "Accept & remember" : "Accept once"}
-        </button>
-        <button type="button" onClick={() => onReject()}>
-          Reject
-        </button>
+        {consent.paired && !consent.pairing_proof_ok ? (
+          <p className="hint" role="note">
+            This machine claims to be trusted but could not prove it — treat it
+            as a new machine. (Someone may be reusing its code.)
+          </p>
+        ) : null}
+        <p className="muted">{copy.detail}</p>
+        <label className="consent-remember">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+          />
+          <span>
+            {copy.rememberLabel}
+            <br />
+            <span className="hint">{copy.rememberHint}</span>
+          </span>
+        </label>
+        <div className="row">
+          <button
+            type="button"
+            className="primary"
+            autoFocus
+            onClick={() => onAccept(remember)}
+          >
+            {remember ? "Accept & remember" : "Accept once"}
+          </button>
+          <button type="button" onClick={() => onReject()}>
+            Reject
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

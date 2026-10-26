@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { CopyButton, Section } from "./Common";
 import { api } from "../ipc";
-import { circleErrorCopy } from "../state/directory";
+import { CIRCLE_OFFLINE_HINT, circleErrorCopy } from "../state/directory";
 import type { DirectoryBinding } from "../hooks/useDirectory";
 import type { PairingInfo } from "../types";
 
@@ -66,10 +66,14 @@ export function CircleSection({ directory }: { directory: DirectoryBinding }) {
         <>
           <p className="muted">
             This machine {state.shareInCircle ? "appears in" : "is hidden from"} the family
-            circle ({state.machines.length} machine{state.machines.length === 1 ? "" : "s"}
-            {state.loaded ? "" : ", loading…"}).
+            circle ({state.machines.length} machine{state.machines.length === 1 ? "" : "s"}).
             {state.familyBuild ? " Joined automatically by the family installer." : ""}
           </p>
+          {!state.loaded ? (
+            <p className="hint" role="status">
+              {CIRCLE_OFFLINE_HINT}
+            </p>
+          ) : null}
           <div className="row">
             <button
               type="button"

@@ -6,7 +6,8 @@
  * (paired) rows carry the shield badge; circle-only rows carry the circle
  * tag. Also home to the pinned "This machine" card (host role). */
 import { useState } from "react";
-import type { Computer, DirectoryMachine, Favorite } from "../types";
+import { hostView } from "../state/mapping";
+import type { Computer, DirectoryMachine, Favorite, HostStateName } from "../types";
 
 export interface MachineRow {
   id: string;
@@ -96,6 +97,16 @@ export function machinesFromFavorites(
   return unifiedMachines(favorites, null, [], peerOnline, selectedCode);
 }
 
+/** Self is not a contact: directory rows for THIS machine never reach the
+ * merged list (the pinned "This machine" card represents self). Matches by
+ * the backend's `is_self` flag and, belt-and-braces, by device id. */
+export function excludeSelf(
+  machines: DirectoryMachine[],
+  thisDevice: string | null,
+): DirectoryMachine[] {
+  return machines.filter((m) => !m.is_self && m.device !== thisDevice);
+}
+
 /** Client-side search over the merged list: case-insensitive name or code
  * substring. Empty query returns everything. */
 export function filterMachines(rows: MachineRow[], query: string): MachineRow[] {
@@ -111,7 +122,6 @@ export function MachinesRail({
   thisCode,
   hostState,
   sharing,
-  canConnect,
   onPick,
   onConnect,
   onAdd,
@@ -120,9 +130,8 @@ export function MachinesRail({
 }: {
   machines: MachineRow[];
   thisCode: string;
-  hostState: string;
+  hostState: HostStateName;
   sharing: boolean;
-  canConnect: boolean;
   onPick: (code: string) => void;
   onConnect: (code: string) => void;
   onAdd: (name: string, code: string) => Promise<void>;
@@ -253,14 +262,11 @@ export function MachinesRail({
           ))
         )}
       </ul>
-      {!canConnect ? (
-        <p className="hint">connecting unavailable in the current state</p>
-      ) : null}
 
       <div className="rail-this">
         <div className="rail-head">
           <span>This machine</span>
-          <span className="chip chip-neutral">{hostState}</span>
+          <span className="chip chip-neutral">{hostView(hostState).status}</span>
         </div>
         <p className="muted">
           code <code className="code">{thisCode}</code>

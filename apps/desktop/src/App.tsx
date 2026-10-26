@@ -10,7 +10,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useDirectory } from "./hooks/useDirectory";
 import { SettingsPanel } from "./components/IdentityCard";
-import { MachinesRail, unifiedMachines } from "./components/MachinesRail";
+import { excludeSelf, MachinesRail, unifiedMachines } from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { CircleSection, TrustedMachinesSection } from "./components/CircleSettings";
 import { AssistantPanel } from "./components/AssistantPanel";
@@ -21,7 +21,7 @@ import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
 import { ErrorBanner, StatusChip } from "./components/Common";
 import { api, normalizeCode } from "./ipc";
 import { accountErrorCopy, accountGate } from "./state/account";
-import { controllerView, disconnectCopy, hostView } from "./state/mapping";
+import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
 import mark from "./assets/mark.png";
 
 export default function App() {
@@ -45,6 +45,9 @@ export default function App() {
   };
   const [showDiag, setShowDiag] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // ADR-006 §5 first-run circle notice: session-only dismissal — the
+  // point is the one-time notice on first contact, not a settings gate.
+  const [circleNoticeDismissed, setCircleNoticeDismissed] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
@@ -53,16 +56,22 @@ export default function App() {
     void refreshTrusted();
   }, []);
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    // engine://pairing — trusted-set changes; engine://favorites — the
+    // engine auto-favorited the controller-side machine on PairAck (the
+    // saved row appears without a restart).
+    const stops: Array<() => void> = [];
     void (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        unlisten = await listen("engine://pairing", () => void refreshTrusted());
+        stops.push(await listen("engine://favorites", () => void engine.refreshFavorites()));
+        stops.push(await listen("engine://pairing", () => void refreshTrusted()));
       } catch {
         /* jsdom/tests */
       }
     })();
-    return () => unlisten?.();
+    return () => {
+      for (const stop of stops) stop();
+    };
   }, []);
 
   // Shell version for the Settings label; tauri.conf is the single source
@@ -88,7 +97,8 @@ export default function App() {
 
   const host = hostView(ui.hostState);
   const controller = controllerView(ui.controllerState);
-  const endCopy = ui.lastEnd ? disconnectCopy(ui.lastEnd.code) : null;
+  const endCopy = ui.lastEnd ? disconnectCopy(ui.lastEnd.code, ui.lastEnd.cause) : null;
+  const errCopy = ui.lastError ? engineErrorCopy(ui.lastError) : null;
   const gate =
     engine.settings === null
       ? ("loading" as const)
@@ -179,13 +189,19 @@ export default function App() {
   }
 
   const signedIn = accountUi.status === "logged_in";
+  // This machine's own directory row never becomes a connectable contact —
+  // the pinned "This machine" card already represents self.
+  const directoryRows =
+    directoryUi.joined && directoryUi.loaded
+      ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
+      : null;
   const machines = unifiedMachines(
     engine.favorites,
     signedIn ? accountUi.computers : null,
     signedIn ? accountUi.online : [],
     ui.peerOnline,
     selectedCode,
-    directoryUi.joined && directoryUi.loaded ? directoryUi.machines : null,
+    directoryRows,
     trustedCodes,
   );
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
@@ -205,8 +221,8 @@ export default function App() {
           <h1>DeepFlux</h1>
         </div>
         <div className="chips">
-          <StatusChip tone={host.tone} label="Host" text={ui.hostState} />
-          <StatusChip tone={controller.tone} label="Controller" text={ui.controllerState} />
+          <StatusChip tone={host.tone} label="Host" text={host.status} />
+          <StatusChip tone={controller.tone} label="Controller" text={controller.status} />
           {signedIn && accountUi.username ? (
             <span className="chip chip-good account-chip" title="Signed in">
               <span className="chip-dot" aria-hidden="true" />
@@ -255,10 +271,11 @@ export default function App() {
           onDismiss={engine.clearCommandError}
         />
       ) : null}
-      {ui.lastError ? (
+      {ui.lastError && errCopy ? (
         <ErrorBanner
-          message={ui.lastError.message}
-          hint={ui.lastError.hint}
+          title={errCopy.title}
+          message={errCopy.message}
+          hint={errCopy.hint}
           onDismiss={() => {
             /* engine errors are informational; replaced by the next one */
           }}
@@ -283,13 +300,44 @@ export default function App() {
         </div>
       ) : null}
 
+      {/* ADR-006 §5 consent moment: the one-time notice that this PC is
+       * now visible in the family circle (the Settings toggle rules
+       * afterwards; dismissal is session-only). */}
+      {directoryUi.loaded && directoryUi.joined && !circleNoticeDismissed ? (
+        <div className="banner banner-info" role="status">
+          <p>
+            This PC now appears in your family circle — family can see it's
+            online and ask to connect. You control who connects: every new
+            machine needs your approval.
+          </p>
+          <div className="row">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setCircleNoticeDismissed(true)}
+            >
+              OK
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                void directory.setShared(false);
+                setCircleNoticeDismissed(true);
+              }}
+            >
+              Hide me from the circle
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <main className="workspace">
         <MachinesRail
           machines={machines}
           thisCode={engine.identity?.connection_code ?? "…"}
           hostState={ui.hostState}
           sharing={sharing}
-          canConnect={controller.can.connect || ui.controllerState === "Online"}
           onPick={(code) => setSelectedCode(code)}
           onConnect={(code) => {
             setSelectedCode(code);

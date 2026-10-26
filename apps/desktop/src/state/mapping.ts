@@ -200,9 +200,19 @@ export function controllerView(state: ControllerStateName): ControllerView {
 
 /**
  * User-facing copy for disconnect causes. Codes come from the engine's
- * `disconnect_copy` (and `DisconnectCause` Debug strings).
+ * `disconnect_copy`; `cause` is the `DisconnectCause` Debug string
+ * (`"Rejected(Declined)"`, ...) which distinguishes reject reasons the
+ * code alone collapses into `"rejected"`.
  */
-export function disconnectCopy(code: string): { title: string; hint: string | null } {
+export function disconnectCopy(
+  code: string,
+  cause?: string | null,
+): { title: string; hint: string | null } {
+  // The signaling service's "not registered / presence expired" answer:
+  // the peer machine is simply off — never a NAT/relay problem.
+  if (`${code} ${cause ?? ""}`.includes("unknown_target")) {
+    return { title: OFFLINE_PEER_TITLE, hint: OFFLINE_PEER_DETAIL };
+  }
   switch (code) {
     case "user_disconnect":
       return { title: "You ended the session.", hint: null };
@@ -214,7 +224,7 @@ export function disconnectCopy(code: string): { title: string; hint: string | nu
         hint: DIRECT_ONLY_HINT,
       };
     case "rejected":
-      return { title: "The host declined the connection.", hint: null };
+      return { title: rejectCopy(cause), hint: null };
     case "canceled":
       return { title: "The connection attempt was canceled.", hint: null };
     case "collision":
@@ -230,6 +240,44 @@ export function disconnectCopy(code: string): { title: string; hint: string | nu
     default:
       return { title: "The session ended.", hint: null };
   }
+}
+
+/** RejectReason split (session's `RejectReason`; the cause Debug string
+ * carries it, the code does not). Without a cause we can only say
+ * "declined" — the pre-split behavior. */
+function rejectCopy(cause?: string | null): string {
+  if (cause?.includes("Timeout")) {
+    return "No one answered on the other machine — try calling them first.";
+  }
+  if (cause?.includes("Busy")) {
+    return "That machine is already in a session — try again in a few minutes.";
+  }
+  if (cause?.includes("Unavailable")) {
+    return "That machine isn't accepting connections right now.";
+  }
+  return "They clicked Reject on the other machine.";
+}
+
+export const OFFLINE_PEER_TITLE = "That machine isn't online";
+export const OFFLINE_PEER_DETAIL =
+  "That PC isn't running the app right now. Ask whoever uses it to open " +
+  "DeepFlux (it starts automatically when their PC is on), then try again.";
+
+/**
+ * User-facing copy for engine ErrorEvents (the ErrorBanner path). The
+ * raw engine reason reaches the UI verbatim (`signaling: ...`); the
+ * offline-peer classification must read as "machine off", not as a
+ * connection/NAT problem.
+ */
+export function engineErrorCopy(event: {
+  code: string;
+  message: string;
+  hint: string | null;
+}): { title: string; message: string; hint: string | null } {
+  if (`${event.code} ${event.message}`.includes("unknown_target")) {
+    return { title: OFFLINE_PEER_TITLE, message: OFFLINE_PEER_DETAIL, hint: null };
+  }
+  return { title: "Something went wrong", message: event.message, hint: event.hint };
 }
 
 export const DIRECT_ONLY_HINT =

@@ -264,6 +264,14 @@ describe("ErrorBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it("defaults to a neutral title for non-connection errors", () => {
+    render(
+      <ErrorBanner message="favorite rename failed" hint={null} onDismiss={() => {}} />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Something went wrong");
+    expect(screen.queryByText("Connection problem")).toBeNull();
+  });
 });
 
 describe("SettingsPanel", () => {

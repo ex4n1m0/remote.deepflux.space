@@ -43,12 +43,12 @@ export function Section({
 export function ErrorBanner({
   message,
   hint,
-  title = "Connection problem",
+  title = "Something went wrong",
   onDismiss,
 }: {
   message: string;
   hint?: string | null;
-  /** Heading; defaults to the connection copy (accounts flows override). */
+  /** Heading; neutral by default (connection flows pass their own). */
   title?: string;
   onDismiss: () => void;
 }) {
