@@ -80,6 +80,12 @@ export class UpstashRestStore implements Store {
     return typeof v === 'string' ? v : null;
   }
 
+  async mget(...keys: string[]): Promise<(string | null)[]> {
+    if (keys.length === 0) return [];
+    const [v] = await this.pipeline([['MGET', ...keys]]);
+    return (Array.isArray(v) ? v : []).map((x) => (typeof x === 'string' ? x : null));
+  }
+
   async setNxEx(key: string, value: string, ttlSec: number): Promise<boolean> {
     const [v] = await this.pipeline([['SET', key, value, 'EX', String(ttlSec), 'NX']]);
     return v === 'OK';

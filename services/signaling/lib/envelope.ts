@@ -28,6 +28,8 @@ export const ERROR_CODES = {
   UNKNOWN_TARGET: 404,
   MALFORMED: 422,
   TOO_LARGE: 413,
+  /** ADR-006 B3: send-path rate limiting (fixed windows). */
+  RATE_LIMITED: 429,
   INTERNAL: 500,
 } as const;
 
@@ -76,7 +78,19 @@ export const envelopeBaseSchema = z.object({
 export const signalingBodySchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('register'), capabilities: capabilitiesSchema }),
   z.object({ type: z.literal('heartbeat') }),
-  z.object({ type: z.literal('connect_request'), capabilities: capabilitiesSchema }),
+  z.object({
+    type: z.literal('connect_request'),
+    capabilities: capabilitiesSchema,
+    // ADR-006 additive-optional: HMAC pairing proof (32 bytes -> 64 lowercase
+    // hex) — present whenever the controller holds a pairing with this host.
+    // MUST be in this schema (not merely tolerated) because the service
+    // forwards the PARSED envelope: an unknown key would be stripped before
+    // delivery.
+    pairing_proof_hex: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/, 'expected 64 lowercase hex chars')
+      .optional(),
+  }),
   z.object({ type: z.literal('accept'), session_secret: z.string().min(1) }),
   z.object({ type: z.literal('reject'), reason: z.enum(['busy', 'declined', 'timeout', 'unavailable']) }),
   z.object({ type: z.literal('offer'), sdp: z.string().min(1) }),

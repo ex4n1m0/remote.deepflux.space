@@ -17,6 +17,10 @@
     "api/chat.js": {
       "runtime": "@vercel/node@15.0.0",
       "maxDuration": 10
+    },
+    "api/directory.js": {
+      "runtime": "@vercel/node@15.0.0",
+      "maxDuration": 10
     }
   }
 }

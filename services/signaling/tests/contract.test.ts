@@ -21,6 +21,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import WebSocket from 'ws';
 
 const HEADLESS = process.env.CONTRACT_NO_VERCEL === '1';
@@ -74,6 +76,23 @@ async function waitReady(url: string, timeoutMs: number): Promise<void> {
     await delay(400);
   }
   throw new Error(`service at ${url} not ready in ${timeoutMs}ms`);
+}
+
+/**
+ * The vercel CLI entry script: the project-local devDependency when present
+ * (README setup), else the global install (`npm root -g`). The hardcoded
+ * local path broke when the machine moved to a global CLI 63.x — resolve,
+ * never guess.
+ */
+function resolveVercelCli(): string {
+  const local = `${ROOT}node_modules/vercel/dist/vc.js`;
+  if (existsSync(local)) return local;
+  const globalRoot = spawnSync('npm root -g', { shell: true, encoding: 'utf8' }).stdout?.trim();
+  if (globalRoot) {
+    const global = join(globalRoot, 'vercel', 'dist', 'vc.js');
+    if (existsSync(global)) return global;
+  }
+  throw new Error('vercel CLI not found (project-local or `npm root -g`)');
 }
 
 async function waitUntil<T>(
@@ -304,17 +323,11 @@ before(async () => {
     );
   } else {
     // Two INDEPENDENT vercel dev servers -> cross-instance through the
-    // Vercel pipeline (project-local CLI; --local, no project link).
-    spawnNode(
-      [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38011'],
-      normal,
-      'vdev-a',
-    );
-    spawnNode(
-      [`${ROOT}node_modules/vercel/dist/vc.js`, 'dev', '--local', '--listen', '127.0.0.1:38012'],
-      normal,
-      'vdev-b',
-    );
+    // Vercel pipeline (project-local CLI when installed, else the global
+    // one — CLI 63.x dropped the local devDependency; --local, no link).
+    const vc = resolveVercelCli();
+    spawnNode([vc, 'dev', '--local', '--listen', '127.0.0.1:38011'], normal, 'vdev-a');
+    spawnNode([vc, 'dev', '--local', '--listen', '127.0.0.1:38012'], normal, 'vdev-b');
   }
   await Promise.all([
     waitReady(STANDALONE, 20_000),
@@ -772,6 +785,40 @@ test('dedupe crash window: vanished entry is repaired, not swallowed (F45)', asy
     return list.find((e) => e.envelope.message_id === mid);
   }, 5000, 'repaired delivery');
   assert.equal(got.envelope.message_id, mid);
+});
+
+test('send-path rate limits: per-sender window + connect_request per pair (ADR-006 B3)', async () => {
+  const a = 'rl-a';
+  const b = 'rl-b';
+  await register(STANDALONE, a);
+  await register(STANDALONE, b);
+  const offer = (i: number) => envelope(a, b, `rl-a-o-${i}`, { type: 'offer', sdp: 'v=0 rl' }, 'rl-s1');
+  // Fill the per-sender window (default 60/min). Every send is schema-valid
+  // with a unique message_id.
+  for (let i = 0; i < 55; i++) {
+    const r = await send(STANDALONE, a, offer(i));
+    assert.equal(r.status, 200, `offer ${i} within budget`);
+  }
+  // connect_request per-pair limit (default 5/min): the sixth is refused
+  // even though the per-sender budget (60) is not yet exhausted.
+  const creq = (i: number) => envelope(a, b, `rl-a-c-${i}`, { type: 'connect_request', capabilities: CAPS }, 'rl-s2');
+  for (let i = 0; i < 5; i++) {
+    const r = await send(STANDALONE, a, creq(i));
+    assert.equal(r.status, 200, `connect_request ${i} within pair budget`);
+  }
+  const pairOver = await send(STANDALONE, a, creq(9));
+  assert.equal(pairOver.status, 429);
+  assert.equal(pairOver.json['error'], 'rate_limited');
+  // The per-sender window bites the 61st envelope overall (the refused
+  // connect_requests still consumed sender quota — counting attempts is
+  // the point).
+  const senderOver = await send(STANDALONE, a, offer(100));
+  assert.equal(senderOver.status, 429);
+  assert.equal(senderOver.json['error'], 'rate_limited');
+  // A different sender has its own buckets.
+  await register(STANDALONE, 'rl-c');
+  const other = await send(STANDALONE, 'rl-c', envelope('rl-c', b, 'rl-c-o-1', { type: 'offer', sdp: 'v=0 rl' }, 'rl-s3'));
+  assert.equal(other.status, 200);
 });
 
 test('no secrets or SDP material in service logs', async () => {

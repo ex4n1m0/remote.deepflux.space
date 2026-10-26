@@ -26,6 +26,10 @@ import {
   accountResponseSchema,
   ACCOUNT_PROTOCOL_VERSION,
 } from '../lib/account-schema.ts';
+import {
+  directoryRequestSchema,
+  DIRECTORY_PROTOCOL_VERSION,
+} from '../lib/directory-schema.ts';
 
 const root = new URL('../fixtures/', import.meta.url).pathname
   // Windows: file URL -> plain path
@@ -196,6 +200,109 @@ for (const [file, outcome] of Object.entries(accountExpectations)) {
   } else {
     pass += 1;
     console.log(`ok   account/reject/${file} (schema-invalid)`);
+  }
+}
+
+// --- directory API: golden fixtures <-> lib/directory-schema.ts (ADR-006) ----
+//
+// Requests are Rust-serialized goldens (must parse with the TS mirror);
+// responses are the service emission shape (checked for decode-relevant
+// invariants: action discriminant + version); rejects fail their documented
+// way. Additive-optional tolerance checked on one request golden.
+
+for (const file of listJson(join(root, 'directory/request'))) {
+  const value = JSON.parse(readFileSync(join(root, 'directory/request', file), 'utf8'));
+  const parsed = directoryRequestSchema.safeParse(value);
+  if (!parsed.success) {
+    console.error(`FAIL directory/request/${file}: schema rejected: ${parsed.error.issues[0]?.path}`);
+    fail += 1;
+    continue;
+  }
+  if (value.protocol_version !== DIRECTORY_PROTOCOL_VERSION) {
+    console.error(`FAIL directory/request/${file}: wrong protocol_version`);
+    fail += 1;
+    continue;
+  }
+  if ('payload' in value) {
+    console.error(`FAIL directory/request/${file}: request is not flat (payload key)`);
+    fail += 1;
+    continue;
+  }
+  if (file === 'put.json') {
+    const withFuture = { ...value, future_additive_field: 42 };
+    if (!directoryRequestSchema.safeParse(withFuture).success) {
+      console.error(`FAIL directory/request/${file}: additive optional field rejected`);
+      fail += 1;
+      continue;
+    }
+  }
+  pass += 1;
+  console.log(`ok   directory/request/${file} (action=${value.action})`);
+}
+
+for (const file of listJson(join(root, 'directory/response'))) {
+  const value = JSON.parse(readFileSync(join(root, 'directory/response', file), 'utf8'));
+  if (value.ok !== true || value.protocol_version !== DIRECTORY_PROTOCOL_VERSION) {
+    console.error(`FAIL directory/response/${file}: bad envelope (ok/protocol_version)`);
+    fail += 1;
+    continue;
+  }
+  if (!['put', 'list', 'remove'].includes(value.action)) {
+    console.error(`FAIL directory/response/${file}: unknown action ${value.action}`);
+    fail += 1;
+    continue;
+  }
+  if (value.action === 'list') {
+    if (!Array.isArray(value.entries) || typeof value.truncated !== 'boolean') {
+      console.error(`FAIL directory/response/${file}: list shape (entries/truncated)`);
+      fail += 1;
+      continue;
+    }
+    for (const row of value.entries) {
+      if (typeof row.device !== 'string' || typeof row.online !== 'boolean') {
+        console.error(`FAIL directory/response/${file}: row shape`);
+        fail += 1;
+        continue;
+      }
+    }
+  }
+  if (value.action === 'put' && typeof value.refreshed_ms !== 'number') {
+    console.error(`FAIL directory/response/${file}: put shape (refreshed_ms)`);
+    fail += 1;
+    continue;
+  }
+  pass += 1;
+  console.log(`ok   directory/response/${file} (action=${value.action})`);
+}
+
+const directoryExpectations = {
+  'v0_put.json': 'version-gated',
+  'unknown_action.json': 'schema-invalid',
+  'camelcase_probe.json': 'schema-invalid',
+};
+
+for (const [file, outcome] of Object.entries(directoryExpectations)) {
+  const value = JSON.parse(readFileSync(join(root, 'directory/reject', file), 'utf8'));
+  const parsed = directoryRequestSchema.safeParse(value);
+  if (outcome === 'version-gated') {
+    if (parsed.success && value.protocol_version !== DIRECTORY_PROTOCOL_VERSION) {
+      pass += 1;
+      console.log(`ok   directory/reject/${file} (version-gated at the service, saw v${value.protocol_version})`);
+    } else if (!parsed.success) {
+      pass += 1;
+      console.log(`ok   directory/reject/${file} (schema-invalid, also version-gated)`);
+    } else {
+      console.error(`FAIL directory/reject/${file}: v0 parsed as v1-compatible`);
+      fail += 1;
+    }
+    continue;
+  }
+  if (parsed.success) {
+    console.error(`FAIL directory/reject/${file}: schema accepted an invalid request`);
+    fail += 1;
+  } else {
+    pass += 1;
+    console.log(`ok   directory/reject/${file} (schema-invalid)`);
   }
 }
 

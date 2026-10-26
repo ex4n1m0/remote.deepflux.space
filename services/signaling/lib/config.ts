@@ -58,6 +58,30 @@ export interface SignalingConfig {
   readonly rlLoginPerIpPer15m: number;
   readonly rlRosterPutPerMin: number;
   readonly rlPresencePerMin: number;
+  // --- circle directory API (POST /api/directory; ADR-006) ------------------
+  /**
+   * Directory entry TTL (default 30 days). Directory records are the second
+   * semi-durable class after accounts — but unlike accounts they self-clean:
+   * an entry survives only while its machine occasionally refreshes it (the
+   * client re-puts on launch and on display-name change), and a circle idle
+   * for the TTL vanishes entirely (bounded-store policy).
+   */
+  readonly ttlDirectorySec: number;
+  /** Max distinct devices per circle (a `put` from a new device above this
+   *  answers 409 `circle_full`; refreshes by existing members always pass). */
+  readonly directoryMaxMembers: number;
+  /** Decoded-byte cap for one sealed entry (oversize answers 413). */
+  readonly directoryEntryMaxBytes: number;
+  /** Signaling send-path rate limits (ADR-006 B3: prompt-flood defense). */
+  readonly rlSignalSendPerMinPerDevice: number;
+  readonly rlSignalConnectPerMinPerPair: number;
+  readonly rlDirPutPerMinPerDevice: number;
+  readonly rlDirPutPerMinPerIp: number;
+  /** New members per circle per day (junk-fill defense; refreshes exempt). */
+  readonly rlDirPutNewMembersPerDayPerCircle: number;
+  readonly rlDirListPerMinPerDevice: number;
+  readonly rlDirListPerMinPerCircle: number;
+  readonly rlDirRemovePerMinPerDevice: number;
 }
 
 export function loadConfig(): SignalingConfig {
@@ -82,5 +106,21 @@ export function loadConfig(): SignalingConfig {
     rlLoginPerIpPer15m: intEnv('SIGNALING_RL_LOGIN_PER_IP_15M', 60, 1, 100_000),
     rlRosterPutPerMin: intEnv('SIGNALING_RL_ROSTER_PUT_PER_MIN', 60, 1, 100_000),
     rlPresencePerMin: intEnv('SIGNALING_RL_PRESENCE_PER_MIN', 60, 1, 100_000),
+    ttlDirectorySec: intEnv('SIGNALING_TTL_DIRECTORY_SECONDS', 2_592_000, 60, 31_553_280),
+    directoryMaxMembers: intEnv('SIGNALING_DIRECTORY_MAX_MEMBERS', 128, 1, 1_000),
+    directoryEntryMaxBytes: intEnv('SIGNALING_DIRECTORY_ENTRY_MAX_BYTES', 2_048, 64, 65_536),
+    rlSignalSendPerMinPerDevice: intEnv('SIGNALING_RL_SEND_PER_MIN_PER_DEVICE', 60, 1, 100_000),
+    rlSignalConnectPerMinPerPair: intEnv('SIGNALING_RL_CONNECT_PER_MIN_PER_PAIR', 5, 1, 100_000),
+    rlDirPutPerMinPerDevice: intEnv('SIGNALING_RL_DIR_PUT_PER_MIN_PER_DEVICE', 10, 1, 100_000),
+    rlDirPutPerMinPerIp: intEnv('SIGNALING_RL_DIR_PUT_PER_MIN_PER_IP', 60, 1, 100_000),
+    rlDirPutNewMembersPerDayPerCircle: intEnv(
+      'SIGNALING_RL_DIR_PUT_NEW_MEMBERS_PER_DAY_PER_CIRCLE',
+      5,
+      1,
+      100_000,
+    ),
+    rlDirListPerMinPerDevice: intEnv('SIGNALING_RL_DIR_LIST_PER_MIN_PER_DEVICE', 60, 1, 100_000),
+    rlDirListPerMinPerCircle: intEnv('SIGNALING_RL_DIR_LIST_PER_MIN_PER_CIRCLE', 300, 1, 100_000),
+    rlDirRemovePerMinPerDevice: intEnv('SIGNALING_RL_DIR_REMOVE_PER_MIN_PER_DEVICE', 10, 1, 100_000),
   };
 }

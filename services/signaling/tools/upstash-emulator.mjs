@@ -19,7 +19,7 @@
  * them, which is what the cross-instance and resume contract tests prove.
  *
  * Supported commands (the service's full usage):
- *   SET key val [EX s] [NX]   GET   DEL k...   EXISTS   EXPIRE key s
+ *   SET key val [EX s] [NX]   GET   MGET k...   DEL k...   EXISTS   EXPIRE key s
  *   INCR   ZADD key score member
  *   ZRANGE key start stop                     (numeric indexes, ascending)
  *   ZRANGEBYSCORE key (min +INF LIMIT o n     (exclusive-min form)
@@ -103,6 +103,14 @@ function run(command) {
     case 'GET': {
       const e = getAlive(strings, rest[0]);
       return e ? e.value : null;
+    }
+    case 'MGET': {
+      // ADR-006: batched presence join for the directory list. Null per
+      // missing key, same order as the input.
+      return rest.map((k) => {
+        const e = getAlive(strings, k);
+        return e ? e.value : null;
+      });
     }
     case 'DEL': {
       let n = 0;

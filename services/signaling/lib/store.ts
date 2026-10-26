@@ -21,6 +21,10 @@ export interface Store {
   /** GET; null when missing. */
   get(key: string): Promise<string | null>;
 
+  /** Batched GET — one round trip where the store allows (ADR-006 directory
+   *  presence join; null per missing key, same order as the input). */
+  mget(...keys: string[]): Promise<(string | null)[]>;
+
   /** SET key value EX ttl NX — true when the key was newly set. */
   setNxEx(key: string, value: string, ttlSec: number): Promise<boolean>;
 

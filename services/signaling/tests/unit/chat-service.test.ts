@@ -26,6 +26,9 @@ class MemoryStore implements Store {
   async get(key: string) {
     return this.map.get(key) ?? null;
   }
+  async mget(...keys: string[]) {
+    return keys.map((k) => this.map.get(k) ?? null);
+  }
   async setNxEx(key: string, value: string, _ttlSec: number) {
     if (this.map.has(key)) return false;
     this.map.set(key, value);

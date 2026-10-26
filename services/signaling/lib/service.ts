@@ -45,6 +45,7 @@ export type SendError =
   | 'not_service_directed'
   | 'missing_session_id'
   | 'too_large'
+  | 'rate_limited'
   | 'internal';
 
 export type SendOutcome = { ok: true; duplicate: boolean } | { ok: false; error: SendError };
@@ -118,6 +119,64 @@ export class SignalingService {
   async authenticate(device: string, token: string): Promise<boolean> {
     const rec = this.parsePresence(await this.store.get(this.k(device, 'p')));
     return rec !== null && rec.th === sha256hex(token);
+  }
+
+  /**
+   * Fixed-window limiter — the account-service shape (INCR +
+   * expire-on-first + window-start companion, self-healing P2-3). Returns
+   * null when allowed, else `retry_after_s`.
+   */
+  private async fixedWindow(
+    bucketAndKey: string,
+    limit: number,
+    windowSec: number,
+  ): Promise<number | null> {
+    const countKey = `${this.cfg.prefix}rl:${bucketAndKey}`;
+    const startKey = `${this.cfg.prefix}rlt:${bucketAndKey}`;
+    const n = await this.store.incr(countKey);
+    if (n === 1) {
+      await this.store.expireAfterIncr(countKey, windowSec);
+      await this.store.setNxEx(startKey, String(Date.now()), windowSec);
+    }
+    if (n > limit) {
+      const start = await this.store.get(startKey);
+      const startedAt = start === null ? Number.NaN : Number(start);
+      let retryAfterS = windowSec;
+      if (Number.isFinite(startedAt) && startedAt > 0) {
+        retryAfterS = Math.max(1, Math.ceil((startedAt + windowSec * 1000 - Date.now()) / 1000));
+      } else {
+        await this.store.expireAfterIncr(countKey, windowSec);
+        await this.store.setNxEx(startKey, String(Date.now()), windowSec);
+      }
+      return Math.min(retryAfterS, windowSec);
+    }
+    return null;
+  }
+
+  /**
+   * ADR-006 B3 send limits (prompt-flood defense): per-sender across all
+   * peer envelopes, plus per sender+target pair for `connect_request`
+   * (each one modal-prompts an always-ready host).
+   */
+  private async rateLimitSend(
+    fromDevice: string,
+    env: SignalingEnvelope,
+  ): Promise<number | null> {
+    const perSender = await this.fixedWindow(
+      `sig-send:${fromDevice}`,
+      this.cfg.rlSignalSendPerMinPerDevice,
+      60,
+    );
+    if (perSender !== null) return perSender;
+    if (env.type === 'connect_request') {
+      const perPair = await this.fixedWindow(
+        `sig-conn:${fromDevice}:${env.to_device_id}`,
+        this.cfg.rlSignalConnectPerMinPerPair,
+        60,
+      );
+      if (perPair !== null) return perPair;
+    }
+    return null;
   }
 
   /**
@@ -390,6 +449,23 @@ export class SignalingService {
     if (!authed) {
       return { ok: false, error: 'unauthorized' };
     }
+
+    // ADR-006 B3 (prompt-flood defense): authenticated peer sends are rate
+    // limited per sender (any envelope) and per sender+target pair
+    // (`connect_request` only — each one modal-prompts an always-ready
+    // host). Fixed windows, same shape as the account limiter; only
+    // authenticated, schema-valid traffic consumes quota.
+    const limited = await this.rateLimitSend(fromDevice, env);
+    if (limited !== null) {
+      return this.failWith(
+        fromDevice,
+        'rate_limited',
+        `rate limited; retry in ${limited}s`,
+        true,
+        ERROR_CODES.RATE_LIMITED,
+      );
+    }
+
     if (isSessionScoped(env.type) && env.session_id === null) {
       return this.failWith(
         fromDevice,

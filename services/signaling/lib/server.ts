@@ -210,6 +210,8 @@ export function createSignalingServer(cfgIn?: SignalingConfig): SignalingServer 
         return 404;
       case 'too_large':
         return 413;
+      case 'rate_limited':
+        return 429;
       case 'unsupported_version':
       case 'malformed':
       case 'self_target':

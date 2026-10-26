@@ -21,6 +21,14 @@ cleanup. **Never** frames, input, cursor payloads, clipboard, or file data.
   below). Same store, same discipline; the service sees only scrypt
   verifiers and ciphertext — never passwords, unwrapped DEKs, or roster
   plaintext.
+- Since ADR-005 (2026-10-24) a THIRD endpoint serves the sealed chat inbox:
+  **`PUT/GET /api/chat`** (ciphertext only).
+- Since ADR-006 (2026-10-26) a FOURTH endpoint serves the family-circle
+  machine directory: **`POST /api/directory`** (put/list/remove of sealed
+  entries keyed by an unguessable `circle_id` hash; the service sees device
+  ids, ciphertext, server-minted timestamps, and online flags — never
+  nicknames). Contract: `crates/protocol/src/directory.rs`; tests:
+  `pnpm test:directory`.
 
 ## Layout
 
@@ -28,24 +36,34 @@ cleanup. **Never** frames, input, cursor payloads, clipboard, or file data.
 api/signal.ts        Vercel function (Node runtime): http.Server + WSS
 api/health.ts        Liveness probe (no store access)
 api/account.ts       Vercel function: account/roster API (POST /api/account)
+api/chat.ts          Vercel function: sealed chat inbox (PUT/GET /api/chat)
+api/directory.ts     Vercel function: circle directory (POST /api/directory)
 lib/envelope.ts      zod mirror of the Rust envelope contract (THE TS types)
 lib/account-schema.ts zod mirror of the Rust account contract (accounts)
+lib/chat-schema.ts   zod mirror of the sealed chat envelope (ADR-005)
+lib/directory-schema.ts zod mirror of the circle-directory contract (ADR-006)
 lib/frames.ts        client<->service framing ops (svc_version 1)
 lib/service.ts       core logic: presence, dedupe, mailbox, sessions
 lib/account-service.ts account core: scrypt verifiers, sessions, roster, RL
+lib/chat-service.ts  chat inbox core (sealed envelopes, TTL'd, capped)
+lib/directory-service.ts circle directory core (ZSET rows, presence join, RL)
 lib/server.ts        http.Server factory: HTTP fallback + WS transport
 lib/account-server.ts http.Server factory for the account API
-lib/store.ts         thin storage seam (interface)
+lib/chat-server.ts   http.Server factory for the chat inbox
+lib/directory-server.ts http.Server factory for the circle directory
+lib/store.ts         thin storage seam (interface; mget since ADR-006)
 lib/upstash.ts       Upstash Redis REST driver (production + local emulator)
 lib/config.ts        env-tunable TTLs/bounds (see .env.example)
 lib/log.ts           redaction-safe logging (no envelopes, no tokens, no SDP,
                      no account key material)
 tools/upstash-emulator.mjs  local store (out-of-process, real TTLs)
-tools/dev-server.mjs standalone runner of BOTH servers (signal + account)
+tools/dev-server.mjs standalone runner of every server (signal/account/chat/
+                     directory, one port each; --only for single surfaces)
 tests/contract.test.ts       contract matrix, signaling (spawns everything)
 tests/account.test.ts        contract matrix, account API (spawns emulator +
                              standalone account server)
-scripts/validate-wires.mjs   fixtures <-> zod mirror validation (both surfaces)
+tests/directory.test.ts      contract matrix, circle directory (ADR-006)
+scripts/validate-wires.mjs   fixtures <-> zod mirror validation (all surfaces)
 fixtures/            golden (Rust-exported) + reject wire fixtures; the
                      account goldens live under fixtures/account/
 ```
@@ -245,7 +263,16 @@ The desktop default signaling URL is `https://signaling.deepflux.space`
   and the WS-through-deployment path must be spot-checked after deploy
   (step 5 above). CLI 59's bundled builder (5.10.1) also lacks the
   http.Server dev detection; CLI 60 + pinned builder 15 works for the HTTP
-  path (that is what `pnpm dev:vercel` uses).
+  path (that is what `pnpm dev:vercel` uses). **Update (2026-10-26):** on
+  the current machine (Node 22.18, global CLI 63.1.2) the local dev bridge
+  again fails POSTs to the exported `http.Server` functions
+  (`Can't detect way to handle request`) with every CLI tried (59/60/63);
+  the full vercel-path contract matrix is therefore run headless
+  (`CONTRACT_NO_VERCEL=1 pnpm test:contract` / `pnpm test:contract:headless`)
+  and the authoritative POST-path verification is the post-deploy live
+  smoke test. `vercel@60` is pinned as a devDependency (the last CLI with
+  http.Server dev detection) and `tests/contract.test.ts` resolves the CLI
+  project-local first, then global.
 - Live WS delivery is a per-connection mailbox poll
   (`SIGNALING_WS_POLL_MS`, default 250 ms): Upstash REST has no
   pub/sub push. Signaling-only latency; connection setup stays well
