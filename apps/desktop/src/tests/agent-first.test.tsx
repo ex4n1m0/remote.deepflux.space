@@ -159,6 +159,8 @@ describe("AssistantPanel", () => {
     messages: [],
     status: { configured: true, busy: false, base_url: "https://api.deepseek.com/v1", model: "deepseek-flash" },
     busy: false,
+    confirm: null,
+    answerConfirm: vi.fn(async () => {}),
     send: vi.fn(async () => {}),
     configure: vi.fn(async () => {}),
     reset: vi.fn(async () => {}),
@@ -181,6 +183,30 @@ describe("AssistantPanel", () => {
     );
     expect(screen.getByLabelText("API key")).toBeTruthy();
     expect(screen.getByLabelText("Message the assistant")).toHaveProperty("disabled", true);
+  });
+
+  it("renders the download-confirmation card with the three answers", () => {
+    const answerConfirm = vi.fn(async () => {});
+    render(
+      <AssistantPanel
+        assistant={makeAssistant({
+          confirm: {
+            id: 7,
+            question: "Allow downloading from example.com?",
+            detail: "The assistant wants to download https://example.com/a.zip",
+          },
+          answerConfirm,
+        })}
+      />,
+    );
+    expect(screen.getByText("Allow downloading from example.com?")).toBeTruthy();
+    expect(screen.getByText(/No answer in 5 minutes/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Always allow this site" }));
+    expect(answerConfirm).toHaveBeenCalledWith(true, true);
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(answerConfirm).toHaveBeenCalledWith(true, false);
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(answerConfirm).toHaveBeenCalledWith(false, false);
   });
 
   it("renders user, assistant, tool, and error messages", () => {

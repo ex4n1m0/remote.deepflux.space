@@ -53,6 +53,7 @@ export function SettingsPanel({
   const [quality, setQuality] = useState("balanced");
   const [scale, setScale] = useState("fit");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [domains, setDomains] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
@@ -63,6 +64,7 @@ export function SettingsPanel({
     setQuality(settings.default_quality);
     setScale(settings.default_viewer_scale);
     setLaunchAtLogin(settings.launch_at_login);
+    setDomains((settings.agent_download_domains ?? []).join(", "));
   }
 
   return (
@@ -101,6 +103,10 @@ export function SettingsPanel({
               default_quality: quality,
               default_viewer_scale: scale,
               launch_at_login: launchAtLogin,
+              agent_download_domains: domains
+                .split(",")
+                .map((d) => d.trim().toLowerCase())
+                .filter((d) => d.length > 0),
             });
             setSaving(false);
           }}
@@ -120,6 +126,21 @@ export function SettingsPanel({
             <code className="code">https://signaling.deepflux.space</code>; the local dev server
             (<code className="code">http://127.0.0.1:38013</code>) for testing. Clear the field
             to opt out (accounts and the engine then need a URL set before use).
+          </p>
+          <label>
+            Assistant download sites
+            <input
+              value={domains}
+              onChange={(event) => setDomains(event.target.value)}
+              placeholder="example.com, cdn.example.com"
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </label>
+          <p className="muted">
+            Sites the assistant may download from without asking. The first
+            download from any other site asks you once (Allow once / Always
+            allow / Deny).
           </p>
           <label className="settings-check">
             <input

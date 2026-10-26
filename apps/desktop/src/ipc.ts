@@ -37,6 +37,8 @@ export const ASSISTANT_EVENT = {
   busy: "assistant://busy",
   done: "assistant://done",
   error: "assistant://error",
+  confirm: "assistant://confirm",
+  confirmDone: "assistant://confirm-done",
 } as const;
 
 /** Machine chat (RD-022): the engine://chat event payload + APIs. */
@@ -136,6 +138,8 @@ export const api = {
     invoke("agent_configure", { args }),
   agentSend: (text: string): Promise<void> => invoke("agent_send", { args: { text } }),
   agentReset: (): Promise<void> => invoke("agent_reset"),
+  agentConfirm: (id: number, allow: boolean, remember: boolean): Promise<void> =>
+    invoke("agent_confirm", { id, allow, remember }),
 
   // Machine chat + pairing (RD-022/RD-023).
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>

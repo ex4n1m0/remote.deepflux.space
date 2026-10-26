@@ -489,6 +489,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         default_viewer_scale: s.default_viewer_scale.clone(),
         skipped_onboarding: s.skipped_onboarding,
         launch_at_login: s.launch_at_login,
+        agent_download_domains: s.agent_download_domains.clone(),
     })
 }
 
@@ -514,6 +515,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         // not the settings patch — preserve them here.
         agent_base_url: store.settings().agent_base_url.clone(),
         agent_model: store.settings().agent_model.clone(),
+        agent_download_domains: patch.agent_download_domains,
     };
     store.update_settings(next)?;
     let s = store.settings().clone();
@@ -525,6 +527,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_viewer_scale: s.default_viewer_scale,
         skipped_onboarding: s.skipped_onboarding,
         launch_at_login: s.launch_at_login,
+        agent_download_domains: s.agent_download_domains.clone(),
     })
 }
 

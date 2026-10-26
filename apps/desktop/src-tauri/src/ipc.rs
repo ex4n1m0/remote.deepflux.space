@@ -23,6 +23,10 @@ pub struct SettingsPatch {
     pub skipped_onboarding: bool,
     #[serde(default)]
     pub launch_at_login: bool,
+    /// Domains allowed for assistant downloads without asking (Settings
+    /// UI editable; `agent_download_domains` in the store).
+    #[serde(default)]
+    pub agent_download_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -132,6 +136,8 @@ pub struct SettingsDto {
     pub skipped_onboarding: bool,
     #[serde(default)]
     pub launch_at_login: bool,
+    #[serde(default)]
+    pub agent_download_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

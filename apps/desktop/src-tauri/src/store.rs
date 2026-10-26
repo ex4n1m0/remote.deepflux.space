@@ -54,6 +54,11 @@ pub struct AppSettings {
     /// (`deepseek-flash`); text-only `deepseek-chat` is a settings option.
     #[serde(default = "default_agent_model")]
     pub agent_model: String,
+    /// Domains the local user permanently allowed the assistant to
+    /// download from (`download_file` asks once per new domain; "always
+    /// allow" lands here). Empty = ask every time.
+    #[serde(default)]
+    pub agent_download_domains: Vec<String>,
 }
 
 /// Default assistant provider (ADR-005): DeepSeek, OpenAI-compatible.
@@ -89,6 +94,7 @@ impl Default for AppSettings {
             autostart_default_applied: false,
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
+            agent_download_domains: Vec::new(),
         }
     }
 }

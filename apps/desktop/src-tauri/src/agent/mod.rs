@@ -12,6 +12,7 @@ pub mod tools;
 
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
@@ -29,18 +30,63 @@ const MAX_STEPS: usize = 16;
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantEvent {
-    Message { role: String, content: String },
-    ToolCall { name: String, summary: String },
-    Busy { on: bool },
-    Done { ok: bool },
-    Error { message: String },
+    Message {
+        role: String,
+        content: String,
+    },
+    ToolCall {
+        name: String,
+        summary: String,
+    },
+    Busy {
+        on: bool,
+    },
+    Done {
+        ok: bool,
+    },
+    Error {
+        message: String,
+    },
+    /// The assistant needs the local human's judgment (ask_the_human /
+    /// confirmation-gated tools). One at a time; resolved by
+    /// `agent_confirm` or the 5-minute timeout (default deny).
+    Confirm {
+        id: u64,
+        question: String,
+        detail: String,
+    },
+    ConfirmDone {
+        id: u64,
+    },
 }
+
+/// The human's answer to a pending confirmation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ConfirmAnswer {
+    pub allowed: bool,
+    /// "Always allow this domain" — persists the domain to settings.
+    pub remember: bool,
+}
+
+/// A confirmation parked in the UI. The worker thread blocks on the
+/// receiver; `agent_confirm` (or the timeout) resolves it.
+struct PendingConfirm {
+    id: u64,
+    /// Domain to persist on allow+remember (download gating).
+    domain: Option<String>,
+    tx: Option<std::sync::mpsc::SyncSender<ConfirmAnswer>>,
+}
+
+/// How long the assistant waits for the human before defaulting to
+/// "not allowed" (family reality: the person may not be at the machine).
+const CONFIRM_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Shared assistant state (UI status + worker coordination).
 pub struct AssistantState {
     pub busy: Mutex<bool>,
     tx: Mutex<Option<SyncSender<AssistantInput>>>,
     join: Mutex<Option<std::thread::JoinHandle<()>>>,
+    confirm: Mutex<Option<PendingConfirm>>,
 }
 
 /// One worker input: a human turn, or an agent-to-agent instruction from a
@@ -63,7 +109,68 @@ impl AssistantState {
             busy: Mutex::new(false),
             tx: Mutex::new(None),
             join: Mutex::new(None),
+            confirm: Mutex::new(None),
         }
+    }
+
+    /// Park a yes/no question in front of the local user and block until
+    /// they answer (or the timeout denies). `domain` rides along so
+    /// allow+remember can persist it (download gating). Returns `None`
+    /// when nobody answered in time.
+    pub fn ask(
+        &self,
+        app: &AppHandle,
+        question: &str,
+        detail: &str,
+        domain: Option<String>,
+    ) -> Option<ConfirmAnswer> {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        {
+            let mut slot = self.confirm.lock().ok()?;
+            // Replace any stale unanswered request (timeout resolves it).
+            *slot = Some(PendingConfirm {
+                id,
+                domain,
+                tx: Some(tx),
+            });
+        }
+        emit(
+            app,
+            AssistantEvent::Confirm {
+                id,
+                question: question.to_owned(),
+                detail: detail.to_owned(),
+            },
+        );
+        let answer = rx.recv_timeout(CONFIRM_TIMEOUT).ok();
+        if let Ok(mut slot) = self.confirm.lock()
+            && slot.as_ref().map(|p| p.id) == Some(id)
+        {
+            *slot = None;
+        }
+        emit(app, AssistantEvent::ConfirmDone { id });
+        answer
+    }
+
+    /// Resolve a pending confirmation from the UI. Returns the domain to
+    /// persist when the answer is allow+remember.
+    pub fn answer(&self, id: u64, allowed: bool, remember: bool) -> Option<Option<String>> {
+        let mut slot = self.confirm.lock().ok()?;
+        let pending = slot.take()?;
+        if pending.id != id {
+            // A newer question superseded this card — put it back.
+            *slot = Some(pending);
+            return None;
+        }
+        let domain = if allowed && remember {
+            pending.domain
+        } else {
+            None
+        };
+        pending.tx?.send(ConfirmAnswer { allowed, remember }).ok();
+        Some(domain)
     }
 
     pub fn is_configured(&self, app: &AppHandle) -> bool {
@@ -147,6 +254,8 @@ fn emit(app: &AppHandle, event: AssistantEvent) {
         AssistantEvent::Busy { .. } => "assistant://busy",
         AssistantEvent::Done { .. } => "assistant://done",
         AssistantEvent::Error { .. } => "assistant://error",
+        AssistantEvent::Confirm { .. } => "assistant://confirm",
+        AssistantEvent::ConfirmDone { .. } => "assistant://confirm-done",
     };
     let _ = app.emit(name, event);
 }
@@ -488,6 +597,23 @@ pub fn agent_send(app: AppHandle, args: AgentSendArgs) -> Result<(), String> {
 #[derive(serde::Deserialize)]
 pub struct AgentSendArgs {
     pub text: String,
+}
+
+/// Answer the assistant's pending confirmation (the panel's Allow /
+/// Always allow / Deny buttons). allow+remember persists the download
+/// domain to settings.
+#[tauri::command]
+pub fn agent_confirm(app: AppHandle, id: u64, allow: bool, remember: bool) -> Result<(), String> {
+    let services = app.state::<crate::commands::AppServices>();
+    if let Some(Some(domain)) = services.assistant.answer(id, allow, remember) {
+        let mut store = services.store.lock().expect("store");
+        let mut next = store.settings().clone();
+        if !next.agent_download_domains.iter().any(|d| d == &domain) {
+            next.agent_download_domains.push(domain);
+            store.update_settings(next)?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

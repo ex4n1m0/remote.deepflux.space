@@ -797,6 +797,22 @@ legend {
   border-bottom: 1px solid var(--line);
 }
 
+/* Download/judgment confirmation card: the one interruption the assistant
+ * is allowed to ask for (Allow once / Always allow / Deny). */
+.assistant-confirm {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn, #e8b34b) 8%, transparent);
+  display: grid;
+  gap: 8px;
+}
+.assistant-confirm .row {
+  flex-wrap: wrap;
+}
+.assistant-confirm .small {
+  font-size: 12px;
+}
+
 .assistant-log {
   flex: 1;
   min-height: 0;

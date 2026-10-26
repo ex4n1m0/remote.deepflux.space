@@ -9,6 +9,7 @@ pub mod chat;
 pub mod commands;
 pub mod credstore;
 mod directory;
+pub mod dl;
 pub mod engine;
 pub mod ipc;
 pub mod mcp;
@@ -178,6 +179,7 @@ pub fn run() {
             agent::agent_configure,
             agent::agent_status,
             agent::agent_send,
+            agent::agent_confirm,
             agent::agent_reset,
             commands::chat_send,
             commands::chat_history,

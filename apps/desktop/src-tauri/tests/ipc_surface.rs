@@ -279,6 +279,7 @@ fn command_argument_dtos_carry_metadata_only() {
         (
             "SettingsPatch",
             serde_json::to_value(SettingsPatch {
+                agent_download_domains: vec!["example.com".to_owned()],
                 device_name: "Office PC".into(),
                 signaling_base_url: "https://example.vercel.app".into(),
                 default_quality: "balanced".into(),

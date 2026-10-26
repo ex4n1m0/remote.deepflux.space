@@ -22,10 +22,20 @@ export interface AssistantStatus {
   model: string;
 }
 
+/** A pending human-confirmation request from the assistant. */
+export interface AssistantConfirm {
+  id: number;
+  question: string;
+  detail: string;
+}
+
 export interface AssistantBinding {
   messages: AssistantMessage[];
   status: AssistantStatus | null;
   busy: boolean;
+  confirm: AssistantConfirm | null;
+  /** Answer the pending confirmation card (Allow / Always allow / Deny). */
+  answerConfirm: (allow: boolean, remember: boolean) => Promise<void>;
   send: (text: string) => Promise<void>;
   configure: (args: { apiKey?: string; model?: string }) => Promise<void>;
   reset: () => Promise<void>;
@@ -37,6 +47,7 @@ type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 export function useAssistant(): AssistantBinding {
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [status, setStatus] = useState<AssistantStatus | null>(null);
+  const [confirm, setConfirm] = useState<AssistantConfirm | null>(null);
   const idRef = useRef(1);
 
   const push = useCallback((m: WithoutId<AssistantMessage>) => {
@@ -81,6 +92,13 @@ export function useAssistant(): AssistantBinding {
     on(ASSISTANT_EVENT.busy, (payload) => {
       const p = payload as { on: boolean };
       if (active && status) setStatus({ ...status, busy: p.on });
+    });
+    on(ASSISTANT_EVENT.confirm, (payload) => {
+      const p = payload as { id: number; question: string; detail: string };
+      if (active) setConfirm({ id: p.id, question: p.question, detail: p.detail });
+    });
+    on(ASSISTANT_EVENT.confirmDone, () => {
+      if (active) setConfirm(null);
     });
 
     return () => {
@@ -133,10 +151,26 @@ export function useAssistant(): AssistantBinding {
     setMessages([]);
   }, [push]);
 
+  const answerConfirm = useCallback(
+    async (allow: boolean, remember: boolean) => {
+      const pending = confirm;
+      setConfirm(null);
+      if (!pending) return;
+      try {
+        await api.agentConfirm(pending.id, allow, remember);
+      } catch (e) {
+        push({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    [confirm, push],
+  );
+
   return {
     messages,
     status,
     busy: status?.busy ?? false,
+    confirm,
+    answerConfirm,
     send,
     configure,
     reset,

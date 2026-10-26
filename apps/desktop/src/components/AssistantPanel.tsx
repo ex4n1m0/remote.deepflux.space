@@ -50,6 +50,37 @@ export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
         </button>
       </header>
 
+      {assistant.confirm ? (
+        <div className="assistant-confirm" role="alertdialog" aria-label={assistant.confirm.question}>
+          <b>{assistant.confirm.question}</b>
+          {assistant.confirm.detail ? <p className="muted">{assistant.confirm.detail}</p> : null}
+          <div className="row">
+            <button
+              type="button"
+              className="primary small"
+              onClick={() => void assistant.answerConfirm(true, true)}
+            >
+              Always allow this site
+            </button>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => void assistant.answerConfirm(true, false)}
+            >
+              Allow once
+            </button>
+            <button
+              type="button"
+              className="danger small"
+              onClick={() => void assistant.answerConfirm(false, false)}
+            >
+              Deny
+            </button>
+          </div>
+          <p className="muted small">No answer in 5 minutes = not allowed.</p>
+        </div>
+      ) : null}
+
       {showKey || !configured ? (
         <div className="assistant-setup">
           <p className="muted">

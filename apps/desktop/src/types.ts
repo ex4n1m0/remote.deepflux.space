@@ -74,6 +74,9 @@ export interface Settings {
   skipped_onboarding: boolean;
   /** ADR-006 always-ready: launch at Windows login (tray keeps it alive). */
   launch_at_login: boolean;
+  /** Domains the local user allowed the assistant to download from
+   * without asking again ("always allow" on the confirm card). */
+  agent_download_domains: string[];
 }
 
 export interface Favorite {
