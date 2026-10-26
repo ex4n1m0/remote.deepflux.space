@@ -36,7 +36,9 @@ impl core::fmt::Debug for PairingSecret {
 }
 
 /// One established pairing (RD-023). `code` is the peer's device id.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// `Debug` is manual and redacts `secret_hex` (invariant 6 — the pairing
+/// secret is a full-control trust grant for the other machine).
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Pairing {
     pub code: String,
     pub secret_hex: String,
@@ -49,6 +51,18 @@ pub struct Pairing {
     /// from before the field existed load as "legacy".
     #[serde(default = "legacy_role")]
     pub role: String,
+}
+
+impl core::fmt::Debug for Pairing {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Pairing")
+            .field("code", &self.code)
+            .field("secret_hex", &"<redacted>")
+            .field("created_ms", &self.created_ms)
+            .field("pending_ack", &self.pending_ack)
+            .field("role", &self.role)
+            .finish()
+    }
 }
 
 fn legacy_role() -> String {
@@ -124,18 +138,10 @@ struct ChatDoc {
 /// Per-peer history cap (bounded stores — invariant 3 discipline).
 const HISTORY_CAP: usize = 500;
 
-/// Sealed envelope stored by the signaling service (`/api/chat`).
-/// Ciphertext only; the service can neither read nor forge it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatEnvelope {
-    pub v: u32,
-    pub from: String,
-    pub nonce_hex: String,
-    pub ct_hex: String,
-    pub ts_ms: u64,
-}
-
-pub const CHAT_PROTOCOL_VERSION: u32 = 1;
+// ADR-006 §7 (code-review B1): the chat-inbox envelope contract is owned
+// by `crates/protocol::chat` — this module re-exports it so the historical
+// call sites keep working while the duplicate definition is gone.
+pub use protocol::chat::{CHAT_PROTOCOL_VERSION, ChatEnvelope};
 
 // ---------------------------------------------------------------------------
 // Storage (locks: take the store lock only; never inside the engine lock)
@@ -212,7 +218,9 @@ fn purge_stale_pending_in_doc(doc: &mut PairingsDoc, now: u64) -> bool {
 /// owner's explicit "remember" choice (ADR-006). An ESTABLISHED (non-
 /// pending) pairing is never silently overwritten: re-pairing requires
 /// removing it first (Trusted machines), so a squatter holding the id
-/// cannot re-arm trust. Returns whether the pairing is now established.
+/// cannot re-arm trust. Returns whether the OFFERED secret is the live
+/// stored one — the caller acks the offer only when true (acking a secret
+/// we refused to store would desync both sides' "trusted" forever).
 pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str) -> bool {
     let mut doc = read_pairings(app);
     let recorded = record_pairing_in_doc(&mut doc, code, secret_hex, now_ms());
@@ -234,8 +242,10 @@ fn record_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, no
             if !existing.pending_ack {
                 // Established pairing: refuse the overwrite — the existing
                 // trust stands, and re-pairing requires an explicit remove
-                // (Trusted machines) first.
-                return true;
+                // (Trusted machines) first. Report whether the OFFERED
+                // secret matches the live one (a stale re-offer after a
+                // controller reinstall must NOT be acked).
+                return existing.secret_hex == secret_hex;
             }
             existing.secret_hex = secret_hex.to_owned();
             existing.pending_ack = false;
@@ -601,6 +611,49 @@ mod tests {
     }
 
     #[test]
+    fn pairing_debug_never_carries_the_secret() {
+        let p = Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: false,
+            role: "host".to_owned(),
+        };
+        let dbg = format!("{p:?}");
+        assert!(
+            !dbg.contains(SECRET_A),
+            "pairing Debug leaks the secret: {dbg}"
+        );
+        assert!(dbg.contains("<redacted>"));
+    }
+
+    #[test]
+    fn stale_reoffer_of_established_pairing_is_reported() {
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: false,
+            role: "host".to_owned(),
+        }]);
+        // Same secret re-offered: live, ack it.
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_A,
+            20
+        ));
+        // Fresh secret from a reinstalled controller: refused, NOT live.
+        assert!(!record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_B,
+            20
+        ));
+        assert_eq!(d.pairings[0].secret_hex, SECRET_A);
+    }
+
+    #[test]
     fn trust_state_blocks_and_sweeps() {
         let mut t = TrustState::default();
         let now = 1_000u64;
@@ -638,8 +691,9 @@ mod tests {
             pending_ack: false,
             role: "host".to_owned(),
         }]);
-        // A squatter's re-offer: same id, fresh secret — must be refused.
-        assert!(record_pairing_in_doc(
+        // A squatter's re-offer: same id, fresh secret — refused AND
+        // reported not-live (the caller must not ack it).
+        assert!(!record_pairing_in_doc(
             &mut d,
             "abcdef0123456789",
             SECRET_B,

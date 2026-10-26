@@ -236,12 +236,14 @@ impl HostSession {
                     Ok(vec![Action::Send(env)])
                 }
                 HostEvent::IncomingRequest {
+                    message_id,
                     controller_device_id,
                     session_id,
                     capabilities,
                     pairing_proof_hex,
                     ..
                 } => {
+                    let request_message_id = message_id.clone();
                     let ai_session = capabilities.features.has(FeatureFlags::AI_SESSION);
                     self.state = HostState::ConsentPrompted {
                         info: PendingRequest {
@@ -255,6 +257,7 @@ impl HostSession {
                             session_id,
                             ai_session,
                             pairing_proof_hex,
+                            message_id: request_message_id,
                         },
                         Action::ScheduleTimer {
                             id: TimerId::HostConsent,

@@ -1732,6 +1732,7 @@ impl NodeObserver for RigObserver {
         session_id: &str,
         ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _message_id: &str,
     ) {
         self.last_activity = Instant::now();
         self.prompts += 1;

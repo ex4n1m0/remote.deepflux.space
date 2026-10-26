@@ -196,6 +196,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             session_id,
             ai_session,
             pairing_proof_hex,
+            message_id,
         } => {
             // ADR-006: silent auto-accept requires a VALID pairing proof.
             // The bare device id proves nothing — ids are claimable through
@@ -210,7 +211,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             };
             let pairing = crate::chat::pairing_for(app, &controller_device_id);
             let paired = pairing.is_some();
-            let proof_ok = pairing
+            let verified = pairing
                 .as_ref()
                 .map(|p| {
                     node_runtime::pairing_proof::verify_pairing_proof(
@@ -218,16 +219,22 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                         &controller_device_id,
                         &host_device_id,
                         &session_id,
+                        &message_id,
                         pairing_proof_hex.as_deref(),
+                        crate::chat::now_ms(),
                     )
                 })
                 .unwrap_or(false);
-            if proof_ok {
+            let mut proof_ok = false;
+            if verified {
                 // RD-023 (user decision 2, 2026-10-24) + ADR-006 proof:
                 // proven-paired controllers are auto-accepted — silent full
                 // control. The emitted event still fires; the state change
-                // resolves any prompt within a tick.
-                crate::chat::auto_accept_if_paired(app, &controller_device_id);
+                // resolves any prompt within a tick. `proof_ok` in the
+                // payload means "silent accept actually sent" — if the
+                // engine send failed the UI must show the dialog, not a
+                // decisionless passive card.
+                proof_ok = crate::chat::auto_accept_if_paired(app, &controller_device_id);
             } else {
                 // ADR-006 B3 prompt-flood defense: a controller in cooldown
                 // (explicit reject / unanswered timeout) is auto-rejected
@@ -242,6 +249,14 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     return true;
                 }
                 trust.prompt = Some((controller_device_id.clone(), false, false));
+                // The window must be VISIBLE for the consent moment: an
+                // always-ready family host normally lives in the tray, and
+                // an invisible prompt dies at the 30 s timeout.
+                if let Some(window) = app.get_webview_window("shell") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
             }
             emit(
                 events::CONSENT,
@@ -331,10 +346,26 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             code,
             message,
             hint,
-        } => emit(
-            events::ERROR,
-            Some(serde_json::json!({ "code": code, "message": message, "hint": hint })),
-        ),
+        } => {
+            // Pre-connection send failures about the TARGET are "that
+            // machine is offline", not a direct-connection problem — the
+            // raw code + NAT hint reads as breakage to family users.
+            if message.contains("unknown_target") {
+                emit(
+                    events::ERROR,
+                    Some(serde_json::json!({
+                        "code": "host_offline",
+                        "message": "That machine isn\u{2019}t online right now. Ask whoever uses it to open the app (it starts automatically when their PC is on), then try again.",
+                        "hint": null
+                    })),
+                );
+            } else {
+                emit(
+                    events::ERROR,
+                    Some(serde_json::json!({ "code": code, "message": message, "hint": hint })),
+                )
+            }
+        }
         EngineEvent::Info { message } => emit(
             events::INFO,
             Some(serde_json::json!({ "message": message })),
@@ -374,13 +405,24 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     .is_some_and(|(_, remember)| remember)
             };
             if remember {
-                let paired = crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
-                let _ = with_engine(app, |handle| handle.send(EngineCmd::SendPairAck));
+                let live = crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
+                if live {
+                    let _ = with_engine(app, |handle| handle.send(EngineCmd::SendPairAck));
+                } else {
+                    // Established with a DIFFERENT secret (controller
+                    // reinstalled / store cleared): the old trust stands,
+                    // the fresh offer is NOT acked — the other side keeps
+                    // getting prompts until this side removes the pairing.
+                    let _ = app.emit(
+                        events::INFO,
+                        Some(serde_json::json!({ "message": format!(
+                            "Pairing key mismatch with {controller_device_id} - remove it in Settings, Trusted machines, to re-pair."
+                        ) })),
+                    );
+                }
                 emit(
                     events::PAIRING,
-                    Some(
-                        serde_json::json!({ "device_id": controller_device_id, "paired": paired }),
-                    ),
+                    Some(serde_json::json!({ "device_id": controller_device_id, "paired": live })),
                 );
             }
         }
@@ -467,6 +509,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         device_token: store.settings().device_token.clone(),
         skipped_onboarding: patch.skipped_onboarding,
         launch_at_login: patch.launch_at_login,
+        autostart_default_applied: store.settings().autostart_default_applied,
         // Assistant provider fields are managed via `agent_configure`,
         // not the settings patch — preserve them here.
         agent_base_url: store.settings().agent_base_url.clone(),
@@ -982,17 +1025,21 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
 /// autostart on once (ADR-006: family machines are reachable at login).
 pub fn enable_autostart_default(app: &AppHandle) {
     let services = app.state::<AppServices>();
-    let already = {
+    let (already, applied) = {
         let store = services.store.lock().expect("store");
-        store.settings().launch_at_login
+        (
+            store.settings().launch_at_login,
+            store.settings().autostart_default_applied,
+        )
     };
-    if already {
+    if already || applied {
         return;
     }
     let _ = set_launch_at_login(app, true);
     if let Ok(mut store) = services.store.lock() {
         let mut next = store.settings().clone();
         next.launch_at_login = true;
+        next.autostart_default_applied = true;
         let _ = store.update_settings(next);
     }
 }

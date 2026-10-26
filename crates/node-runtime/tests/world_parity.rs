@@ -146,6 +146,7 @@ impl NodeObserver for Recorder {
         session_id: &str,
         ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _message_id: &str,
     ) {
         self.prompts.fetch_add(1, Ordering::Relaxed);
         self.log.lock().expect("recorder").push(format!(

@@ -147,9 +147,10 @@ impl NodeObserver for Recorder {
     fn prompt_consent(
         &mut self,
         controller: &str,
-        _session: &str,
+        _session_id: &str,
         _ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _message_id: &str,
     ) {
         self.log
             .lock()

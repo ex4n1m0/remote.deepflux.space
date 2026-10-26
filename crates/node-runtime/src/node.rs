@@ -73,6 +73,9 @@ use transport_webrtc::{
 
 use crate::clock::Clock;
 use crate::pairing_proof::pairing_proof_hex as compute_pairing_proof;
+
+/// v2 proof stamp (ADR-006 security fix): binds the envelope's message_id
+/// and a freshness timestamp from the node clock.
 use crate::signaling::{InboundEnvelope, SignalingIo};
 use crate::timers::{MachineKind, TimerQueue};
 
@@ -81,7 +84,12 @@ use crate::timers::{MachineKind, TimerQueue};
 /// crypto, no secrets) and cannot know the session id before building the
 /// envelope, so the composition layer patches the outgoing action in place.
 /// Caller identity comes from the envelope's own `from_device_id`.
-fn stamp_pairing_proof(actions: &mut [Action], secret_hex: &str, host_device_id: &str) {
+fn stamp_pairing_proof(
+    actions: &mut [Action],
+    secret_hex: &str,
+    host_device_id: &str,
+    now_ms: u64,
+) {
     for action in actions.iter_mut() {
         let Action::Send(env) = action else {
             continue;
@@ -95,9 +103,14 @@ fn stamp_pairing_proof(actions: &mut [Action], secret_hex: &str, host_device_id:
         let Some(session_id) = env.session_id.clone() else {
             continue;
         };
-        if let Some(proof) =
-            compute_pairing_proof(secret_hex, &env.from_device_id, host_device_id, &session_id)
-        {
+        if let Some(proof) = compute_pairing_proof(
+            secret_hex,
+            &env.from_device_id,
+            host_device_id,
+            &session_id,
+            &env.message_id,
+            now_ms,
+        ) {
             *pairing_proof_hex = Some(proof);
         }
     }
@@ -119,6 +132,7 @@ pub trait NodeObserver {
         _session_id: &str,
         _ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _message_id: &str,
     ) {
     }
     fn session_established(&mut self, _session_id: &str) {}
@@ -361,7 +375,7 @@ impl Node {
             observer,
         ) {
             if let Some(secret) = pairing_secret_hex {
-                stamp_pairing_proof(&mut actions, secret, host_device_id);
+                stamp_pairing_proof(&mut actions, secret, host_device_id, self.clock.now_ms());
             }
             self.apply(MachineKind::Controller, actions, observer);
         }
@@ -863,12 +877,14 @@ impl Node {
                     session_id,
                     ai_session,
                     pairing_proof_hex,
+                    message_id,
                 } => {
                     observer.prompt_consent(
                         &controller_device_id,
                         &session_id,
                         ai_session,
                         pairing_proof_hex.as_deref(),
+                        &message_id,
                     );
                 }
                 Action::ComposeAnswer { offer_sdp } => {

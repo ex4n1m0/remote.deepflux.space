@@ -40,6 +40,11 @@ pub struct AppSettings {
     /// plugin; the family build turns it on once at first run).
     #[serde(default)]
     pub launch_at_login: bool,
+    /// One-shot: the family-build autostart default has been applied —
+    /// persisted so leave/rejoin never re-enables a login setting the
+    /// user deliberately turned off.
+    #[serde(default)]
+    pub autostart_default_applied: bool,
     /// In-app assistant provider (ADR-005): any OpenAI-compatible base
     /// URL. Default DeepSeek. The API key is NOT here — it lives in the
     /// Windows Credential Manager (`agent-api-key` seam).
@@ -81,6 +86,7 @@ impl Default for AppSettings {
             device_token: new_token(),
             skipped_onboarding: false,
             launch_at_login: false,
+            autostart_default_applied: false,
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
         }

@@ -111,6 +111,9 @@ pub enum Action {
         session_id: SessionId,
         ai_session: bool,
         pairing_proof_hex: Option<String>,
+        /// The request envelope's message_id — the pairing-proof v2 MAC
+        /// binds it (security review 2026-10-26: replay defense).
+        message_id: MessageId,
     },
     /// Host runtime: build an SDP answer for this offer (webrtc-rs lives
     /// behind the `Transport` trait in `transport-webrtc`; M2 wires this).

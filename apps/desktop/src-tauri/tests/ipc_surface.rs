@@ -131,6 +131,7 @@ fn all_events() -> Vec<EngineEvent> {
             controller_device_id: "ctrl-1".into(),
             session_id: "s1".into(),
             ai_session: true,
+            message_id: "m1".into(),
         },
         EngineEvent::ConsentAccepted {
             controller_device_id: "ctrl-1".into(),

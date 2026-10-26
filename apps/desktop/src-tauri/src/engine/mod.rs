@@ -354,9 +354,11 @@ pub enum EngineEvent {
         /// ADR-004: the controller advertised `FeatureFlags::AI_SESSION`.
         ai_session: bool,
         /// ADR-006: the claimed pairing proof, forwarded verbatim for the
-        /// app layer to verify against its pairing store (single-use HMAC;
-        /// not secret material).
+        /// app layer to verify against its pairing store (v2: message-id
+        /// bound + freshness-checked; not secret material).
         pairing_proof_hex: Option<String>,
+        /// The request envelope's message_id — part of the v2 proof MAC.
+        message_id: String,
     },
     /// Host user accepted the consent prompt; `remember` is the ADR-006
     /// "remember this machine" choice — the app layer persists + acks the

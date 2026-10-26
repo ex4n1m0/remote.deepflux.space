@@ -86,9 +86,11 @@ export const signalingBodySchema = z.discriminatedUnion('type', [
     // MUST be in this schema (not merely tolerated) because the service
     // forwards the PARSED envelope: an unknown key would be stripped before
     // delivery.
+    // v1 = 64 hex (HMAC only; refused by 0.5.2+ hosts). v2 = 80 hex
+    // (HMAC || freshness timestamp) — the replay-proof format.
     pairing_proof_hex: z
       .string()
-      .regex(/^[0-9a-f]{64}$/, 'expected 64 lowercase hex chars')
+      .regex(/^[0-9a-f]{64}$|^[0-9a-f]{80}$/, 'expected 64 or 80 lowercase hex chars')
       .optional(),
   }),
   z.object({ type: z.literal('accept'), session_secret: z.string().min(1) }),

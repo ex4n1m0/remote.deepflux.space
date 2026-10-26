@@ -157,6 +157,7 @@ impl NodeObserver for EngineObserver {
         session_id: &str,
         ai_session: bool,
         pairing_proof_hex: Option<&str>,
+        message_id: &str,
     ) {
         self.shared
             .set_pending_consent(Some(controller_device_id.to_owned()));
@@ -167,6 +168,7 @@ impl NodeObserver for EngineObserver {
             session_id: session_id.to_owned(),
             ai_session,
             pairing_proof_hex: pairing_proof_hex.map(str::to_owned),
+            message_id: message_id.to_owned(),
         });
         self.emit(EngineEvent::PeerOnline {
             device_id: controller_device_id.to_owned(),
