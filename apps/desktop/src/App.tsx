@@ -219,6 +219,14 @@ export default function App() {
         <div className="brand">
           <img className="brand-mark" src={mark} alt="" width="28" height="28" />
           <h1>DeepFlux</h1>
+          {/* Build label (0.5.3): visible version so family support never
+              guesses — includes the family-build marker when applicable. */}
+          {appVersion ? (
+            <span className="brand-version" title="App version">
+              v{appVersion}
+              {directoryUi.familyBuild ? " family" : ""}
+            </span>
+          ) : null}
         </div>
         <div className="chips">
           <StatusChip tone={host.tone} label="Host" text={host.status} />

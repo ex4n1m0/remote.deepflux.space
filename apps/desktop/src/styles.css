@@ -47,6 +47,13 @@ body {
   margin: 0;
 }
 
+.brand-version {
+  font-size: 11px;
+  color: var(--muted, #8a9aa5);
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
 .brand {
   display: flex;
   align-items: center;
