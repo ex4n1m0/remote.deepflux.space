@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# Family installer build (ADR-006). The ONLY sanctioned way to build an
-# installer carrying the circle key.
+# THE installer build (ADR-006 + its 2026-10-26 distribution addendum).
+# One build exists: the family build with the embedded circle key. The
+# user's decision (2026-10-26): this artifact is the public download —
+# everyone installs it and auto-joins the circle; the keyless
+# "public build" was discontinued. Accepted residuals live in the ADR
+# addendum (key is extractable by any downloader; control still gated
+# per-machine; rotation now means replacing the website's installer).
 #
 #   scripts/build-family.sh
 #
 # What it does:
 #   1. DEEPFLUX_AGENT_KEY  — taken from the environment (the assistant's
-#      provider key; the public build embeds nothing).
+#      provider key; omit it for a circle-only build where each machine
+#      pastes its own assistant key).
 #   2. DEEPFLUX_CIRCLE_KEY — read from ~/.deepflux/circle-key.txt; minted
 #      (32 random bytes, hex) on first run and saved there. That file IS
 #      the circle: whoever holds it can read the directory — never commit
-#      it, never upload the built installer anywhere public.
+#      it to git, never paste it into logs or chat.
 #   3. Builds with DEEPFLUX_FAMILY_BUILD=1 (build.rs refuses an embedded
 #      circle key without this flag) via `pnpm tauri build`.
 #
@@ -52,9 +58,11 @@ if [ ${#CIRCLE_KEY} -ne 64 ]; then
   exit 1
 fi
 
-echo "==> building FAMILY installer (embedded circle key + agent key)"
-echo "    artifact: apps/desktop/src-tauri/target/release/bundle/nsis/"
-echo "    NEVER publish this build — it carries the circle credential."
+echo "==> building THE installer (family build: embedded circle key)"
+echo "    artifact: target/release/bundle/nsis/"
+echo "    This is the public download (user decision 2026-10-26): copy it to"
+echo "    apps/landing/download/Remote-Desktop-<version>-x64-setup.exe and"
+echo "    deploy. Still NEVER commit the exe or the key file to git."
 cd "$ROOT/apps/desktop"
 DEEPFLUX_AGENT_KEY="${DEEPFLUX_AGENT_KEY:-}" \
 DEEPFLUX_CIRCLE_KEY="$CIRCLE_KEY" \

@@ -257,13 +257,14 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     </div>
     <div class="kv">
       <span>version</span><b>0.6.0 beta</b>
-      <span>size</span><b>~6.3 MB</b>
+      <span>size</span><b>~7.3 MB</b>
       <span>installer</span><b>NSIS, per-user</b>
       <span>signature</span><b>unsigned (beta)</b>
     </div>
     <div class="fineprint">
       <b>Know what you&rsquo;re installing — beta limitations, stated plainly:</b>
       <ul>
+        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Settings &rarr; Family circle), and joining grants no one control: every connection still needs an approval on the machine being controlled.</li>
         <li>Unsigned build: Windows SmartScreen will warn on first run. That&rsquo;s expected for a beta; code signing is on the roadmap.</li>
         <li>Direct connections only: on symmetric NAT or networks that block UDP, the session can&rsquo;t be established — the app will tell you plainly rather than fall back to a relay. Relaying is a deliberate non-feature.</li>
         <li>One controlled machine per session; Windows-to-Windows only for now.</li>

@@ -196,3 +196,37 @@ golden-fixture-pinned.
 - Deferred: in-app rotation/eviction, multi-circle, deep-link invites,
   offline request queuing, server-side search, DPAPI migration,
   tombstone-authenticated directory writes for engine-off refresh.
+
+## Addendum — distribution collapsed to the family build (2026-10-26)
+
+User decision, recorded verbatim intent: *"i just want the Family
+installer, we can delete the other approach from existence"* followed by
+*"no, the public version is the family version."* The two-installer model
+(private family exe + public keyless exe with invite pasting) is
+DISCONTINUED. There is one build — the family build with the embedded
+circle key — and it is the public download at remote.deepflux.space.
+Everyone installs the same file and auto-joins the circle; the invite/
+join-by-paste path remains in the app as an escape hatch but is no
+longer the distribution story.
+
+Accepted residuals (supersede §"Consequences" where they conflict):
+
+- Any downloader can extract the circle key from the public artifact:
+  directory read (ids, nicknames, online patterns) and auto-join are
+  open to anyone who finds the site. Control remains gated per-machine
+  (consent prompt; silent reconnect still requires a valid pairing
+  proof), and prompt-flood defenses (host cooldowns + signaling rate
+  limits) plus the 128-member directory cap bound the abuse surface.
+- Rotation blast radius grows: minting a new key now means replacing
+  the website's installer; existing installs keep the old key and their
+  namespace TTLs out in 30 days — machines must reinstall to rejoin.
+- The embedded-key extraction residual and the no-rotation/no-eviction
+  items are unchanged; the "never publish the family build" rule is
+  explicitly retired by this decision (the key FILE and the git repo
+  stay secret; the published artifact intentionally carries the key).
+
+Operational consequences: `scripts/build-family.sh` is THE installer
+build; releases copy its artifact to `apps/landing/download/` under the
+public filename and deploy the landing. Landing fineprint discloses the
+auto-join and the opt-out. v0.6.0 was the first release shipped this
+way (SHA-256 `96507d1a4962…`, byte-verified live).
