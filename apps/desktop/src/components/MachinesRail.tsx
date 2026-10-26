@@ -120,6 +120,48 @@ export function filterMachines(rows: MachineRow[], query: string): MachineRow[] 
   );
 }
 
+/** Where-am-I grouping (user request, 2026-10-26): the rail splits into
+ * three plain sections so the trust state is readable at a glance —
+ *
+ * - accepted: added AND accepted — Control connects, no prompt
+ * - awaiting: added but not yet accepted — they'll get one request
+ * - unadded:  circle machines not in your list yet (Control works anyway)
+ *
+ * "Added" = saved machine (favorite/roster); "accepted" = an established
+ * pairing (the shield). Trusted circle rows land in `accepted` (pairing
+ * auto-saves the machine, so this is the rare-but-correct edge). */
+export interface MachineGroups {
+  accepted: MachineRow[];
+  awaiting: MachineRow[];
+  unadded: MachineRow[];
+}
+
+export const GROUP_LABELS: Record<keyof MachineGroups, string> = {
+  accepted: "Accepted",
+  awaiting: "Added — awaiting their approval",
+  unadded: "Not added yet",
+};
+
+export const GROUP_HINTS: Record<keyof MachineGroups, string> = {
+  accepted: "They allow you without asking — Control connects right away",
+  awaiting: "In your list, but they haven't accepted you yet — they'll get one request when you control",
+  unadded: "In the family circle but not in your list — Control works anyway, or open to chat",
+};
+
+export function groupMachines(rows: MachineRow[]): MachineGroups {
+  const groups: MachineGroups = { accepted: [], awaiting: [], unadded: [] };
+  for (const row of rows) {
+    if (row.trusted) {
+      groups.accepted.push(row);
+    } else if (row.fromCircle) {
+      groups.unadded.push(row);
+    } else {
+      groups.awaiting.push(row);
+    }
+  }
+  return groups;
+}
+
 export function MachinesRail({
   machines,
   thisCode,
@@ -240,44 +282,57 @@ export function MachinesRail({
               : "No machines yet. This one list is for messaging and remote control — add a machine with its connection code, join a family circle in Settings, or ask the assistant."}
           </li>
         ) : (
-          visible.map((m) => (
-            /* One interactive element per row (a11y): select and control are
-             * sibling buttons, never nested. */
-            <li key={m.id} className="rail-item">
-              <button
-                type="button"
-                className={`rail-row${m.active ? " active" : ""}`}
-                onClick={() => onPick(m.code)}
-                aria-current={m.active || undefined}
-              >
-                <span
-                  className={`dot ${m.online === true ? "on" : m.online === false ? "off" : "unknown"}`}
-                  aria-hidden="true"
-                  title={m.online === true ? "online" : m.online === false ? "offline" : "unknown"}
-                />
-                <span className="rail-name">{m.name}</span>
-                {m.trusted ? (
-                  <span className="chip chip-good rail-badge" title="Trusted — connects without asking again">
-                    ✓
+          (() => {
+            const groups = groupMachines(visible);
+            const renderRow = (m: MachineRow) => (
+              /* One interactive element per row (a11y): select and control are
+               * sibling buttons, never nested. */
+              <li key={m.id} className="rail-item">
+                <button
+                  type="button"
+                  className={`rail-row${m.active ? " active" : ""}`}
+                  onClick={() => onPick(m.code)}
+                  aria-current={m.active || undefined}
+                >
+                  <span
+                    className={`dot ${m.online === true ? "on" : m.online === false ? "off" : "unknown"}`}
+                    aria-hidden="true"
+                    title={m.online === true ? "online" : m.online === false ? "offline" : "unknown"}
+                  />
+                  <span className="rail-name">{m.name}</span>
+                  {m.trusted ? (
+                    <span className="chip chip-good rail-badge" title="Trusted — connects without asking again">
+                      ✓
+                    </span>
+                  ) : null}
+                  {m.fromCircle && !m.trusted ? <span className="rail-circle-tag muted">circle</span> : null}
+                </button>
+                <button
+                  type="button"
+                  className="ghost small rail-connect"
+                  aria-label={`Control ${m.name}${m.online === false ? " (offline)" : ""}`}
+                  title={
+                    m.online === false
+                      ? "Offline — the app isn't running there; you can still try"
+                      : "Ask to control this machine"
+                  }
+                  onClick={() => onConnect(m.code)}
+                >
+                  Control
+                </button>
+              </li>
+            );
+            return (Object.keys(groups) as Array<keyof MachineGroups>)
+              .filter((key) => groups[key].length > 0)
+              .flatMap((key) => [
+                <li key={`group-${key}`} className="rail-group muted">
+                  <span title={GROUP_HINTS[key]}>
+                    {GROUP_LABELS[key]} ({groups[key].length})
                   </span>
-                ) : null}
-                {m.fromCircle && !m.trusted ? <span className="rail-circle-tag muted">circle</span> : null}
-              </button>
-              <button
-                type="button"
-                className="ghost small rail-connect"
-                aria-label={`Control ${m.name}${m.online === false ? " (offline)" : ""}`}
-                title={
-                  m.online === false
-                    ? "Offline — the app isn't running there; you can still try"
-                    : "Ask to control this machine"
-                }
-                onClick={() => onConnect(m.code)}
-              >
-                Control
-              </button>
-            </li>
-          ))
+                </li>,
+                ...groups[key].map(renderRow),
+              ]);
+          })()
         )}
       </ul>
 

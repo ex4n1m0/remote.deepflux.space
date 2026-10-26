@@ -591,6 +591,16 @@ legend {
   gap: 2px;
 }
 
+.rail-group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 10px 8px 2px;
+  cursor: default;
+  user-select: none;
+}
+
 .rail-empty {
   padding: 10px;
   font-size: 12px;

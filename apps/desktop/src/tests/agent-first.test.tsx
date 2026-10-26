@@ -5,10 +5,12 @@ import {
   MachinesRail,
   excludeSelf,
   filterMachines,
+  groupMachines,
   unifiedMachines,
 } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
 import type { AssistantBinding } from "../hooks/useAssistant";
+import type { MachineRow } from "../components/MachinesRail";
 
 afterEach(cleanup);
 
@@ -255,5 +257,82 @@ describe("filterMachines (ADR-006 search)", () => {
     expect(filterMachines(rows, "BBBB")).toHaveLength(1);
     expect(filterMachines(rows, "")).toHaveLength(2);
     expect(filterMachines(rows, "zzz")).toHaveLength(0);
+  });
+});
+
+// ---- Where-am-I grouping (user request, 2026-10-26) ----
+
+describe("groupMachines (three plain sections)", () => {
+  const row = (over: Partial<MachineRow>): MachineRow => ({
+    id: over.code ?? "x",
+    name: over.code ?? "x",
+    code: "x",
+    online: null,
+    active: false,
+    trusted: false,
+    fromCircle: false,
+    ...over,
+  });
+
+  it("splits into accepted / awaiting / unadded and keeps source order", () => {
+    const rows = [
+      row({ id: "1", code: "added", name: "Added, not accepted" }),
+      row({ id: "2", code: "ok", name: "Accepted", trusted: true }),
+      row({ id: "3", code: "circ", name: "Circle only", fromCircle: true }),
+      row({ id: "4", code: "okcirc", name: "Trusted circle", trusted: true, fromCircle: true }),
+    ];
+    const groups = groupMachines(rows);
+    expect(groups.accepted.map((r) => r.code)).toEqual(["ok", "okcirc"]);
+    expect(groups.awaiting.map((r) => r.code)).toEqual(["added"]);
+    expect(groups.unadded.map((r) => r.code)).toEqual(["circ"]);
+  });
+});
+
+describe("MachinesRail grouping render", () => {
+  const base = {
+    thisCode: "abcd1234efgh5678",
+    hostState: "Idle" as const,
+    sharing: false,
+    onPick: vi.fn(),
+    onConnect: vi.fn(),
+    onAdd: vi.fn(async () => {}),
+    onShare: vi.fn(),
+    onStopShare: vi.fn(),
+  };
+  const machines = [
+    { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: true, fromCircle: false },
+    { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, fromCircle: false },
+    { id: "3", name: "Lab", code: "cc", online: true, active: false, trusted: false, fromCircle: true },
+  ];
+
+  it("renders the three section headers with counts, rows under the right one", () => {
+    const { container } = render(<MachinesRail {...base} machines={machines} />);
+    expect(screen.getByText("Accepted (1)")).toBeTruthy();
+    expect(screen.getByText("Added — awaiting their approval (1)")).toBeTruthy();
+    expect(screen.getByText("Not added yet (1)")).toBeTruthy();
+    // The whole rail list, top to bottom: group header, its rows, next.
+    const texts = Array.from(container.querySelectorAll("ul.rail-list > li")).map((li) =>
+      li.textContent?.replace(/\s+/g, " ").trim(),
+    );
+    expect(texts).toEqual([
+      "Accepted (1)",
+      "Mom's PC✓Control", // shield badge on trusted rows
+      "Added — awaiting their approval (1)",
+      "OfficeControl",
+      "Not added yet (1)",
+      "LabcircleControl", // circle tag on unsaved circle rows
+    ]);
+  });
+
+  it("omits empty sections entirely", () => {
+    render(
+      <MachinesRail
+        {...base}
+        machines={[{ ...machines[1] }]} // one awaiting row only
+      />,
+    );
+    expect(screen.getByText("Added — awaiting their approval (1)")).toBeTruthy();
+    expect(screen.queryByText(/Accepted \(/)).toBeNull();
+    expect(screen.queryByText(/Not added yet \(/)).toBeNull();
   });
 });
