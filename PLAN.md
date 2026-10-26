@@ -196,6 +196,25 @@ stdio MCP bridge (`apps/desktop/src-tauri/src/mcp.rs`, official `rmcp` SDK,
 Remaining slice: **RD-019** eval harness/extended soak on the m2_rig +
 usage doc `docs/ai-agent-mcp-usage.md`.
 
+**Activation record (2026-10-26, user direction — ADR-006).** Family
+circle: centralized machine directory for family/friends. Machines
+auto-register a sealed entry (nickname; machine id is the server-attested
+key) into a circle keyed by a shared secret (embedded in the family
+installer via `DEEPFLUX_CIRCLE_KEY`, or joined by invite paste); members
+list + search it client-side; connection requests ride the existing
+signaling flow; the owner's consent click — now with a "remember this
+machine" choice completing ADR-005 §5 — gates both connection and the
+requester's favoriting. Security fixes land with it because the
+directory publishes device ids: `connect_request` gains an additive
+`pairing_proof_hex` HMAC (paired silent-accept previously trusted the
+claimable device id alone), pairing ack/persist moves behind the
+remember choice, and the signaling send path gains rate limits. Contract:
+`crates/protocol/src/directory.rs` (+ `protocol::chat` folded in);
+service: `/api/directory`; client: `node-runtime::directory_remote` +
+`apps/desktop` directory/circle UI. Reviewed by the architecture,
+security, signaling, and UI seats before acceptance; slices 0–9 in the
+ADR-006 execution order, release 0.5.0.
+
 ## 5. Orchestration model
 
 - **Main session (me):** integrator and only merger of cross-module change. Dispatches subagents,

@@ -15,7 +15,10 @@ over a direct WebRTC peer connection (STUN, TURN disabled in MVP). H.264 GPU
 pipeline, native rendering, `SendInput` injection. No relay, one controlled
 machine per session. Optional user accounts (post-MVP, ADR-003, 2026-10-01)
 exist on the control plane only — identity plus an encrypted device roster;
-the anonymous connection-code flow remains as the escape hatch.
+the anonymous connection-code flow remains as the escape hatch. An optional
+"family circle" (ADR-006, 2026-10-26) publishes a sealed machine directory
+on the control plane for circle members — discovery, owner-approved trust,
+and favorites gating; it never carries machine control itself.
 
 Module map (source-plan layout, verbatim):
 
@@ -55,10 +58,13 @@ Key docs: `docs/adr/ADR-001-architecture.md`,
    stdio MCP client, at agent rates (≤ 2 fps), opt-in per session — never
    through Tauri IPC, never on the real-time video path. ADR-004 §4 is the
    gate; code claiming this exception must cite it.
-2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes, and —
+2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes and —
    since ADR-003 (2026-10-01) — account verifiers plus encrypted-roster
-   ciphertext. Never frame, input, or cursor bytes; never plaintext user
-   data (the roster is AES-256-GCM under a client-held key).
+   ciphertext, since ADR-005 (2026-10-24) sealed chat envelopes, and since
+   ADR-006 (2026-10-26) sealed circle-directory entries plus circle-id
+   hashes. Never frame, input, or cursor bytes; never plaintext user data
+   (roster, chat, and directory payloads are all AES-256-GCM under
+   client-held keys).
 3. Every queue is bounded; under pressure drop obsolete frames, never queue latency.
 4. TURN/relay forbidden in MVP.
 5. No undocumented wire-format changes; `protocolVersion` bumps are explicit.
@@ -102,8 +108,9 @@ it executes in the cloud only after a remote exists (delta D6).
 
 ## Wire-format & versioning policy
 
-Three surfaces, all owned by `crates/protocol` (delta D7; the third since
-ADR-003):
+Five surfaces, all owned by `crates/protocol` (delta D7; ADR-006
+reconciled the chat surface in — the count had drifted to three while
+`/api/chat` shipped TS-only):
 
 1. **Signaling envelopes = JSON**, stable **snake_case** field names,
    flattened `type` discriminant. The TypeScript signaling service (M3) is
@@ -118,9 +125,10 @@ ADR-003):
 2. **Data-channel/control messages = compact versioned binary**:
    `[version byte][bincode payload]` (bincode 1.x default options:
    little-endian, varint, trailing bytes rejected, 1 MiB decode limit).
-   `WIRE_VERSION` is currently `0`. Bincode is **not** self-describing: any
-   layout change — field reorder, type change, variant insertion — requires
-   a version bump.
+   `WIRE_VERSION` is currently **1** (bumped 0→1 by ADR-005: the `chat`
+   channel plus `Chat`/`PairOffer`/`PairAck` messages). Bincode is **not**
+   self-describing: any layout change — field reorder, type change,
+   variant insertion — requires a version bump.
 3. **Account & roster API = JSON request/response** (`POST /api/account`,
    ADR-003): flattened `action` discriminant, same snake_case/additive rules
    as signaling. `ACCOUNT_PROTOCOL_VERSION` is currently **1**; TS mirror +
@@ -129,13 +137,29 @@ ADR-003):
    `account_fixtures` test. Binary fields are lowercase `*_hex`. The
    `RosterDoc` plaintext (also in `crates/protocol`) is a durable
    client-side format: it only ever travels inside AES-256-GCM ciphertext.
+4. **Chat inbox envelopes = sealed JSON** (`PUT/GET /api/chat`, ADR-005):
+   `ChatEnvelope {v, from, nonce_hex, ct_hex, ts_ms}`, AES-256-GCM sealed
+   client-side under the pairing secret; the server stores ciphertext
+   only. `CHAT_PROTOCOL_VERSION` is currently **1**; the contract lives in
+   `crates/protocol::chat` (folded in from `apps/desktop` by ADR-006).
+5. **Circle directory API = JSON request/response** (`POST /api/directory`,
+   ADR-006): flattened `action` discriminant, same snake_case/additive
+   rules as signaling/account. Entries are AES-256-GCM sealed under the
+   client-held circle key (`DirectoryEntryDoc {v, name, joined_ms}` — the
+   machine id is the server-attested key, never inside the ciphertext);
+   the server sees only device ids, ciphertext, server-minted timestamps,
+   and online flags. `DIRECTORY_PROTOCOL_VERSION` is currently **1**; TS
+   mirror + golden fixtures live in `services/signaling`
+   (`fixtures/directory/`), exported from `crates/node-runtime`'s
+   `directory_fixtures` test.
 
 Capability flags (`protocol::capabilities::FeatureFlags`, a JSON u32
 bitmask re-negotiated in binary on the direct path) are additive: a peer
 that predates a bit parses and ignores it. Current bits: trickle-ice,
-cursor-channel, input-fast, h264-hardware, and — ADR-004 (2026-10-21) —
-`AI_SESSION = 1<<4`, which changes only the host consent prompt's wording
-(an agent-driven controller), never a capability.
+cursor-channel, input-fast, h264-hardware, `AI_SESSION = 1<<4`
+(ADR-004: changes only the host consent prompt's wording — an
+agent-driven controller), and `PAIRING_REMEMBER = 1<<5` (ADR-006: the
+host gates pairing acks on the consent dialog's "remember" choice).
 
 Rules:
 
