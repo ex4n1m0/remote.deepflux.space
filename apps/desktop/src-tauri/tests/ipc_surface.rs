@@ -283,6 +283,7 @@ fn command_argument_dtos_carry_metadata_only() {
                 default_quality: "balanced".into(),
                 default_viewer_scale: "fit".into(),
                 skipped_onboarding: false,
+                launch_at_login: false,
             })
             .unwrap(),
         ),

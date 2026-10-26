@@ -969,7 +969,10 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
     // The plugin can fail on exotic setups — surface it but never block
     // saving the rest of the settings.
     if let Err(err) = result {
-        eprintln!("[autostart] {} failed: {err}", if enabled { "enable" } else { "disable" });
+        eprintln!(
+            "[autostart] {} failed: {err}",
+            if enabled { "enable" } else { "disable" }
+        );
     }
     Ok(())
 }
@@ -977,7 +980,6 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
 /// One-time family-build default: the embedded-key first run turns login
 /// autostart on once (ADR-006: family machines are reachable at login).
 pub fn enable_autostart_default(app: &AppHandle) {
-    use tauri_plugin_autostart::ManagerExt;
     let services = app.state::<AppServices>();
     let already = {
         let store = services.store.lock().expect("store");

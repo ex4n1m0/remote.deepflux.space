@@ -143,6 +143,29 @@ pnpm tauri build
 
 (The workspace shares one `target/` — src-tauri has no target dir of its own.)
 
+## Family circle & always-ready (ADR-006)
+
+A **family circle** is one shared, searchable machine list: members'
+machines auto-register a sealed entry (nickname; the machine id is the
+server-attested key) on `/api/directory`, connection requests ride the
+normal flow, and the owner's consent — with the "remember this machine"
+choice — gates both the connection and the requester's favorite.
+Circle members auto-start the engine + host presence at launch, and the
+family build turns on login autostart once (tray keeps the machine
+reachable; Settings can revoke). Join via Settings → Family circle
+(paste invite, or Create → copy the invite).
+
+**Family installer** (`scripts/build-family.sh` from the repo root):
+embeds the circle key + assistant key at build time
+(`DEEPFLUX_CIRCLE_KEY` + `DEEPFLUX_FAMILY_BUILD=1` — `build.rs` refuses
+an embedded key without the flag). The circle key lives in
+`~/.deepflux/circle-key.txt` (minted on first run; that file IS the
+circle — back it up, never commit it). **Never publish a family
+build**: the embedded key is a whole-circle read credential extractable
+from the binary. Rotation = delete the file and rebuild (fresh circle
+namespace; old entries TTL out in 30 days; pairings survive — revoke in
+Settings → Trusted machines).
+
 ## Keyboard
 
 - `Ctrl+Shift+D` — toggle the diagnostics overlay (shell window)

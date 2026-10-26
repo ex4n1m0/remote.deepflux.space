@@ -186,7 +186,6 @@ pub fn run() {
         .expect("tauri shell run");
 }
 
-
 // ---------------------------------------------------------------------------
 // Tray (ADR-006 always-ready)
 // ---------------------------------------------------------------------------
@@ -200,24 +199,22 @@ fn setup_tray(app: tauri::AppHandle) -> tauri::Result<()> {
         .icon(app.default_window_icon().cloned().expect("app icon"))
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| {
-            match event.id.as_ref() {
-                "open" => {
-                    if let Some(window) = app.get_webview_window("shell") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => {
+                if let Some(window) = app.get_webview_window("shell") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-                "quit" => {
-                    if let Some(services) = app.try_state::<AppServices>()
-                        && let Some(engine) = services.engine.lock().expect("engine slot").take()
-                    {
-                        engine.shutdown();
-                    }
-                    app.exit(0);
-                }
-                _ => {}
             }
+            "quit" => {
+                if let Some(services) = app.try_state::<AppServices>()
+                    && let Some(engine) = services.engine.lock().expect("engine slot").take()
+                {
+                    engine.shutdown();
+                }
+                app.exit(0);
+            }
+            _ => {}
         })
         .build(&app)?;
     tray.set_tooltip(Some("DeepFlux — family circle host"))?;
