@@ -187,7 +187,23 @@ impl LocalStore {
         std::fs::create_dir_all(dir).map_err(|err| format!("create {}: {err}", dir.display()))?;
         let settings_path = dir.join(SETTINGS_FILE);
         let had_settings = settings_path.exists();
+        let raw_settings = std::fs::read_to_string(&settings_path).unwrap_or_default();
         let mut settings = read_json::<AppSettings>(&settings_path)?.unwrap_or_default();
+        // One-time upgrade migration (0.5.1): settings written before 0.5
+        // lack the `launch_at_login` key; if such a file carries an EMPTY
+        // signaling URL (the old opt-out), it predates anyone choosing
+        // that deliberately in 0.5+ — restore the default so login, the
+        // engine, and the circle work after an upgrade (the second-machine
+        // bug). A URL cleared in 0.5+ keeps the field in the file and the
+        // opt-out intact.
+        let mut healed_url = false;
+        if had_settings
+            && !raw_settings.contains("\"launch_at_login\"")
+            && settings.signaling_base_url.trim().is_empty()
+        {
+            settings.signaling_base_url = DEFAULT_SIGNALING_BASE_URL.to_owned();
+            healed_url = true;
+        }
         // Identity is never absent after first load. `default()` already
         // mints a random device_id/token, so the empty checks only catch
         // old files parsed without those keys — the missing-file case is
@@ -204,7 +220,7 @@ impl LocalStore {
             settings.device_token = new_token();
             fresh_identity = true;
         }
-        if fresh_identity || !had_settings {
+        if fresh_identity || !had_settings || healed_url {
             write_json_atomic(&settings_path, &settings)?;
         }
         let favorites = read_json::<FavoritesDoc>(&dir.join(FAVORITES_FILE))?.unwrap_or_default();
@@ -434,6 +450,42 @@ mod tests {
         let store = LocalStore::load(&dir).unwrap();
         assert_eq!(store.settings().device_id, "0123456789abcdef");
         assert!(!store.settings().skipped_onboarding);
+        // 0.5.1 migration: a pre-0.5 file (no launch_at_login key) with an
+        // empty URL gets the production default — the empty-URL opt-out
+        // predates anyone choosing it deliberately in 0.5+.
+        assert_eq!(
+            store.settings().signaling_base_url,
+            DEFAULT_SIGNALING_BASE_URL
+        );
+        // ...and the healed value is persisted (not just in memory).
+        let reloaded = LocalStore::load(&dir).unwrap();
+        assert_eq!(
+            reloaded.settings().signaling_base_url,
+            DEFAULT_SIGNALING_BASE_URL
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn post_05_empty_url_opt_out_is_preserved() {
+        let dir = temp_dir("optout");
+        // A 0.5+ file carries launch_at_login; an empty URL here IS a
+        // deliberate opt-out and must survive the migration untouched.
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            serde_json::json!({
+                "device_id": "0123456789abcdef",
+                "device_name": "privacy install",
+                "signaling_base_url": "",
+                "default_quality": "balanced",
+                "default_viewer_scale": "fit",
+                "device_token": "aabb",
+                "launch_at_login": false,
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = LocalStore::load(&dir).unwrap();
         assert_eq!(store.settings().signaling_base_url, "");
         std::fs::remove_dir_all(&dir).ok();
     }
