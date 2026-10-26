@@ -28,6 +28,15 @@
 //!   stores only scrypt verifiers and AES-GCM ciphertext; key material is
 //!   generated client-side (see that module's docs).
 //!
+//! * [`chat`] — the sealed chat-inbox envelope (`PUT/GET /api/chat`,
+//!   ADR-005), folded in from `apps/desktop` by ADR-006 so every surface is
+//!   owned here.
+//!
+//! * [`directory`] — the circle-directory API (`POST /api/directory`,
+//!   ADR-006): the family-circle machine directory. Entries are AES-256-GCM
+//!   sealed under the client-held circle key; the server sees device ids,
+//!   ciphertext, server-minted timestamps, and online flags only.
+//!
 //! ## Versioning policy (AGENTS.md invariant 5)
 //!
 //! * Signaling `protocol_version` is currently `1` ([`signaling::SIGNALING_PROTOCOL_VERSION`];
@@ -35,7 +44,11 @@
 //!   constant's history note).
 //! * Account API `protocol_version` is currently `1`
 //!   ([`account::ACCOUNT_PROTOCOL_VERSION`]).
-//! * Binary wire version is currently `0` ([`wire::WIRE_VERSION`]).
+//! * Chat envelope version is currently `1` ([`chat::CHAT_PROTOCOL_VERSION`]).
+//! * Directory API `protocol_version` is currently `1`
+//!   ([`directory::DIRECTORY_PROTOCOL_VERSION`]).
+//! * Binary wire version is currently `1` ([`wire::WIRE_VERSION`]; bumped
+//!   0→1 by ADR-005 for the chat channel + pairing handshake).
 //! * A version bump is an explicit, reviewed contract change and must ship
 //!   with an updated compatibility test in this crate.
 //! * JSON: additive `Option` fields are tolerated within a version (serde
@@ -43,5 +56,7 @@
 
 pub mod account;
 pub mod capabilities;
+pub mod chat;
+pub mod directory;
 pub mod signaling;
 pub mod wire;

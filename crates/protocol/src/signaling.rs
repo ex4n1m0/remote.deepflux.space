@@ -143,7 +143,20 @@ pub enum SignalingBody {
     /// Keep presence alive. Directed at the service.
     Heartbeat,
     /// Controller asks a host for a session.
-    ConnectRequest { capabilities: Capabilities },
+    ///
+    /// `pairing_proof_hex` (ADR-006, additive-optional within version 1) is
+    /// HMAC-SHA256(pairing_secret,
+    /// `"pair-proof:v1|{controller_id}|{host_id}|{session_id}"`) as 64 hex
+    /// chars, sent whenever the controller holds a pairing with this host.
+    /// Silent paired accept is valid **only** with a matching proof — the
+    /// bare device id is claimable, so it proves nothing (the pre-ADR-006
+    /// behavior). Absent on first contact and on 0.4 controllers; hosts
+    /// that predate the field ignore it.
+    ConnectRequest {
+        capabilities: Capabilities,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pairing_proof_hex: Option<String>,
+    },
     /// Host grants the session and hands over the one-time secret.
     Accept { session_secret: SessionSecret },
     /// Host refuses. `reason` is machine-readable for UX mapping.
@@ -229,6 +242,7 @@ mod tests {
             SignalingBody::Heartbeat,
             SignalingBody::ConnectRequest {
                 capabilities: capabilities_sample(),
+                pairing_proof_hex: None,
             },
             SignalingBody::Accept {
                 session_secret: SessionSecret("one-time-secret".to_owned()),
@@ -274,6 +288,7 @@ mod tests {
     fn envelope_field_names_are_stable_snake_case() {
         let value = serde_json::to_value(envelope(SignalingBody::ConnectRequest {
             capabilities: capabilities_sample(),
+            pairing_proof_hex: None,
         }))
         .expect("serialize");
 

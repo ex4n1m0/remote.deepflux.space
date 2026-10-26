@@ -103,10 +103,14 @@ pub enum Action {
     /// Host: show the accept/reject prompt for this controller.
     /// `ai_session` is derived from the controller's advertised
     /// `FeatureFlags::AI_SESSION` (ADR-004) and changes presentation only.
+    /// `pairing_proof_hex` is the proof carried on the `connect_request`
+    /// (ADR-006), forwarded verbatim — verification belongs to the app
+    /// layer, which owns the pairing store.
     PromptConsent {
         controller_device_id: DeviceId,
         session_id: SessionId,
         ai_session: bool,
+        pairing_proof_hex: Option<String>,
     },
     /// Host runtime: build an SDP answer for this offer (webrtc-rs lives
     /// behind the `Transport` trait in `transport-webrtc`; M2 wires this).

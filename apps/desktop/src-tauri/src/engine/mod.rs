@@ -76,6 +76,10 @@ pub enum EngineCmd {
     ControllerStop,
     Connect {
         code: String,
+        /// ADR-006: pairing secret for this host (when one is held), used
+        /// to stamp the pairing proof on the outgoing `connect_request`.
+        /// Redacted wrapper — see `chat::PairingSecret`.
+        pairing_secret: Option<crate::chat::PairingSecret>,
     },
     CancelConnect,
     Disconnect,
@@ -341,6 +345,10 @@ pub enum EngineEvent {
         session_id: String,
         /// ADR-004: the controller advertised `FeatureFlags::AI_SESSION`.
         ai_session: bool,
+        /// ADR-006: the claimed pairing proof, forwarded verbatim for the
+        /// app layer to verify against its pairing store (single-use HMAC;
+        /// not secret material).
+        pairing_proof_hex: Option<String>,
     },
     SessionEstablished {
         session_id: String,
@@ -1172,7 +1180,10 @@ impl Engine {
                 self.ctrl_reonline_at = None;
                 self.info("controller role will not re-register after the next session end");
             }
-            EngineCmd::Connect { code } => self.cmd_connect(code),
+            EngineCmd::Connect {
+                code,
+                pairing_secret,
+            } => self.cmd_connect(code, pairing_secret),
             EngineCmd::CancelConnect => match self.node.controller_state() {
                 ControllerState::Connected { .. } => {
                     self.node.controller_disconnect(&mut self.observer)
@@ -1271,7 +1282,7 @@ impl Engine {
             .controller_start(controller_caps(), &mut self.observer);
     }
 
-    fn cmd_connect(&mut self, code: String) {
+    fn cmd_connect(&mut self, code: String, pairing_secret: Option<crate::chat::PairingSecret>) {
         if !matches!(self.node.controller_state(), ControllerState::Online) {
             self.error(
                 "not_online",
@@ -1282,7 +1293,9 @@ impl Engine {
         }
         self.ensure_transport(MachineKind::Controller);
         self.observer.set_current_peer(code.clone());
-        self.node.controller_connect(&code, &mut self.observer);
+        let secret = pairing_secret.as_ref().map(|s| s.0.as_str());
+        self.node
+            .controller_connect(&code, secret, &mut self.observer);
     }
 
     fn cmd_set_quality(&mut self, preset: QualityPreset) {

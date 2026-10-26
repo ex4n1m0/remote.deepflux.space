@@ -24,6 +24,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 
+/// A pairing secret in transit (ADR-006): `Debug` is redacted so the
+/// secret can ride `EngineCmd` without becoming loggable (invariant 6).
+#[derive(Clone)]
+pub struct PairingSecret(pub String);
+
+impl core::fmt::Debug for PairingSecret {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("PairingSecret(<redacted>)")
+    }
+}
+
 /// One established pairing (RD-023). `code` is the peer's device id.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Pairing {

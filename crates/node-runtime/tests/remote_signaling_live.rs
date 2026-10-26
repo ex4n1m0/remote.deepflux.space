@@ -144,7 +144,13 @@ impl NodeObserver for Recorder {
             .push(format!("{machine:?}->{state}"));
     }
 
-    fn prompt_consent(&mut self, controller: &str, _session: &str, _ai_session: bool) {
+    fn prompt_consent(
+        &mut self,
+        controller: &str,
+        _session: &str,
+        _ai_session: bool,
+        _pairing_proof_hex: Option<&str>,
+    ) {
         self.log
             .lock()
             .expect("recorder")
@@ -266,7 +272,8 @@ fn two_nodes_connect_through_the_real_service() {
 
     // 2. Controller calls the host.
     eprintln!("[t] +{:?} Online", t0.elapsed());
-    ctrl.node.controller_connect(&host_device, &mut NoObserver);
+    ctrl.node
+        .controller_connect(&host_device, None, &mut NoObserver);
     wait_for("consent prompt", deadline, || {
         host.pump();
         ctrl.pump();

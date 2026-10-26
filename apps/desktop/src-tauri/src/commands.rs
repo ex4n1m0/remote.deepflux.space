@@ -170,17 +170,48 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             controller_device_id,
             session_id,
             ai_session,
+            pairing_proof_hex,
         } => {
-            // RD-023 (user decision 2, 2026-10-24): paired controllers are
-            // auto-accepted — silent full control. The emitted event still
-            // fires; the state change resolves any prompt within a tick.
-            crate::chat::auto_accept_if_paired(app, &controller_device_id);
+            // ADR-006: silent auto-accept requires a VALID pairing proof.
+            // The bare device id proves nothing — ids are claimable through
+            // the presence-tombstone window minutes after a machine goes
+            // offline — so a claimed-trusted request without a matching
+            // proof falls back to the human prompt (with a warning flag);
+            // fail open to the human, never to accept.
+            let host_device_id = {
+                let services = app.state::<AppServices>();
+                let store = services.store.lock().expect("store");
+                store.settings().device_id.clone()
+            };
+            let pairing = crate::chat::pairing_for(app, &controller_device_id);
+            let paired = pairing.is_some();
+            let proof_ok = pairing
+                .as_ref()
+                .map(|p| {
+                    node_runtime::pairing_proof::verify_pairing_proof(
+                        &p.secret_hex,
+                        &controller_device_id,
+                        &host_device_id,
+                        &session_id,
+                        pairing_proof_hex.as_deref(),
+                    )
+                })
+                .unwrap_or(false);
+            if proof_ok {
+                // RD-023 (user decision 2, 2026-10-24) + ADR-006 proof:
+                // proven-paired controllers are auto-accepted — silent full
+                // control. The emitted event still fires; the state change
+                // resolves any prompt within a tick.
+                crate::chat::auto_accept_if_paired(app, &controller_device_id);
+            }
             emit(
                 events::CONSENT,
                 Some(serde_json::json!({
                     "controller_device_id": controller_device_id,
                     "session_id": session_id,
-                    "ai_session": ai_session
+                    "ai_session": ai_session,
+                    "paired": paired,
+                    "pairing_proof_ok": proof_ok
                 })),
             );
         }
@@ -547,7 +578,18 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
     if code.is_empty() {
         return Err("Enter the host machine's connection code.".into());
     }
-    with_engine(&app, |handle| handle.send(EngineCmd::Connect { code }))
+    // ADR-006: attach the pairing secret (when one is held with this host)
+    // so the engine stamps the single-use pairing proof on the
+    // connect_request — silent paired accept must prove the secret, not
+    // just claim the (claimable) device id.
+    let pairing_secret =
+        crate::chat::pairing_for(&app, &code).map(|p| crate::chat::PairingSecret(p.secret_hex));
+    with_engine(&app, |handle| {
+        handle.send(EngineCmd::Connect {
+            code,
+            pairing_secret,
+        })
+    })
 }
 
 #[tauri::command]

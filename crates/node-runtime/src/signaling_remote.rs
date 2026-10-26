@@ -1076,6 +1076,7 @@ mod tests {
             "b-1",
             SignalingBody::ConnectRequest {
                 capabilities: caps(),
+                pairing_proof_hex: None,
             },
             Some("s1"),
         );

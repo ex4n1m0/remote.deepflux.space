@@ -120,6 +120,23 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                 "rig-host",
                 SignalingBody::ConnectRequest {
                     capabilities: caps(),
+                    pairing_proof_hex: None,
+                },
+            ),
+        ),
+        (
+            "connect_request_pairing_proof",
+            envelope(
+                "rig-ctrl-ctrl-1",
+                Some("rig-ctrl-ctrl-1"),
+                "rig-ctrl",
+                "rig-host",
+                SignalingBody::ConnectRequest {
+                    capabilities: caps(),
+                    // ADR-006 additive-optional field: HMAC-SHA256 over
+                    // "pair-proof:v1|{controller}|{host}|{session_id}",
+                    // present whenever the controller holds a pairing.
+                    pairing_proof_hex: Some("9e".repeat(32)),
                 },
             ),
         ),

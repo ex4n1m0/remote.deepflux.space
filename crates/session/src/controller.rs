@@ -87,8 +87,12 @@ pub enum ControllerEvent {
     HeartbeatDue,
     /// User asked to control `host_device_id`. Creates the session id
     /// deterministically (`"{device}-ctrl-{n}"`, role-namespaced — QA F1).
+    /// `pairing_proof_hex` (ADR-006): HMAC proof for a pairing the caller
+    /// holds with this host, attached verbatim to the `connect_request`;
+    /// the machine treats it as an opaque string.
     Connect {
         host_device_id: DeviceId,
+        pairing_proof_hex: Option<String>,
     },
     /// Host accepted; carries the one-time session secret.
     AcceptReceived {
@@ -255,7 +259,10 @@ impl ControllerSession {
                     );
                     Ok(vec![Action::Send(env)])
                 }
-                ControllerEvent::Connect { host_device_id } => {
+                ControllerEvent::Connect {
+                    host_device_id,
+                    pairing_proof_hex,
+                } => {
                     let Some(capabilities) = self.capabilities.clone() else {
                         // Unreachable: capabilities are set by `Start`, the
                         // only way into Registering → Online.
@@ -269,7 +276,10 @@ impl ControllerSession {
                     let env = self.envelopes.envelope(
                         &host_device_id,
                         Some(&session.session_id),
-                        SignalingBody::ConnectRequest { capabilities },
+                        SignalingBody::ConnectRequest {
+                            capabilities,
+                            pairing_proof_hex,
+                        },
                         now_ms,
                     );
                     self.state = ControllerState::Requesting {
@@ -860,6 +870,7 @@ mod tests {
             ControllerEvent::HeartbeatDue,
             ControllerEvent::Connect {
                 host_device_id: "host-b".to_owned(),
+                pairing_proof_hex: None,
             },
             ControllerEvent::AcceptReceived {
                 message_id: "e1".to_owned(),
@@ -1130,6 +1141,7 @@ mod tests {
             .step(
                 ControllerEvent::Connect {
                     host_device_id: "host-b".to_owned(),
+                    pairing_proof_hex: None,
                 },
                 100,
             )

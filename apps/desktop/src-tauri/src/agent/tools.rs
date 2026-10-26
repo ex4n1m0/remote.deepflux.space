@@ -311,6 +311,11 @@ pub fn execute(
             let Some(code) = args.get("code").and_then(|v| v.as_str()) else {
                 return ToolOutput::text("connect requires {\"code\": ...}");
             };
+            let code = code.trim().to_lowercase();
+            // ADR-006: carry the pairing secret so the engine stamps the
+            // pairing proof (silent paired accept must prove the secret).
+            let pairing_secret = crate::chat::pairing_for(app, &code)
+                .map(|p| crate::chat::PairingSecret(p.secret_hex));
             match crate::commands::start_engine(app).and_then(|_| {
                 with_engine(app, |handle| {
                     handle
@@ -318,7 +323,8 @@ pub fn execute(
                         .map_err(|e| e.to_string())?;
                     handle
                         .send(engine::EngineCmd::Connect {
-                            code: code.trim().to_lowercase(),
+                            code,
+                            pairing_secret,
                         })
                         .map_err(|e| e.to_string())
                 })

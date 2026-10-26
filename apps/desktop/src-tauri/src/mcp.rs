@@ -251,9 +251,16 @@ impl AgentBridge {
         &self,
         Parameters(ConnectParams { device_code }): Parameters<ConnectParams>,
     ) -> String {
-        match self
-            .with_engine(|handle| handle.send(engine::EngineCmd::Connect { code: device_code }))
-        {
+        // ADR-006: carry the pairing secret so the engine stamps the
+        // pairing proof (silent paired accept must prove the secret).
+        let pairing_secret = crate::chat::pairing_for(&self.app, &device_code)
+            .map(|p| crate::chat::PairingSecret(p.secret_hex));
+        match self.with_engine(|handle| {
+            handle.send(engine::EngineCmd::Connect {
+                code: device_code,
+                pairing_secret,
+            })
+        }) {
             Ok(()) => {
                 ok_json("connect requested — wait for host consent, then poll deepflux_status")
             }

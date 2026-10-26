@@ -72,8 +72,36 @@ use transport_webrtc::{
 };
 
 use crate::clock::Clock;
+use crate::pairing_proof::pairing_proof_hex as compute_pairing_proof;
 use crate::signaling::{InboundEnvelope, SignalingIo};
 use crate::timers::{MachineKind, TimerQueue};
+
+/// Stamp the ADR-006 pairing proof onto a machine-built `connect_request`
+/// `Send` action. The pure session machine cannot compute the HMAC (no
+/// crypto, no secrets) and cannot know the session id before building the
+/// envelope, so the composition layer patches the outgoing action in place.
+/// Caller identity comes from the envelope's own `from_device_id`.
+fn stamp_pairing_proof(actions: &mut [Action], secret_hex: &str, host_device_id: &str) {
+    for action in actions.iter_mut() {
+        let Action::Send(env) = action else {
+            continue;
+        };
+        let SignalingBody::ConnectRequest {
+            pairing_proof_hex, ..
+        } = &mut env.body
+        else {
+            continue;
+        };
+        let Some(session_id) = env.session_id.clone() else {
+            continue;
+        };
+        if let Some(proof) =
+            compute_pairing_proof(secret_hex, &env.from_device_id, host_device_id, &session_id)
+        {
+            *pairing_proof_hex = Some(proof);
+        }
+    }
+}
 
 /// Callbacks the embedding binary (rig, tests, future Tauri shell) uses to
 /// react to node-level effects. Every method has a no-op default; input
@@ -82,11 +110,15 @@ pub trait NodeObserver {
     /// A machine changed state (names only — `HostState::name()`).
     fn state_changed(&mut self, _machine: MachineKind, _state: &str) {}
     /// Host machine asked for a consent decision (`PromptConsent`).
+    /// `pairing_proof_hex` is the controller's claimed pairing proof
+    /// (ADR-006), forwarded verbatim — the app layer verifies it against
+    /// its pairing store and decides silent-accept vs prompt.
     fn prompt_consent(
         &mut self,
         _controller_device_id: &str,
         _session_id: &str,
         _ai_session: bool,
+        _pairing_proof_hex: Option<&str>,
     ) {
     }
     fn session_established(&mut self, _session_id: &str) {}
@@ -307,13 +339,32 @@ impl Node {
     /// node-level simultaneous-call rule (`World::controller_connect`):
     /// if this node's host already holds an inbound session toward the
     /// same peer, the controller runs the device-id tie-break.
-    pub fn controller_connect(&mut self, host_device_id: &str, observer: &mut dyn NodeObserver) {
-        self.step_controller(
+    ///
+    /// `pairing_secret_hex` (ADR-006): when the caller holds a pairing with
+    /// this host, the node stamps the HMAC pairing proof onto the outgoing
+    /// `connect_request`. The proof binds the session id, which only exists
+    /// once the pure session machine has built the envelope — so the node
+    /// (the composition layer, which owns crypto) patches the machine's
+    /// `Send` action in place. The secret itself never appears in any
+    /// envelope or log.
+    pub fn controller_connect(
+        &mut self,
+        host_device_id: &str,
+        pairing_secret_hex: Option<&str>,
+        observer: &mut dyn NodeObserver,
+    ) {
+        if let Some(mut actions) = self.step_controller_raw(
             ControllerEvent::Connect {
                 host_device_id: host_device_id.to_owned(),
+                pairing_proof_hex: None,
             },
             observer,
-        );
+        ) {
+            if let Some(secret) = pairing_secret_hex {
+                stamp_pairing_proof(&mut actions, secret, host_device_id);
+            }
+            self.apply(MachineKind::Controller, actions, observer);
+        }
         let Some(target) = self.controller_outbound_peer() else {
             return;
         };
@@ -446,13 +497,17 @@ impl Node {
         } = inbound;
 
         match body {
-            SignalingBody::ConnectRequest { capabilities } => {
+            SignalingBody::ConnectRequest {
+                capabilities,
+                pairing_proof_hex,
+            } => {
                 self.step_host(
                     HostEvent::IncomingRequest {
                         message_id,
                         controller_device_id: from_device_id.clone(),
                         session_id: session_id.unwrap_or_default(),
                         capabilities,
+                        pairing_proof_hex,
                     },
                     observer,
                 );
@@ -735,19 +790,35 @@ impl Node {
     }
 
     fn step_controller(&mut self, event: ControllerEvent, observer: &mut dyn NodeObserver) {
+        if let Some(actions) = self.step_controller_raw(event, observer) {
+            self.apply(MachineKind::Controller, actions, observer);
+        }
+    }
+
+    /// Step the controller machine and return its actions **unapplied**, so
+    /// a caller can patch them first (see [`Self::controller_connect`]'s
+    /// pairing-proof stamp). `None` = illegal transition (already reported
+    /// to the observer). Emits the state-change notification.
+    fn step_controller_raw(
+        &mut self,
+        event: ControllerEvent,
+        observer: &mut dyn NodeObserver,
+    ) -> Option<Vec<Action>> {
         let before = self.controller.state().name().to_owned();
         let now = self.clock.now_ms();
-        match self.controller.step(event, now) {
-            Ok(actions) => self.apply(MachineKind::Controller, actions, observer),
+        let result = match self.controller.step(event, now) {
+            Ok(actions) => Some(actions),
             Err(err) => {
                 self.counters.illegal_transitions += 1;
                 observer.illegal_transition(MachineKind::Controller, err.state, err.event);
+                None
             }
-        }
+        };
         let after = self.controller.state().name().to_owned();
         if before != after {
             observer.state_changed(MachineKind::Controller, &after);
         }
+        result
     }
 
     fn apply(
@@ -791,8 +862,14 @@ impl Node {
                     controller_device_id,
                     session_id,
                     ai_session,
+                    pairing_proof_hex,
                 } => {
-                    observer.prompt_consent(&controller_device_id, &session_id, ai_session);
+                    observer.prompt_consent(
+                        &controller_device_id,
+                        &session_id,
+                        ai_session,
+                        pairing_proof_hex.as_deref(),
+                    );
                 }
                 Action::ComposeAnswer { offer_sdp } => {
                     match self.transport_as_mut() {

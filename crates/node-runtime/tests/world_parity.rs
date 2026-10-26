@@ -140,7 +140,13 @@ impl NodeObserver for Recorder {
             .push(format!("{:?} -> {state}", machine));
     }
 
-    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str, ai_session: bool) {
+    fn prompt_consent(
+        &mut self,
+        controller_device_id: &str,
+        session_id: &str,
+        ai_session: bool,
+        _pairing_proof_hex: Option<&str>,
+    ) {
         self.prompts.fetch_add(1, Ordering::Relaxed);
         self.log.lock().expect("recorder").push(format!(
             "PromptConsent {controller_device_id} {session_id} ai={ai_session}"
@@ -250,7 +256,7 @@ impl TestNode {
 
     fn controller_connect(&mut self, host: &str) {
         let mut observer = self.recorder.clone();
-        self.node.controller_connect(host, &mut observer);
+        self.node.controller_connect(host, None, &mut observer);
     }
 
     fn controller_cancel(&mut self) {

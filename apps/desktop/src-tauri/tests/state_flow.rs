@@ -89,6 +89,7 @@ fn full_session_state_flow_through_the_command_layer() {
     // 3. Connect → host ConsentPrompted + ConsentRequested event.
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -216,6 +217,7 @@ fn reject_leaves_host_online_and_controller_disconnected() {
     });
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -261,6 +263,7 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
     });
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -306,6 +309,7 @@ fn connect_without_being_online_is_a_clear_error() {
     let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
     })
     .expect("connect");
     let deadline = Instant::now() + Duration::from_secs(10);

@@ -76,6 +76,12 @@ impl FeatureFlags {
     /// host consent prompt distinguishes an agent from a human driver.
     /// Additive — a peer that predates the bit parses and ignores it.
     pub const AI_SESSION: u32 = 1 << 4;
+    /// Host gates pairing acks on the consent dialog's "remember this
+    /// machine" choice (ADR-006): the ack means deliberate trust, not the
+    /// pre-ADR-006 unconditional auto-ack. Controllers use it only to label
+    /// trust accurately. Additive — a peer that predates the bit parses and
+    /// ignores it.
+    pub const PAIRING_REMEMBER: u32 = 1 << 5;
 
     pub const fn empty() -> Self {
         Self(0)
@@ -158,6 +164,17 @@ mod tests {
         assert!(f.has(FeatureFlags::AI_SESSION));
         // A peer that predates the bit is still an ordinary u32 value:
         // it parses and round-trips, it just won't interpret the bit.
+        let json = serde_json::to_string(&f).expect("serialize");
+        let back: FeatureFlags = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, f);
+    }
+
+    #[test]
+    fn pairing_remember_is_additive_bit_five() {
+        assert_eq!(FeatureFlags::PAIRING_REMEMBER, 1 << 5);
+        let f = FeatureFlags::empty().with(FeatureFlags::PAIRING_REMEMBER);
+        assert!(f.has(FeatureFlags::PAIRING_REMEMBER));
+        assert!(!f.has(FeatureFlags::AI_SESSION));
         let json = serde_json::to_string(&f).expect("serialize");
         let back: FeatureFlags = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, f);

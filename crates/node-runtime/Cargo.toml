@@ -47,6 +47,10 @@ scrypt = { workspace = true }
 aes-gcm = { workspace = true }
 zeroize = { workspace = true }
 hex = { workspace = true }
+# ADR-006: pairing-proof HMAC + circle-id SHA-256 derivation
+# (node-runtime::{pairing_proof, directory_remote}).
+sha2 = { workspace = true }
+hmac = { workspace = true }
 
 # Agent frame tap (ADR-004, RD-016): JPEG screenshot encoding, pure Rust.
 image = { workspace = true }

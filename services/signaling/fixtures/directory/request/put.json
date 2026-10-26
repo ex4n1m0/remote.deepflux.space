@@ -1,0 +1,8 @@
+{
+  "action": "put",
+  "ciphertext_hex": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+  "circle_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "device": "0123456789abcdef",
+  "nonce_hex": "6a6a6a6a6a6a6a6a6a6a6a6a",
+  "protocol_version": 1
+}

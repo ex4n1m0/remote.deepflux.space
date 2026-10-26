@@ -382,7 +382,10 @@ fn run_controller(
     };
     eprintln!("[e2e-ctrl] connecting to {host_device}");
     handle
-        .send(EngineCmd::Connect { code: host_device })
+        .send(EngineCmd::Connect {
+            code: host_device,
+            pairing_secret: None,
+        })
         .expect("connect");
     // Connected.
     while Instant::now() < deadline && !verdict.connected_reached {
@@ -595,7 +598,10 @@ fn run_controller_expect_connect_failure(
     eprintln!("[e2e-ctrl-fail] connecting to {host_device} (candidates blackholed)");
     let connected_at = Instant::now();
     handle
-        .send(EngineCmd::Connect { code: host_device })
+        .send(EngineCmd::Connect {
+            code: host_device,
+            pairing_secret: None,
+        })
         .expect("connect");
     let mut ended = None;
     while Instant::now() < deadline {

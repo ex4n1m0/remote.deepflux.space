@@ -151,7 +151,13 @@ impl NodeObserver for EngineObserver {
         });
     }
 
-    fn prompt_consent(&mut self, controller_device_id: &str, session_id: &str, ai_session: bool) {
+    fn prompt_consent(
+        &mut self,
+        controller_device_id: &str,
+        session_id: &str,
+        ai_session: bool,
+        pairing_proof_hex: Option<&str>,
+    ) {
         self.shared
             .set_pending_consent(Some(controller_device_id.to_owned()));
         self.shared
@@ -160,6 +166,7 @@ impl NodeObserver for EngineObserver {
             controller_device_id: controller_device_id.to_owned(),
             session_id: session_id.to_owned(),
             ai_session,
+            pairing_proof_hex: pairing_proof_hex.map(str::to_owned),
         });
         self.emit(EngineEvent::PeerOnline {
             device_id: controller_device_id.to_owned(),

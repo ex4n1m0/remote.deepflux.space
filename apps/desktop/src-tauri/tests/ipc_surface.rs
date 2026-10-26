@@ -127,6 +127,7 @@ fn all_events() -> Vec<EngineEvent> {
             session_id: Some("s1".into()),
         },
         EngineEvent::ConsentRequested {
+            pairing_proof_hex: None,
             controller_device_id: "ctrl-1".into(),
             session_id: "s1".into(),
             ai_session: true,

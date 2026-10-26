@@ -1,0 +1,22 @@
+{
+  "action": "list",
+  "entries": [
+    {
+      "ciphertext_hex": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+      "device": "0123456789abcdef",
+      "nonce_hex": "6a6a6a6a6a6a6a6a6a6a6a6a",
+      "online": true,
+      "refreshed_ms": 1760000000000
+    },
+    {
+      "ciphertext_hex": "7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+      "device": "fedcba9876543210",
+      "nonce_hex": "8d8d8d8d8d8d8d8d8d8d8d8d",
+      "online": false,
+      "refreshed_ms": 1759999000000
+    }
+  ],
+  "ok": true,
+  "protocol_version": 1,
+  "truncated": false
+}

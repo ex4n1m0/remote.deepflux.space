@@ -136,6 +136,7 @@ impl World {
             peer,
             ControllerEvent::Connect {
                 host_device_id: host_device_id.to_owned(),
+                pairing_proof_hex: None,
             },
         );
         let outbound = match self.peers[peer].controller.state() {
@@ -237,7 +238,7 @@ impl World {
         let from: DeviceId = env.from_device_id.clone();
 
         match env.body {
-            SignalingBody::ConnectRequest { capabilities } => {
+            SignalingBody::ConnectRequest { capabilities, .. } => {
                 self.step_host(
                     target,
                     HostEvent::IncomingRequest {
@@ -245,6 +246,7 @@ impl World {
                         controller_device_id: from.clone(),
                         session_id: env.session_id.unwrap_or_default(),
                         capabilities,
+                        pairing_proof_hex: None,
                     },
                 );
                 // Mirror half of the node-level collision rule (QA F2): a
