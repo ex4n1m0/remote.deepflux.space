@@ -97,11 +97,18 @@ export function accountGate(
   account: { status: AccountStatus; loaded: boolean },
   skippedOnboarding: boolean,
   signInOpen: boolean,
+  opts: { circleJoined?: boolean } = {},
 ): AccountGate {
   if (!account.loaded) {
     return "loading";
   }
   if (account.status === "logged_in") {
+    return "app";
+  }
+  // ADR-006: a family circle member goes straight to the app — the circle
+  // is the identity that matters on family machines (the family build
+  // auto-joins on first run); accounts stay reachable via Sign in.
+  if (opts.circleJoined) {
     return "app";
   }
   if (signInOpen || !skippedOnboarding) {

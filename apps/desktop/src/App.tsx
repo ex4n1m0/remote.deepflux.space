@@ -8,8 +8,11 @@ import { useEngine } from "./hooks/useEngine";
 import { useAccount } from "./hooks/useAccount";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
+import { useDirectory } from "./hooks/useDirectory";
 import { SettingsPanel } from "./components/IdentityCard";
 import { MachinesRail, unifiedMachines } from "./components/MachinesRail";
+import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
+import { CircleSection, TrustedMachinesSection } from "./components/CircleSettings";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { Conversation } from "./components/Conversation";
 import { Onboarding } from "./components/Onboarding";
@@ -27,12 +30,40 @@ export default function App() {
   const account = useAccount();
   const [accountUi] = account.ui;
   const assistant = useAssistant();
+  const directory = useDirectory();
+  const [directoryUi] = directory.ui;
+  // Trusted (paired) codes for the rail's shield badges — pulled at mount,
+  // after consent decisions, and whenever a pairing event lands.
+  const [trustedCodes, setTrustedCodes] = useState<Set<string>>(new Set());
+  const refreshTrusted = async () => {
+    try {
+      const pairings = await api.pairingsList();
+      setTrustedCodes(new Set(pairings.filter((p) => !p.pending_ack).map((p) => p.code)));
+    } catch {
+      /* engine-independent; the next event retries */
+    }
+  };
   const [showDiag, setShowDiag] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const chat = useChat(selectedCode);
+  useEffect(() => {
+    void refreshTrusted();
+  }, []);
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen("engine://pairing", () => void refreshTrusted());
+      } catch {
+        /* jsdom/tests */
+      }
+    })();
+    return () => unlisten?.();
+  }, []);
 
   // Shell version for the Settings label; tauri.conf is the single source
   // of truth. jsdom/tests have no Tauri bridge — stays null there.
@@ -61,7 +92,9 @@ export default function App() {
   const gate =
     engine.settings === null
       ? ("loading" as const)
-      : accountGate(accountUi, engine.settings.skipped_onboarding, signInOpen);
+      : accountGate(accountUi, engine.settings.skipped_onboarding, signInOpen, {
+          circleJoined: directoryUi.joined,
+        });
 
   const ensureEngine = async (): Promise<boolean> => {
     if (ui.engineStarted) {
@@ -152,6 +185,8 @@ export default function App() {
     signedIn ? accountUi.online : [],
     ui.peerOnline,
     selectedCode,
+    directoryUi.joined && directoryUi.loaded ? directoryUi.machines : null,
+    trustedCodes,
   );
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
   const sharing = ui.hostState !== "Idle" && ui.hostState !== "Registering";
@@ -270,34 +305,22 @@ export default function App() {
         />
 
         <section className="center" aria-label="Selected machine">
-          {/* Host-side consent prompt: the one modal-ish interruption. */}
+          {/* Host-side consent prompt: the one modal-ish interruption.
+           * ADR-006: paired-and-PROVEN reconnects render a passive status
+           * card (the app layer already auto-accepted); everything else
+           * gets the dialog with the "remember this machine" choice. */}
           {host.can.accept && ui.consent ? (
-            <div className="consent center-card" role="alertdialog" aria-label="Connection request">
-              <p>
-                <strong>{ui.consent.controller_device_id}</strong>{" "}
-                {ui.consent.ai_session
-                  ? "requests AI-agent control of this machine."
-                  : "asks to control this machine."}
-              </p>
-              <p className="muted">
-                {ui.consent.ai_session
-                  ? "An AI agent will see the screen and drive mouse/keyboard for this one session. You can watch and take over at any time; the agent cannot type your passwords."
-                  : "Accepting hands over screen viewing and keyboard/mouse control for this one session. The other side sees nothing until you accept."}
-              </p>
-              <div className="row">
-                <button
-                  type="button"
-                  className="primary"
-                  autoFocus
-                  onClick={() => engine.run(() => api.consentAccept(true))}
-                >
-                  Accept
-                </button>
-                <button type="button" onClick={() => engine.run(() => api.consentReject())}>
-                  Reject
-                </button>
-              </div>
-            </div>
+            ui.consent.pairing_proof_ok ? (
+              <TrustedConnectCard consent={ui.consent} />
+            ) : (
+              <ConsentDialog
+                consent={ui.consent}
+                onAccept={(remember) =>
+                  engine.run(() => api.consentAccept(remember)).then(() => void refreshTrusted())
+                }
+                onReject={() => engine.run(() => api.consentReject())}
+              />
+            )
           ) : null}
 
           {selected ? (
@@ -372,6 +395,8 @@ export default function App() {
                 onSave={engine.saveSettings}
                 version={appVersion}
               />
+              <CircleSection directory={directory} />
+              <TrustedMachinesSection onRevoked={() => void refreshTrusted()} />
             </div>
           ) : null}
         </section>

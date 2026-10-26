@@ -40,6 +40,8 @@ pub struct AppServices {
     /// ADR-006 pairing-ceremony state: the in-memory pairing offer, the
     /// live prompt mark, and prompt-flood cooldowns.
     pub trust: Mutex<crate::chat::TrustState>,
+    /// ADR-006 circle-directory cache (single-flight, latest-wins).
+    pub directory: Mutex<crate::directory::DirectoryCache>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -247,7 +249,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     "session_id": session_id,
                     "ai_session": ai_session,
                     "paired": paired,
-                    "pairing_proof_ok": proof_ok
+                    "pairing_proof_ok": proof_ok,
+                    // ADR-006: the circle nickname (self-chosen, advisory —
+                    // the code beside it in the prompt is the identity).
+                    "requester_name": crate::directory::nickname_for(
+                        app,
+                        &controller_device_id
+                    ),
                 })),
             );
         }
@@ -377,10 +385,22 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         }
         EngineEvent::PairAckReceived { host_device_id } => {
             crate::chat::pairing_ack(app, &host_device_id);
+            // ADR-006: the ack means the owner accepted with "remember" —
+            // save the machine to favorites (circle nickname when known,
+            // the code as placeholder). The rail's name precedence
+            // backfills the display name from the directory later.
+            let name = crate::directory::nickname_for(app, &host_device_id)
+                .unwrap_or_else(|| host_device_id.clone());
+            {
+                let services = app.state::<AppServices>();
+                let mut store = services.store.lock().expect("store");
+                let _ = store.add_favorite_sourced(&name, &host_device_id, "directory");
+            }
             emit(
                 events::PAIRING,
                 Some(serde_json::json!({ "device_id": host_device_id, "paired": true })),
             );
+            let _ = app.emit("engine://favorites", serde_json::json!({}));
         }
     }
     true
@@ -814,8 +834,32 @@ pub fn chat_history(app: AppHandle, code: String) -> CmdResult<Vec<crate::chat::
 
 /// Established pairings (trusted machines: silent reconnect + chat keys).
 #[tauri::command]
-pub fn pairings_list(app: AppHandle) -> CmdResult<Vec<crate::chat::Pairing>> {
-    Ok(crate::chat::pairings(&app))
+pub fn pairings_list(app: AppHandle) -> CmdResult<Vec<PairingDto>> {
+    Ok(crate::chat::pairings(&app)
+        .into_iter()
+        .map(PairingDto::from)
+        .collect())
+}
+
+/// Redacted pairing row for the webview (ADR-006): the shared secret never
+/// crosses the IPC boundary (invariant-6 discipline).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PairingDto {
+    pub code: String,
+    pub created_ms: u64,
+    pub pending_ack: bool,
+    pub role: String,
+}
+
+impl From<crate::chat::Pairing> for PairingDto {
+    fn from(p: crate::chat::Pairing) -> Self {
+        Self {
+            code: p.code,
+            created_ms: p.created_ms,
+            pending_ack: p.pending_ack,
+            role: p.role,
+        }
+    }
 }
 
 /// Revoke a pairing: future connects prompt for consent again.
@@ -823,4 +867,84 @@ pub fn pairings_list(app: AppHandle) -> CmdResult<Vec<crate::chat::Pairing>> {
 pub fn pairing_remove(app: AppHandle, code: String) -> CmdResult<()> {
     crate::chat::remove_pairing(&app, &code);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Family circle / machine directory (ADR-006)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CircleStatusDto {
+    pub joined: bool,
+    pub circle_id: Option<String>,
+    pub share_in_circle: bool,
+    pub family_build: bool,
+    pub machines: Vec<crate::directory::DirectoryMachineDto>,
+    pub loaded: bool,
+}
+
+#[tauri::command]
+pub fn circle_status(app: AppHandle) -> CmdResult<CircleStatusDto> {
+    let doc = crate::directory::read_circle(&app);
+    let loaded = {
+        let services = app.state::<AppServices>();
+        services.directory.lock().expect("directory cache").loaded
+    };
+    Ok(CircleStatusDto {
+        joined: doc.is_some(),
+        circle_id: doc.as_ref().map(|d| d.circle_id.clone()),
+        share_in_circle: doc.as_ref().is_some_and(|d| d.share_in_circle),
+        family_build: doc.as_ref().is_some_and(|d| d.family_build),
+        machines: crate::directory::machines(&app),
+        loaded,
+    })
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CircleJoinArgs {
+    pub invite: String,
+}
+
+#[tauri::command]
+pub fn circle_join(app: AppHandle, args: CircleJoinArgs) -> CmdResult<CircleStatusDto> {
+    crate::directory::join(&app, args.invite.trim(), false)?;
+    let _ = crate::directory::put_entry(&app); // presence may lag; poller retries
+    let _ = crate::directory::refresh(&app);
+    circle_status(app)
+}
+
+#[tauri::command]
+pub fn circle_create(app: AppHandle) -> CmdResult<CircleStatusDto> {
+    // The invite is returned once through the pairing DTO — the key lives
+    // in the Credential Manager; `circle_invite` re-exposes it on demand.
+    crate::directory::create(&app)?;
+    circle_status(app)
+}
+
+#[tauri::command]
+pub fn circle_invite(app: AppHandle) -> CmdResult<String> {
+    crate::directory::invite(&app)
+}
+
+#[tauri::command]
+pub fn circle_leave(app: AppHandle) -> CmdResult<CircleStatusDto> {
+    crate::directory::leave(&app)?;
+    circle_status(app)
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CircleShareArgs {
+    pub share: bool,
+}
+
+#[tauri::command]
+pub fn circle_set_shared(app: AppHandle, args: CircleShareArgs) -> CmdResult<CircleStatusDto> {
+    crate::directory::set_shared(&app, args.share)?;
+    circle_status(app)
+}
+
+#[tauri::command]
+pub fn directory_refresh(app: AppHandle) -> CmdResult<Vec<crate::directory::DirectoryMachineDto>> {
+    crate::directory::refresh(&app)?;
+    Ok(crate::directory::machines(&app))
 }

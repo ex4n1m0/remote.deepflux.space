@@ -347,11 +347,13 @@ fn favorites_join_the_union_without_duplicating() {
     let favorites = vec![
         Favorite {
             id: "11111111".into(),
+            source: "manual".to_owned(),
             name: "A".into(),
             code: "AAAA".into(), // same code, different case → duplicate avoided
         },
         Favorite {
             id: "22222222".into(),
+            source: "manual".to_owned(),
             name: "New".into(),
             code: "dddddddddddddddd".into(),
         },
@@ -370,6 +372,7 @@ fn favorites_join_the_union_without_duplicating() {
 fn import_favorites_keeps_identity_fields() {
     let favorites = vec![Favorite {
         id: "abcd1234".into(),
+        source: "manual".to_owned(),
         name: "Laptop".into(),
         code: "0123456789abcdef".into(),
     }];
@@ -585,6 +588,7 @@ fn roster_capacity_is_enforced_with_a_friendly_error() {
     let favorites: Vec<Favorite> = (0..protocol::account::ROSTER_MAX_COMPUTERS)
         .map(|i| Favorite {
             id: format!("{i:08x}"),
+            source: "manual".to_owned(),
             name: format!("PC {i}"),
             code: format!("{i:016x}"),
         })

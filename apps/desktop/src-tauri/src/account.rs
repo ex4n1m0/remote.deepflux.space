@@ -263,15 +263,24 @@ pub fn import_favorites(favorites: &[Favorite], now_ms: u64) -> Vec<RosterEntry>
 }
 
 /// The write-back direction: roster → favorites (id/name/code kept).
-pub fn roster_to_favorites(doc: &RosterDoc) -> Vec<Favorite> {
-    doc.computers
-        .iter()
-        .map(|e| Favorite {
-            id: e.id.clone(),
-            name: e.name.clone(),
-            code: e.code.clone(),
-        })
-        .collect()
+/// ADR-006 fix: the roster sync MERGES into favorites (union by code,
+/// roster rows carry no `source` = manual semantics) instead of replacing
+/// them wholesale — the old replace wiped directory-sourced favorites on
+/// every login.
+pub fn merge_roster_into_favorites(current: &[Favorite], doc: &RosterDoc) -> Vec<Favorite> {
+    let mut out: Vec<Favorite> = current.to_vec();
+    for entry in &doc.computers {
+        if out.iter().any(|f| f.code == entry.code) {
+            continue;
+        }
+        out.push(Favorite {
+            id: entry.id.clone(),
+            name: entry.name.clone(),
+            code: entry.code.clone(),
+            source: "manual".to_owned(),
+        });
+    }
+    out
 }
 
 fn now_ms() -> u64 {
@@ -600,7 +609,7 @@ impl AccountManager {
                 .map_err(|e| format!("save roster.json: {e}"))?;
             if let Some(session) = self.session.as_ref() {
                 store
-                    .replace_favorites(roster_to_favorites(&session.doc))
+                    .replace_favorites(merge_roster_into_favorites(store.favorites(), &session.doc))
                     .map_err(|e| format!("save favorites.json: {e}"))?;
             }
         } else {
@@ -916,7 +925,7 @@ impl AccountManager {
             })
             .map_err(|e| format!("save roster.json: {e}"))?;
         store
-            .replace_favorites(roster_to_favorites(&session.doc))
+            .replace_favorites(merge_roster_into_favorites(store.favorites(), &session.doc))
             .map_err(|e| format!("save favorites.json: {e}"))
     }
 

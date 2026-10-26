@@ -8,6 +8,7 @@ pub mod agent;
 pub mod chat;
 pub mod commands;
 pub mod credstore;
+mod directory;
 pub mod engine;
 pub mod ipc;
 pub mod mcp;
@@ -42,7 +43,12 @@ pub fn run() {
                 account: Mutex::new(account),
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
+                directory: Mutex::new(directory::DirectoryCache::default()),
             });
+            // ADR-006: family build auto-joins from the embedded key; the
+            // directory poller keeps the machine list fresh while online.
+            directory::auto_join_embedded(app.handle());
+            directory::spawn_poller(app.handle().clone());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -117,6 +123,13 @@ pub fn run() {
             commands::chat_history,
             commands::pairings_list,
             commands::pairing_remove,
+            commands::circle_status,
+            commands::circle_join,
+            commands::circle_create,
+            commands::circle_invite,
+            commands::circle_leave,
+            commands::circle_set_shared,
+            commands::directory_refresh,
         ])
         .run(tauri::generate_context!())
         .expect("tauri shell run");

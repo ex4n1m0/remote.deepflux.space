@@ -91,6 +91,15 @@ pub struct Favorite {
     pub name: String,
     /// The host's connection code (= its device id).
     pub code: String,
+    /// ADR-006: how the row was saved — "manual" (typed a code) or
+    /// "directory" (saved when the owner's approval paired the machine).
+    /// Local format only, never a wire field.
+    #[serde(default = "manual_source")]
+    pub source: String,
+}
+
+fn manual_source() -> String {
+    "manual".to_owned()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -240,6 +249,35 @@ impl LocalStore {
         self.save_favorites()
     }
 
+    /// ADR-006: save a favorite recording its provenance; existing rows
+    /// for the code are left alone (idempotent auto-save).
+    pub fn add_favorite_sourced(
+        &mut self,
+        name: &str,
+        code: &str,
+        source: &str,
+    ) -> StoreResult<Favorite> {
+        let code_norm = code.trim().to_owned();
+        if let Some(existing) = self
+            .favorites
+            .favorites
+            .iter()
+            .find(|f| f.code == code_norm)
+            .cloned()
+        {
+            return Ok(existing);
+        }
+        let favorite = Favorite {
+            id: crate::engine::ids::new_device_id()[..8].to_owned(),
+            name: name.trim().to_owned(),
+            code: code_norm,
+            source: source.to_owned(),
+        };
+        self.favorites.favorites.push(favorite.clone());
+        self.save_favorites()?;
+        Ok(favorite)
+    }
+
     pub fn update_settings(&mut self, patch: AppSettings) -> StoreResult<()> {
         // Identity is immutable from the UI side (it would strand favorites
         // and signaling presence); the token rotates only on regeneration.
@@ -262,6 +300,7 @@ impl LocalStore {
             id: crate::engine::ids::new_device_id()[..8].to_owned(),
             name: name.trim().to_owned(),
             code,
+            source: "manual".to_owned(),
         };
         self.favorites.favorites.push(favorite.clone());
         self.save_favorites()?;
@@ -474,11 +513,13 @@ mod tests {
                     id: "11111111".into(),
                     name: "B".into(),
                     code: "bbbbbbbbbbbbbbbb".into(),
+                    source: "manual".into(),
                 },
                 Favorite {
                     id: "22222222".into(),
                     name: "C".into(),
                     code: "cccccccccccccccc".into(),
+                    source: "manual".into(),
                 },
             ])
             .unwrap();

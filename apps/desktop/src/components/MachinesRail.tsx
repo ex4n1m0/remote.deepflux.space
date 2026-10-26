@@ -1,9 +1,12 @@
-/** Machines rail (ADR-005 / study §4.1): the IM-style left column. One
- * unified list — the ADR-003 union (local favorites + signed-in roster
- * computers, union-by-code) — plus the pinned "This machine" card (host
- * role) and add-machine. The selected machine drives the center pane. */
+/** Machines rail (ADR-005 / study §4.1, widened by ADR-006): the IM-style
+ * left column. ONE merged contact list — the ADR-003 union (local
+ * favorites + signed-in roster computers) plus the family-circle
+ * directory, union-by-code with name precedence roster > favorite >
+ * circle nickname. Search filters by name and code client-side; trusted
+ * (paired) rows carry the shield badge; circle-only rows carry the circle
+ * tag. Also home to the pinned "This machine" card (host role). */
 import { useState } from "react";
-import type { Computer, Favorite } from "../types";
+import type { Computer, DirectoryMachine, Favorite } from "../types";
 
 export interface MachineRow {
   id: string;
@@ -11,41 +14,76 @@ export interface MachineRow {
   code: string;
   online: boolean | null;
   active: boolean;
+  /** ADR-006: proven pairing — connects without asking again. */
+  trusted: boolean;
+  /** ADR-006: surfaced by the circle directory (not a saved machine). */
+  fromCircle: boolean;
 }
 
-/** ADR-003 union: roster computers and local favorites merged by code
- * (roster name wins for shared entries; favorites-only entries kept). */
+/** The ADR-003 union + the ADR-006 circle merge. Circle rows that are not
+ * saved machines appear with the circle tag; a circle nickname beats a
+ * favorite whose name is just the bare code (the auto-favorite
+ * placeholder) but never a real roster/favorite name. */
 export function unifiedMachines(
   favorites: Favorite[],
   computers: Computer[] | null,
   onlineCodes: string[],
   peerOnline: Record<string, boolean>,
   selectedCode: string | null,
+  directory: DirectoryMachine[] | null = null,
+  trustedCodes: ReadonlySet<string> = new Set(),
 ): MachineRow[] {
   const onlineSet = new Set(onlineCodes);
   const seen = new Set<string>();
   const rows: MachineRow[] = [];
+  const push = (row: Omit<MachineRow, "trusted" | "active">) => {
+    seen.add(row.code);
+    rows.push({
+      ...row,
+      trusted: trustedCodes.has(row.code),
+      active: selectedCode === row.code,
+    });
+  };
   if (computers) {
     for (const c of computers) {
-      seen.add(c.code);
-      rows.push({
+      push({
         id: c.id,
         name: c.name || c.code,
         code: c.code,
         online: onlineSet.has(c.code) ? true : peerOnline[c.code] ?? null,
-        active: selectedCode === c.code,
+        fromCircle: false,
       });
     }
   }
   for (const f of favorites) {
     if (seen.has(f.code)) continue;
-    rows.push({
+    push({
       id: f.id,
       name: f.name,
       code: f.code,
       online: peerOnline[f.code] ?? null,
-      active: selectedCode === f.code,
+      fromCircle: false,
     });
+  }
+  if (directory) {
+    for (const d of directory) {
+      if (seen.has(d.device)) {
+        // Saved machine with a placeholder name (the bare code — the
+        // auto-favorite path): the circle nickname is the better label.
+        const row = rows.find((r) => r.code === d.device);
+        if (row && row.name === d.device && d.name) {
+          row.name = d.name;
+        }
+        continue;
+      }
+      push({
+        id: `circle:${d.device}`,
+        name: d.name || d.device,
+        code: d.device,
+        online: d.online,
+        fromCircle: true,
+      });
+    }
   }
   return rows;
 }
@@ -56,6 +94,16 @@ export function machinesFromFavorites(
   selectedCode: string | null,
 ): MachineRow[] {
   return unifiedMachines(favorites, null, [], peerOnline, selectedCode);
+}
+
+/** Client-side search over the merged list: case-insensitive name or code
+ * substring. Empty query returns everything. */
+export function filterMachines(rows: MachineRow[], query: string): MachineRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (m) => m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q),
+  );
 }
 
 export function MachinesRail({
@@ -85,6 +133,7 @@ export function MachinesRail({
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const submitAdd = async () => {
     const c = code.trim().toLowerCase();
@@ -100,6 +149,9 @@ export function MachinesRail({
     }
   };
 
+  const visible = filterMachines(machines, query);
+  const filtering = query.trim().length > 0;
+
   return (
     <nav className="rail" aria-label="Machines">
       <div className="rail-head">
@@ -113,6 +165,23 @@ export function MachinesRail({
           + Add
         </button>
       </div>
+
+      <input
+        type="search"
+        className="rail-search"
+        value={query}
+        placeholder="Search machines"
+        aria-label="Search machines"
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setQuery("");
+        }}
+      />
+      {filtering ? (
+        <p className="hint" role="status">
+          {visible.length} machine{visible.length === 1 ? "" : "s"}
+        </p>
+      ) : null}
 
       {adding ? (
         <div className="rail-add">
@@ -141,14 +210,17 @@ export function MachinesRail({
       ) : null}
 
       <ul className="rail-list">
-        {machines.length === 0 ? (
+        {visible.length === 0 ? (
           <li className="rail-empty muted">
-            No machines yet — add one with its connection code, or ask the
-            assistant to do it.
+            {filtering
+              ? "No machines match that search."
+              : "No machines yet — add one with its connection code, join a family circle in Settings, or ask the assistant."}
           </li>
         ) : (
-          machines.map((m) => (
-            <li key={m.id}>
+          visible.map((m) => (
+            /* One interactive element per row (a11y): select and connect are
+             * sibling buttons, never nested. */
+            <li key={m.id} className="rail-item">
               <button
                 type="button"
                 className={`rail-row${m.active ? " active" : ""}`}
@@ -161,24 +233,21 @@ export function MachinesRail({
                   title={m.online === true ? "online" : m.online === false ? "offline" : "unknown"}
                 />
                 <span className="rail-name">{m.name}</span>
-                <span
-                  className="rail-connect ghost small"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Connect to ${m.name}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onConnect(m.code);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      onConnect(m.code);
-                    }
-                  }}
-                >
-                  Connect
-                </span>
+                {m.trusted ? (
+                  <span className="chip chip-good rail-badge" title="Trusted — connects without asking again">
+                    ✓
+                  </span>
+                ) : null}
+                {m.fromCircle && !m.trusted ? <span className="rail-circle-tag muted">circle</span> : null}
+              </button>
+              <button
+                type="button"
+                className="ghost small rail-connect"
+                aria-label={`Connect to ${m.name}${m.online === false ? " (offline)" : ""}`}
+                title={m.online === false ? "Offline — the app isn't running there; you can still try" : undefined}
+                onClick={() => onConnect(m.code)}
+              >
+                Connect
               </button>
             </li>
           ))

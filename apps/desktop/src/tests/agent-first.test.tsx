@@ -1,7 +1,7 @@
 /** Agent-first UI tests (ADR-005): machines unification + assistant panel. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MachinesRail, unifiedMachines } from "../components/MachinesRail";
+import { MachinesRail, filterMachines, unifiedMachines } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
 import type { AssistantBinding } from "../hooks/useAssistant";
 
@@ -51,8 +51,8 @@ describe("MachinesRail", () => {
       <MachinesRail
         {...base}
         machines={[
-          { id: "1", name: "Mom's PC", code: "aa", online: true, active: true },
-          { id: "2", name: "Office", code: "bb", online: null, active: false },
+          { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: false, fromCircle: false },
+          { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, fromCircle: false },
         ]}
       />,
     );
@@ -129,5 +129,50 @@ describe("AssistantPanel", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Something went wrong");
     expect(alert.textContent).toContain("provider request failed");
+  });
+});
+
+// ---- ADR-006: circle merge, trust badges, search ----
+
+describe("unifiedMachines with the circle directory (ADR-006)", () => {
+  const favs = [{ id: "f1", name: "aaaaaaaaaaaaaaaa", code: "aaaaaaaaaaaaaaaa" }];
+  const dir = [
+    { device: "aaaaaaaaaaaaaaaa", name: "Mom's PC", online: true, refreshed_ms: 1, is_self: false },
+    { device: "cccccccccccccccc", name: "Lab", online: false, refreshed_ms: 1, is_self: false },
+  ];
+
+  it("merges circle rows by code; a real favorite name beats the nickname", () => {
+    const rows = unifiedMachines(favs, null, [], {}, "aaaaaaaaaaaaaaaa", dir, new Set());
+    const merged = rows.find((r) => r.code === "aaaaaaaaaaaaaaaa");
+    // The favorite's name IS the bare code here — the circle nickname wins
+    // over the placeholder (UI-review decision).
+    expect(merged?.name).toBe("Mom's PC");
+    expect(rows.find((r) => r.code === "cccccccccccccccc")?.fromCircle).toBe(true);
+    expect(merged?.fromCircle).toBe(false);
+  });
+
+  it("trusted codes produce the shield flag", () => {
+    const rows = unifiedMachines([], null, [], {}, null, dir, new Set(["cccccccccccccccc"]));
+    expect(rows.find((r) => r.code === "cccccccccccccccc")?.trusted).toBe(true);
+    expect(rows.find((r) => r.code === "aaaaaaaaaaaaaaaa")?.trusted).toBe(false);
+  });
+
+  it("directory=null keeps the old behavior", () => {
+    const rows = unifiedMachines(favs, null, [], {}, null, null, new Set());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.trusted).toBe(false);
+  });
+});
+
+describe("filterMachines (ADR-006 search)", () => {
+  const rows = [
+    { id: "1", name: "Mom's PC", code: "aaaaaaaaaaaaaaaa", online: true, active: false, trusted: false, fromCircle: false },
+    { id: "2", name: "Lab", code: "bbbbbbbbbbbbbbbb", online: null, active: false, trusted: true, fromCircle: true },
+  ];
+  it("matches name case-insensitively, code substrings, and clears on empty", () => {
+    expect(filterMachines(rows, "mom")).toHaveLength(1);
+    expect(filterMachines(rows, "BBBB")).toHaveLength(1);
+    expect(filterMachines(rows, "")).toHaveLength(2);
+    expect(filterMachines(rows, "zzz")).toHaveLength(0);
   });
 });

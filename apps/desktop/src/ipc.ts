@@ -6,11 +6,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountState,
+  CircleStatus,
   ComputersList,
+  DirectoryMachine,
   EngineStatus,
   Favorite,
   Identity,
   MonitorInfo,
+  PairingInfo,
   PresenceResult,
   Settings,
 } from "./types";
@@ -101,6 +104,21 @@ export const api = {
   consentAccept: (remember: boolean): Promise<void> => invoke("consent_accept", { remember }),
   consentReject: (): Promise<void> => invoke("consent_reject"),
 
+  // Family circle / machine directory (ADR-006).
+  circleStatus: (): Promise<CircleStatus> => invoke("circle_status"),
+  circleJoin: (invite: string): Promise<CircleStatus> =>
+    invoke("circle_join", { args: { invite } }),
+  circleCreate: (): Promise<CircleStatus> => invoke("circle_create"),
+  circleInvite: (): Promise<string> => invoke("circle_invite"),
+  circleLeave: (): Promise<CircleStatus> => invoke("circle_leave"),
+  circleSetShared: (share: boolean): Promise<CircleStatus> =>
+    invoke("circle_set_shared", { args: { share } }),
+  directoryRefresh: (): Promise<DirectoryMachine[]> => invoke("directory_refresh"),
+
+  // Trusted machines (ADR-005 §5 revocation, wired by ADR-006).
+  pairingsList: (): Promise<PairingInfo[]> => invoke("pairings_list"),
+  pairingRemove: (code: string): Promise<void> => invoke("pairing_remove", { code }),
+
   setQuality: (preset: string): Promise<void> =>
     invoke("set_quality", { args: { preset } }),
   selectMonitor: (monitorId: string): Promise<void> =>
@@ -123,9 +141,6 @@ export const api = {
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
     invoke("chat_send", { args: { code, text, agent } }),
   chatHistory: (code: string): Promise<ChatLine[]> => invoke("chat_history", { code }),
-  pairingsList: (): Promise<Array<{ code: string; created_ms: number; pending_ack: boolean }>> =>
-    invoke("pairings_list"),
-  pairingRemove: (code: string): Promise<void> => invoke("pairing_remove", { code }),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

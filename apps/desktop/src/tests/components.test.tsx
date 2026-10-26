@@ -41,7 +41,7 @@ describe("HostPanel consent prompt", () => {
     rerender(
       <HostPanel
         hostState="ConsentPrompted"
-        consent={{ controller_device_id: "ctrl-9", session_id: "s1", ai_session: false }}
+        consent={{ controller_device_id: "ctrl-9", session_id: "s1", ai_session: false, paired: false, pairing_proof_ok: false, requester_name: null }}
         connectionCode="code"
         onStart={() => {}}
         onStop={() => {}}
@@ -65,7 +65,7 @@ describe("HostPanel consent prompt", () => {
     render(
       <HostPanel
         hostState="ConsentPrompted"
-        consent={{ controller_device_id: "ctrl-ai", session_id: "s2", ai_session: true }}
+        consent={{ controller_device_id: "ctrl-ai", session_id: "s2", ai_session: true, paired: false, pairing_proof_ok: false, requester_name: null }}
         connectionCode="code"
         onStart={() => {}}
         onStop={() => {}}
