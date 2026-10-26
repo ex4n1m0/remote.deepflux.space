@@ -76,12 +76,18 @@ pub fn run() {
             // Machine-chat inbox poller (RD-022): out-of-session chat is
             // always available while the app runs.
             chat::spawn_poller(app.handle().clone());
-            // ADR-006 always-ready: circle machines go online at launch —
-            // the engine + host presence start automatically (every
-            // untrusted session still hits the consent prompt; trusted
-            // machines connect silently per their pairing). Deferred a
-            // beat so the window paints first.
-            if directory::read_circle(app.handle()).is_some_and(|d| d.share_in_circle) {
+            // Always-ready, both directions (0.6.3): the engine and the
+            // controller role start at launch for everyone — controlling
+            // out is one press (Control) with no enable step, and the
+            // engine defers the connect itself while the role registers.
+            // Host presence (being controllable) still follows the
+            // circle-visibility choice; every untrusted session still
+            // hits the consent prompt, trusted machines connect silently
+            // per their pairing. Deferred a beat so the window paints
+            // first.
+            {
+                let share_host =
+                    directory::read_circle(app.handle()).is_some_and(|d| d.share_in_circle);
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -90,7 +96,10 @@ pub fn run() {
                         if let Ok(slot) = services.engine.lock()
                             && let Some(engine) = slot.as_ref()
                         {
-                            let _ = engine.send(engine::EngineCmd::HostStart);
+                            let _ = engine.send(engine::EngineCmd::ControllerStart);
+                            if share_host {
+                                let _ = engine.send(engine::EngineCmd::HostStart);
+                            }
                         }
                     }
                 });

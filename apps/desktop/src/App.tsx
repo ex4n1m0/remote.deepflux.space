@@ -181,16 +181,15 @@ export default function App() {
 
   // One-step remote control: the ONLY connect path (rail Control button,
   // machine-page Control button, add-machine "Save & control" — all end
-  // up here). Starts the engine if needed, then asks to control.
+  // up here). Starts the engine if needed and asks to control; the
+  // engine brings the controller role online itself when it isn't yet
+  // (always-ready, 0.6.3) — there is no enable step anywhere.
   const controlMachine = async (code: string) => {
     const normalized = normalizeCode(code);
     setSelectedCode(normalized);
     setSessionCode(normalized);
     if (await ensureEngine()) {
-      await engine.run(async () => {
-        await api.controllerStart();
-        await api.connect(normalized);
-      });
+      await engine.run(() => api.connect(normalized));
     }
   };
 
@@ -344,23 +343,6 @@ export default function App() {
         />
       ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
-
-      {!ui.engineStarted ? (
-        <div className="banner banner-info" role="status">
-          <p>
-            The app isn't online yet — start it to control machines and be
-            reachable yourself, or just pick a machine: it starts
-            automatically.
-          </p>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => engine.run(() => api.engineStart())}
-          >
-            Start now
-          </button>
-        </div>
-      ) : null}
 
       {/* ADR-006 §5 consent moment: the one-time notice that this PC is
        * now visible in the family circle (the Settings toggle rules

@@ -886,6 +886,19 @@ pub fn scale_from_name(name: &str) -> Option<ScaleMode> {
 // The loop
 // ---------------------------------------------------------------------------
 
+/// A connect queued while the controller role comes online (see
+/// [`Engine::pending_connect`]).
+struct PendingConnect {
+    code: String,
+    pairing_secret: Option<crate::chat::PairingSecret>,
+    queued_at: Instant,
+}
+
+/// How long a deferred connect waits for the controller role to come
+/// online before giving up with a clear error (registration retries
+/// underneath; this is the "service unreachable" horizon).
+const PENDING_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+
 struct Engine {
     real_input: bool,
     auto_reonline: bool,
@@ -916,6 +929,11 @@ struct Engine {
     controller_started: bool,
     host_reonline_at: Option<Instant>,
     ctrl_reonline_at: Option<Instant>,
+    /// One-press Control (0.6.3): a connect that arrived while the
+    /// controller role was still coming online. Fired the moment the
+    /// role reaches Online; dropped (with a clear error) if it never
+    /// does. Cleared by cancel/disconnect/stop.
+    pending_connect: Option<PendingConnect>,
     session_end_handled: bool,
     selected_monitor: Option<String>,
     selected_plan: Option<quality::QualityPlan>,
@@ -1066,6 +1084,7 @@ fn run(
         controller_started: false,
         host_reonline_at: None,
         ctrl_reonline_at: None,
+        pending_connect: None,
         session_end_handled: false,
         selected_monitor: None,
         selected_plan: None,
@@ -1109,6 +1128,7 @@ fn run(
         // ---- node pump ----
         engine.node.pump(&mut engine.observer);
         engine.node.poll_transport(&mut engine.observer);
+        engine.fire_pending_connect();
         shared.set_session(engine.node.current_session_id());
 
         // ---- viewer window closed (F50): pipeline counter → flag ----
@@ -1195,30 +1215,37 @@ impl Engine {
             EngineCmd::ControllerStop => {
                 self.controller_started = false;
                 self.ctrl_reonline_at = None;
+                self.pending_connect = None;
                 self.info("controller role will not re-register after the next session end");
             }
             EngineCmd::Connect {
                 code,
                 pairing_secret,
             } => self.cmd_connect(code, pairing_secret),
-            EngineCmd::CancelConnect => match self.node.controller_state() {
-                ControllerState::Connected { .. } => {
-                    self.node.controller_disconnect(&mut self.observer)
+            EngineCmd::CancelConnect => {
+                self.pending_connect = None;
+                match self.node.controller_state() {
+                    ControllerState::Connected { .. } => {
+                        self.node.controller_disconnect(&mut self.observer)
+                    }
+                    _ => self.node.controller_cancel(&mut self.observer),
                 }
-                _ => self.node.controller_cancel(&mut self.observer),
-            },
-            EngineCmd::Disconnect => match self.node.controller_state() {
-                ControllerState::Connected { .. } => {
-                    let _ = self.node.send_wire(
-                        Channel::Control,
-                        &WireMessage::Disconnect {
-                            reason: protocol::wire::ControlDisconnectReason::User,
-                        },
-                    );
-                    self.node.controller_disconnect(&mut self.observer);
+            }
+            EngineCmd::Disconnect => {
+                self.pending_connect = None;
+                match self.node.controller_state() {
+                    ControllerState::Connected { .. } => {
+                        let _ = self.node.send_wire(
+                            Channel::Control,
+                            &WireMessage::Disconnect {
+                                reason: protocol::wire::ControlDisconnectReason::User,
+                            },
+                        );
+                        self.node.controller_disconnect(&mut self.observer);
+                    }
+                    _ => self.node.controller_cancel(&mut self.observer),
                 }
-                _ => self.node.controller_cancel(&mut self.observer),
-            },
+            }
             EngineCmd::ConsentAccept { remember } => {
                 if self.observer.pending_consent().is_none() {
                     self.error("no_consent", "No consent prompt is pending.", None);
@@ -1308,25 +1335,101 @@ impl Engine {
             );
             return;
         }
-        self.controller_started = true;
-        self.node
-            .controller_start(controller_caps(), &mut self.observer);
+        match self.node.controller_state() {
+            ControllerState::Idle | ControllerState::Disconnected { .. } => {
+                self.controller_started = true;
+                self.node
+                    .controller_start(controller_caps(), &mut self.observer);
+            }
+            // Already online (always-ready, 0.6.3) or still registering:
+            // re-issuing Start would be an illegal transition. One press
+            // means "make sure I can control out" — already true.
+            _ => self.info("controller role is already online"),
+        }
     }
 
+    /// One-press connect (0.6.3): no separate enable step. Online →
+    /// connect now; still coming online (first press after launch, or
+    /// the auto re-online gap after a session) → start the role if it
+    /// is down and defer the connect to the Online edge.
     fn cmd_connect(&mut self, code: String, pairing_secret: Option<crate::chat::PairingSecret>) {
-        if !matches!(self.node.controller_state(), ControllerState::Online) {
+        if host_in_session(self.node.host_state()) {
             self.error(
-                "not_online",
-                "The controller role is not Online; enable it first.",
+                "role_conflict",
+                "Finish the active sharing session before controlling another machine.",
                 None,
             );
             return;
         }
+        match self.node.controller_state() {
+            ControllerState::Online => self.connect_now(code, pairing_secret),
+            state if controller_in_session(state) => self.error(
+                "role_conflict",
+                "Finish or cancel the current control session first.",
+                None,
+            ),
+            state => {
+                if matches!(
+                    state,
+                    ControllerState::Idle | ControllerState::Disconnected { .. }
+                ) {
+                    self.controller_started = true;
+                    self.node
+                        .controller_start(controller_caps(), &mut self.observer);
+                }
+                self.observer.set_current_peer(code.clone());
+                self.info(format!("Going online to control {code}…"));
+                self.pending_connect = Some(PendingConnect {
+                    code,
+                    pairing_secret,
+                    queued_at: Instant::now(),
+                });
+            }
+        }
+    }
+
+    /// The connect body shared by the immediate and deferred paths.
+    fn connect_now(&mut self, code: String, pairing_secret: Option<crate::chat::PairingSecret>) {
+        self.pending_connect = None;
         self.ensure_transport(MachineKind::Controller);
         self.observer.set_current_peer(code.clone());
         let secret = pairing_secret.as_ref().map(|s| s.0.as_str());
         self.node
             .controller_connect(&code, secret, &mut self.observer);
+    }
+
+    /// Fire a deferred connect once the controller role is Online, or
+    /// fail it with a clear error when the service stays unreachable.
+    fn fire_pending_connect(&mut self) {
+        let Some(pending) = self.pending_connect.take() else {
+            return;
+        };
+        // A peer connected to us while we waited — one session per
+        // machine; the user retries after that session ends.
+        if host_in_session(self.node.host_state()) {
+            self.error(
+                "role_conflict",
+                "This machine is being controlled — finish that session before controlling another machine.",
+                None,
+            );
+            return;
+        }
+        match self.node.controller_state() {
+            ControllerState::Online => self.connect_now(pending.code, pending.pairing_secret),
+            // RegistrationFailed dropped the role back to Idle — restart
+            // it (legal from Idle) so the deferral rides the retry.
+            ControllerState::Idle if pending.queued_at.elapsed() < PENDING_CONNECT_TIMEOUT => {
+                self.node
+                    .controller_start(controller_caps(), &mut self.observer);
+                self.pending_connect = Some(pending);
+            }
+            _ if pending.queued_at.elapsed() >= PENDING_CONNECT_TIMEOUT => self.error(
+                "not_online",
+                "Couldn't reach the DeepFlux service to start controlling. Check your internet connection and press Control again.",
+                None,
+            ),
+            _ => self.pending_connect = Some(pending),
+        }
     }
 
     fn cmd_set_quality(&mut self, preset: QualityPreset) {

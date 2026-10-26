@@ -305,26 +305,73 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
     host.shutdown();
 }
 
+/// One-press Control (0.6.3): `Connect` with the controller role down
+/// starts the role and defers the connect to the Online edge — no
+/// "enable it first" step, no error. The host sees the consent prompt.
 #[test]
-fn connect_without_being_online_is_a_clear_error() {
+fn connect_from_idle_is_one_press() {
     let hub = SignalingHub::new();
+    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
     let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut host_log = Vec::new();
+    let mut ctrl_log = Vec::new();
+
+    host.send(EngineCmd::HostStart).expect("host start");
+    wait_for("host Online", deadline, || {
+        collect(&host_events, &mut host_log);
+        host.status().host_state == "Online"
+    });
+
+    // No ControllerStart first — the connect alone must carry the flow.
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
     })
     .expect("connect");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let mut log = Vec::new();
-    wait_for("not_online error", deadline, || {
-        collect(&ctrl_events, &mut log);
-        log.iter().any(|event| {
-            matches!(
-                event,
-                EngineEvent::Error { code, .. } if code == "not_online"
-            )
-        })
+    wait_for("consent prompt", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "ConsentPrompted"
+            && ctrl.status().controller_state == "Requesting"
     });
-    assert_eq!(ctrl.status().controller_state, "Idle");
+    assert!(
+        !ctrl_log
+            .iter()
+            .any(|event| matches!(event, EngineEvent::Error { .. })),
+        "one-press connect must not error, got {ctrl_log:?}"
+    );
+
+    host.shutdown();
+    ctrl.shutdown();
+}
+
+/// Always-ready (0.6.3): starting an already-online controller role is
+/// an idempotent no-op, not an illegal-transition error — the app sends
+/// ControllerStart unconditionally at launch.
+#[test]
+fn controller_start_while_online_is_a_noop() {
+    let hub = SignalingHub::new();
+    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut log = Vec::new();
+
+    ctrl.send(EngineCmd::ControllerStart).expect("start");
+    wait_for("controller Online", deadline, || {
+        collect(&ctrl_events, &mut log);
+        ctrl.status().controller_state == "Online"
+    });
+    ctrl.send(EngineCmd::ControllerStart).expect("re-start");
+    wait_for("noop info", deadline, || {
+        collect(&ctrl_events, &mut log);
+        log.iter()
+            .any(|event| matches!(event, EngineEvent::Info { message } if message.contains("already online")))
+    });
+    assert!(
+        !log.iter()
+            .any(|event| matches!(event, EngineEvent::Error { .. })),
+        "re-start must not error, got {log:?}"
+    );
+    assert_eq!(ctrl.status().controller_state, "Online");
     ctrl.shutdown();
 }
