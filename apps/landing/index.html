@@ -6,7 +6,7 @@
 <title>Remote — peer-to-peer remote desktop by DeepFlux</title>
 <meta name="description" content="A P2P remote desktop for Windows. Your screen and input travel directly between your two machines — encrypted, GPU-fast, and never relayed through anyone's server.">
 <meta property="og:title" content="Remote — peer-to-peer remote desktop">
-<meta property="og:description" content="Direct and encrypted. Screen and input never touch a server. Sign in to sync your computers, or just use a code.">
+<meta property="og:description" content="Direct and encrypted. Screen and input never touch a server. One list of your family's machines — chat or control them with a single press.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://remote.deepflux.space/">
 <meta property="og:image" content="https://remote.deepflux.space/assets/logo.png">
@@ -118,7 +118,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </a>
       <a class="btn btn-ghost" href="#why">How is this different?</a>
     </div>
-    <div class="meta">~6&nbsp;MB installer &middot; per-user install, no elevation &middot; unsigned beta build</div>
+    <div class="meta">~7.3&nbsp;MB installer &middot; per-user install, no elevation &middot; unsigned beta build</div>
 
     <figure class="diagram">
       <svg viewBox="0 0 760 240" role="img" aria-label="Two computers connected directly, with a crossed-out relay server between them">
@@ -194,6 +194,14 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <p class="sub">A native Rust engine does the work; the UI is a thin shell over it.</p>
     <div class="grid">
       <div class="card">
+        <h3><span class="ico">👥</span> One list, always ready</h3>
+        <p>Every machine you install joins the same family circle and appears in one list — chat and control side by side, online status included. The app sits in the tray from login, so the remote PC is reachable without anyone opening anything.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">💬</span> Message the machine</h3>
+        <p>Chat with trusted machines right from the list — during a session over the direct link, or any other time through an inbox the server can&rsquo;t read: messages are sealed end-to-end, only ciphertext is ever stored.</p>
+      </div>
+      <div class="card">
         <h3><span class="ico">⚡</span> GPU the whole way</h3>
         <p>Desktop capture, H.264 encode/decode and rendering stay on your graphics card — hardware encoder first, with a software fallback. Target: ≤&nbsp;80&nbsp;ms input-to-visible on LAN.</p>
       </div>
@@ -219,7 +227,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </div>
       <div class="card">
         <h3><span class="ico">🤖</span> Drive it with your AI agent</h3>
-        <p>Launch with <code>--mcp</code> and your local agent sees the remote screen and drives it — screenshots and clicks over the same direct P2P link, with consent still a human click on the Host.</p>
+        <p>Launch with <code>--mcp</code> and your local agent sees the remote screen and drives it — screenshots and clicks over the same direct P2P link, with consent still a human click on the Host. An in-app assistant (bring your own API key) can configure the app and help with tasks.</p>
       </div>
     </div>
   </div>
@@ -230,18 +238,23 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <h2>Three steps, one consent prompt</h2>
     <div class="steps">
       <div class="step">
-        <h3>Install on both machines</h3>
-        <p>The same small app plays either role — Host to share, Controller to view and drive.</p>
+        <h3>Install — you&rsquo;re in the list</h3>
+        <p>The same small app on every machine. It joins your DeepFlux family circle, shows up in everyone&rsquo;s machine list, and stays ready in the tray from login.</p>
       </div>
       <div class="step">
-        <h3>Share the connection code</h3>
-        <p>The Host shows a short code. Type it into the Controller. The introduction happens over the signaling service.</p>
+        <h3>Press Control</h3>
+        <p>Pick a machine and press Control. One press — nothing to enable, no codes to exchange. Everything is already running.</p>
       </div>
       <div class="step">
-        <h3>Accept once</h3>
-        <p>The Host accepts a one-time prompt. From that moment the session is direct, encrypted, and unmediated.</p>
+        <h3>They allow it — once</h3>
+        <p>The controlled machine answers one request: <em>Allow once</em>, <em>Always allow this machine</em>, or <em>Decline</em>. Trusted machines reconnect silently afterwards.</p>
       </div>
     </div>
+    <p class="sub" style="margin-top:28px">
+      Outside the circle? Machines can still be added with their connection code —
+      the classic code flow works too. And one session per machine at a time:
+      a PC being controlled can&rsquo;t control out until that session ends.
+    </p>
   </div>
 </section>
 
@@ -264,7 +277,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <div class="fineprint">
       <b>Know what you&rsquo;re installing — beta limitations, stated plainly:</b>
       <ul>
-        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Settings &rarr; Family circle), and joining grants no one control: every connection still needs an approval on the machine being controlled.</li>
+        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Settings &rarr; Family circle). Joining grants no control on its own: connecting needs the owner&rsquo;s approval, and only machines someone explicitly trusted with &ldquo;Always allow&rdquo; reconnect without asking again.</li>
         <li>Unsigned build: Windows SmartScreen will warn on first run. That&rsquo;s expected for a beta; code signing is on the roadmap.</li>
         <li>Direct connections only: on symmetric NAT or networks that block UDP, the session can&rsquo;t be established — the app will tell you plainly rather than fall back to a relay. Relaying is a deliberate non-feature.</li>
         <li>One controlled machine per session; Windows-to-Windows only for now.</li>
