@@ -100,6 +100,49 @@ export function machinesFromFavorites(
   return unifiedMachines(favorites, null, [], peerOnline, selectedCode);
 }
 
+/** Machine-page removal (user request, 2026-10-26): two-step confirm —
+ * machines you added (or that are waiting on approval) leave your list
+ * and their trust is forgotten. Circle-only machines aren't removable
+ * here (the App doesn't render this button for them). */
+export function RemoveMachineButton({
+  name,
+  onRemove,
+}: {
+  name: string;
+  onRemove: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        className="ghost small machine-remove"
+        onClick={() => setConfirming(true)}
+      >
+        Remove…
+      </button>
+    );
+  }
+  return (
+    <span className="machine-remove-confirm" role="alertdialog" aria-label="Remove machine">
+      <span className="hint">Remove {name}?</span>
+      <button
+        type="button"
+        className="danger small"
+        onClick={() => {
+          setConfirming(false);
+          onRemove();
+        }}
+      >
+        Remove
+      </button>
+      <button type="button" className="ghost small" onClick={() => setConfirming(false)}>
+        Cancel
+      </button>
+    </span>
+  );
+}
+
 /** Self is not a contact: directory rows for THIS machine never reach the
  * merged list (the pinned "This machine" card represents self). Matches by
  * the backend's `is_self` flag and, belt-and-braces, by device id. */

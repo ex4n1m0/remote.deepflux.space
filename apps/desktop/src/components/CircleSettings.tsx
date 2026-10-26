@@ -189,10 +189,14 @@ export function TrustedMachinesSection({
             ))}
           </ul>
           {pending.length > 0 ? (
-            <p className="hint">
-              {pending.length} machine{pending.length === 1 ? "" : "s"} waiting for their owner's
-              "Always allow" answer.
-            </p>
+            <>
+              <p className="hint">Waiting for their approval (offer sent — no answer yet)</p>
+              <ul className="trusted-list">
+                {pending.map((p) => (
+                  <TrustedRow key={p.code} pairing={p} onRevoked={onRevoked} setPairings={setPairings} />
+                ))}
+              </ul>
+            </>
           ) : null}
         </>
       )}

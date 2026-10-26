@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   MachinesRail,
+  RemoveMachineButton,
   excludeSelf,
   filterMachines,
   groupMachines,
@@ -334,5 +335,27 @@ describe("MachinesRail grouping render", () => {
     expect(screen.getByText("Added — awaiting their approval (1)")).toBeTruthy();
     expect(screen.queryByText(/Accepted \(/)).toBeNull();
     expect(screen.queryByText(/Not added yet \(/)).toBeNull();
+  });
+});
+
+describe("RemoveMachineButton (machine-page removal)", () => {
+  it("two-step confirm: Remove… → Remove fires, Cancel does not", () => {
+    const onRemove = vi.fn();
+    render(<RemoveMachineButton name="Office" onRemove={onRemove} />);
+    // Nothing fires on the first click — it only arms the confirm.
+    fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", { name: "Remove machine" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel disarms without removing", () => {
+    const onRemove = vi.fn();
+    render(<RemoveMachineButton name="Office" onRemove={onRemove} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

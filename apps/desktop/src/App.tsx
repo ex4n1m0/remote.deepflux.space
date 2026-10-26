@@ -14,7 +14,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useDirectory } from "./hooks/useDirectory";
 import { SettingsPanel } from "./components/IdentityCard";
-import { excludeSelf, MachinesRail, unifiedMachines } from "./components/MachinesRail";
+import { excludeSelf, MachinesRail, RemoveMachineButton, unifiedMachines } from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { CircleSection, TrustedMachinesSection } from "./components/CircleSettings";
 import { AssistantPanel } from "./components/AssistantPanel";
@@ -192,6 +192,35 @@ export default function App() {
         await api.connect(normalized);
       });
     }
+  };
+
+  // Remove a machine YOU added (or that's pending approval): drops the
+  // saved entry (favorite + roster row when signed in) and forgets the
+  // pairing — established or still pending — so trust goes back to
+  // asking. A circle machine merely falls back to "Not added yet".
+  // Each leg is independent best-effort: a machine can be any mix of
+  // roster row, favorite, and pairing record.
+  const removeMachine = async (code: string) => {
+    const favorite = engine.favorites.find((f) => f.code === code);
+    const roster = signedIn ? accountUi.computers.find((c) => c.code === code) : undefined;
+    if (favorite) {
+      await engine.run(async () => {
+        await api.removeFavorite(favorite.id);
+      });
+    }
+    if (roster) {
+      await account.removeComputer(roster.id);
+    }
+    // Pairing removal covers both established trust and pending offers;
+    // absence is not an error worth surfacing.
+    try {
+      await api.pairingRemove(code);
+    } catch {
+      /* no pairing row for this code */
+    }
+    await engine.refreshFavorites();
+    await refreshTrusted();
+    setSelectedCode((current) => (current === code ? null : current));
   };
 
   // -- onboarding gate: the card replaces the whole shell ---------------
@@ -444,18 +473,28 @@ export default function App() {
                   · code <code className="code">{selected.code}</code>
                 </p>
               </div>
-              <button
-                type="button"
-                className="primary machine-control"
-                onClick={() => void controlMachine(selected.code)}
-                title={
-                  selected.trusted
-                    ? "Trusted machine — connects without asking again"
-                    : "They'll be asked to allow it — once per machine"
-                }
-              >
-                Control
-              </button>
+              <div className="machine-actions">
+                <button
+                  type="button"
+                  className="primary machine-control"
+                  onClick={() => void controlMachine(selected.code)}
+                  title={
+                    selected.trusted
+                      ? "Trusted machine — connects without asking again"
+                      : "They'll be asked to allow it — once per machine"
+                  }
+                >
+                  Control
+                </button>
+                {/* Circle-only machines aren't yours to remove — they leave
+                 * the list when their owner leaves the circle. */}
+                {selected.fromCircle ? null : (
+                  <RemoveMachineButton
+                    name={selected.name}
+                    onRemove={() => void removeMachine(selected.code)}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="machine-head">

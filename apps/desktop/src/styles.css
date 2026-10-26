@@ -736,6 +736,19 @@ legend {
   flex: none;
 }
 
+.machine-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.machine-remove-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* The pinned session card reads as the active thing: accent border while
  * a request is pending, calm while the session is live. */
 .session-card {
