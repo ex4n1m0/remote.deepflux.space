@@ -50,7 +50,7 @@ describe("MachinesRail", () => {
     onStopShare: vi.fn(),
   };
 
-  it("lists machines, marks selection, exposes per-row connect", () => {
+  it("lists machines, marks selection, exposes one-step per-row control", () => {
     render(
       <MachinesRail
         {...base}
@@ -63,9 +63,51 @@ describe("MachinesRail", () => {
     expect(screen.getByText("Mom's PC")).toBeTruthy();
     expect(screen.getByText("This machine")).toBeTruthy();
     expect(screen.getByText("abcd1234efgh5678")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Connect to Mom's PC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Control Mom's PC" }));
     expect(base.onConnect).toHaveBeenCalledWith("aa");
     expect(screen.getByRole("button", { name: "Share this machine" })).toBeTruthy();
+  });
+
+  it("teaches the one-list model in the header and empty state", () => {
+    render(<MachinesRail {...base} machines={[]} />);
+    expect(screen.getByText(/message or control — same list/i)).toBeTruthy();
+    expect(screen.getByText(/No machines yet/i)).toBeTruthy();
+    expect(
+      screen.getByText(/one list is for messaging and remote control/i),
+    ).toBeTruthy();
+  });
+
+  it("add form offers Save & control (save then connect in one step)", async () => {
+    const onAdd = vi.fn(async () => {});
+    const onConnect = vi.fn();
+    render(<MachinesRail {...base} onAdd={onAdd} onConnect={onConnect} machines={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
+    fireEvent.change(screen.getByLabelText("Machine name"), {
+      target: { value: "Lab PC" },
+    });
+    fireEvent.change(screen.getByLabelText("Connection code"), {
+      target: { value: "CCCCDDDD" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save & control" }));
+    await vi.waitFor(() => {
+      expect(onAdd).toHaveBeenCalledWith("Lab PC", "ccccdddd");
+      expect(onConnect).toHaveBeenCalledWith("ccccdddd");
+    });
+  });
+
+  it("plain Save adds without connecting", async () => {
+    const onAdd = vi.fn(async () => {});
+    const onConnect = vi.fn();
+    render(<MachinesRail {...base} onAdd={onAdd} onConnect={onConnect} machines={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
+    fireEvent.change(screen.getByLabelText("Connection code"), {
+      target: { value: "ccccdddd" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(onAdd).toHaveBeenCalledWith("ccccdddd", "ccccdddd");
+    });
+    expect(onConnect).not.toHaveBeenCalled();
   });
 
   it("labels the This-machine chip with the friendly host status, not the state name", () => {

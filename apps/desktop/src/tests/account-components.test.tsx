@@ -2,10 +2,8 @@
  * no Tauri imports; components receive data via props and report via
  * callbacks). */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Onboarding, usernameValid } from "../components/Onboarding";
-import { Computers } from "../components/Computers";
-import type { Computer } from "../types";
 
 afterEach(cleanup);
 
@@ -89,84 +87,5 @@ describe("Onboarding", () => {
     expect(usernameValid("Alice")).toBe(false);
     expect(usernameValid("-alice")).toBe(false);
     expect(usernameValid("a".repeat(33))).toBe(false);
-  });
-});
-
-describe("Computers", () => {
-  const computers: Computer[] = [
-    { id: "f1", name: "Office PC", code: "aaaaaaaaaaaaaaaa", added_at_ms: 1, updated_at_ms: 2, is_self: false },
-    { id: "f2", name: "This PC", code: "bbbbbbbbbbbbbbbb", added_at_ms: 1, updated_at_ms: 2, is_self: true },
-    { id: "f3", name: "Cabin PC", code: "cccccccccccccccc", added_at_ms: 1, updated_at_ms: 2, is_self: false },
-  ];
-  const base = {
-    computers,
-    online: ["aaaaaaaaaaaaaaaa"],
-    canConnect: true,
-    onConnect: vi.fn(),
-    onAdd: vi.fn(async () => {}),
-    onAddThis: vi.fn(),
-    onRemove: vi.fn(),
-    onRename: vi.fn(),
-    onViewCode: vi.fn(),
-  };
-
-  it("renders rows with online dots, code chips, and actions", () => {
-    render(<Computers {...base} />);
-    expect(screen.getByText("Office PC")).toBeTruthy();
-    expect(screen.getByText("aaaaaaaaaaaaaaaa")).toBeTruthy();
-    expect(screen.getByLabelText("online")).toBeTruthy();
-    expect(screen.getByLabelText("offline")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Connect to Office PC" }));
-    expect(base.onConnect).toHaveBeenCalledWith("aaaaaaaaaaaaaaaa");
-  });
-
-  it("badges this computer instead of connecting; header swaps add→view code", () => {
-    render(<Computers {...base} />);
-    expect(screen.getByLabelText("this computer")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Connect to This PC" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Sharing — view code/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Sharing — view code/ }));
-    expect(base.onViewCode).toHaveBeenCalledTimes(1);
-    expect(base.onAddThis).not.toHaveBeenCalled();
-  });
-
-  it("offers Add this computer when the roster lacks this machine", () => {
-    render(<Computers {...base} computers={[computers[0]]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add this computer" }));
-    expect(base.onAddThis).toHaveBeenCalledTimes(1);
-  });
-
-  it("adds by code through the inline form (normalized by the caller wiring)", async () => {
-    render(<Computers {...base} computers={[]} />);
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Laptop" } });
-    fireEvent.change(screen.getByLabelText("Connection code"), {
-      target: { value: "CCCCDDDD" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add by code" }));
-    await waitFor(() => expect(base.onAdd).toHaveBeenCalledWith("Laptop", "ccccdddd"));
-  });
-
-  it("renames inline and removes with the row actions", () => {
-    render(<Computers {...base} />);
-    fireEvent.click(screen.getByRole("button", { name: "Rename Office PC" }));
-    fireEvent.change(screen.getByLabelText("New name for Office PC"), {
-      target: { value: "Workstation" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(base.onRename).toHaveBeenCalledWith("f1", "Workstation");
-    fireEvent.click(screen.getByRole("button", { name: "Remove This PC" }));
-    expect(base.onRemove).toHaveBeenCalledWith("f2");
-  });
-
-  it("shows a local error when the add callback rejects", async () => {
-    const onAdd = vi.fn(async () => {
-      throw new Error("service error 409 roster_conflict");
-    });
-    render(<Computers {...base} computers={[]} onAdd={onAdd} />);
-    fireEvent.change(screen.getByLabelText("Connection code"), {
-      target: { value: "ccccdddd" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add by code" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("roster_conflict"));
   });
 });

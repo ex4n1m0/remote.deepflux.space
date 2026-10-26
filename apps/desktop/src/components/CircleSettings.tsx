@@ -165,52 +165,33 @@ export function TrustedMachinesSection({
 
   const established = (pairings ?? []).filter((p) => !p.pending_ack);
   const pending = (pairings ?? []).filter((p) => p.pending_ack);
-  const canConnect = established.filter((p) => p.role === "host" || p.role === "legacy");
-  const canChat = established.filter((p) => p.role === "controller");
-  // legacy rows predate roles — show them under "can connect" (they were
-  // recorded on whichever side; removing works from either).
 
   return (
     <Section title="Trusted machines">
       <p className="muted">
-        Trusted machines connect without asking again. Removing one restores
-        the approval prompt.
+        ONE list — these machines chat and connect without asking again.
+        Removing one brings back the approval request.
       </p>
       {pairings === null ? (
         <p className="muted" role="status">
           Loading…
         </p>
-      ) : canConnect.length + canChat.length + pending.length === 0 ? (
+      ) : established.length + pending.length === 0 ? (
         <p className="muted">
-          No trusted machines yet — they appear here when you accept a
-          connection with "remember" checked.
+          No trusted machines yet — they appear here when you answer a
+          connection request with "Always allow this machine".
         </p>
       ) : (
         <>
-          {canConnect.length > 0 ? (
-            <>
-              <p className="hint">Can connect without asking</p>
-              <ul className="trusted-list">
-                {canConnect.map((p) => (
-                  <TrustedRow key={p.code} pairing={p} onRevoked={onRevoked} setPairings={setPairings} />
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {canChat.length > 0 ? (
-            <>
-              <p className="hint">You can chat with these</p>
-              <ul className="trusted-list">
-                {canChat.map((p) => (
-                  <TrustedRow key={p.code} pairing={p} onRevoked={onRevoked} setPairings={setPairings} />
-                ))}
-              </ul>
-            </>
-          ) : null}
+          <ul className="trusted-list">
+            {established.map((p) => (
+              <TrustedRow key={p.code} pairing={p} onRevoked={onRevoked} setPairings={setPairings} />
+            ))}
+          </ul>
           {pending.length > 0 ? (
             <p className="hint">
-              {pending.length} machine{pending.length === 1 ? "" : "s"} waiting for approval
-              (their owner hasn't accepted with "remember" yet).
+              {pending.length} machine{pending.length === 1 ? "" : "s"} waiting for their owner's
+              "Always allow" answer.
             </p>
           ) : null}
         </>

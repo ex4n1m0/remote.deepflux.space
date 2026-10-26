@@ -1,5 +1,6 @@
-/** ADR-006 ConsentDialog tests: the copy matrix (nickname+code, human vs
- * AI-session), the remember default (ON for humans, OFF for agents), the
+/** ADR-006 ConsentDialog tests, updated for the one-request simplify pass
+ * (2026-10-26): the copy matrix (nickname+code, human vs AI-session), the
+ * explicit three-button choice (Allow once / Always allow / Decline), the
  * claimed-trusted warning, and the passive trusted-reconnect card. */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -24,14 +25,14 @@ describe("consentCopy", () => {
     const c = consentCopy(consent({ requester_name: "Mom's PC" }));
     expect(c.title).toContain("Mom's PC (0123456789abcdef)");
     expect(c.title).toContain("asks to control");
-    expect(c.rememberHint).toContain("Trusted machines");
+    expect(c.alwaysHint).toContain("Trusted machines");
   });
 
   it("bare code when no nickname; distinct AI-session copy", () => {
     expect(consentCopy(consent({})).title).toContain("0123456789abcdef asks");
     const ai = consentCopy(consent({ ai_session: true, requester_name: "Lab PC" }));
-    expect(ai.title).toContain("AI-agent control");
-    expect(ai.rememberHint.toLowerCase()).toContain("agent");
+    expect(ai.title).toContain("AI assistant asks to control");
+    expect(ai.alwaysHint.toLowerCase()).toContain("agent");
   });
 });
 
@@ -55,15 +56,22 @@ describe("ConsentDialog", () => {
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("defaults remember ON for humans and wires the choice", () => {
+  it("one request, three plain verbs: Allow once / Always allow / Decline", () => {
     const onAccept = vi.fn();
     render(<ConsentDialog consent={consent({})} onAccept={onAccept} onReject={() => {}} />);
-    expect(screen.getByRole("button", { name: "Accept & remember" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Accept & remember" }));
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(onAccept).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Always allow this machine" }));
     expect(onAccept).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
 
-  it("defaults remember OFF for AI sessions", () => {
+  it("no checkbox left in the prompt — the choice is explicit buttons", () => {
+    render(<ConsentDialog consent={consent({})} onAccept={() => {}} onReject={() => {}} />);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("AI sessions carry the agent wording under the same three buttons", () => {
     const onAccept = vi.fn();
     render(
       <ConsentDialog
@@ -72,16 +80,10 @@ describe("ConsentDialog", () => {
         onReject={() => {}}
       />,
     );
-    expect(screen.getByRole("button", { name: "Accept once" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Accept once" }));
-    expect(onAccept).toHaveBeenCalledWith(false);
-  });
-
-  it("unchecking remember accepts once", () => {
-    const onAccept = vi.fn();
-    render(<ConsentDialog consent={consent({})} onAccept={onAccept} onReject={() => {}} />);
-    fireEvent.click(screen.getByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: "Accept once" }));
+    // Title text appears twice by design (dialog + the screen-reader
+    // live region) — assert at least one match, then the button wiring.
+    expect(screen.getAllByText(/AI assistant asks to control/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(onAccept).toHaveBeenCalledWith(false);
   });
 
@@ -99,7 +101,7 @@ describe("ConsentDialog", () => {
   it("reject wiring", () => {
     const onReject = vi.fn();
     render(<ConsentDialog consent={consent({})} onAccept={() => {}} onReject={onReject} />);
-    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     expect(onReject).toHaveBeenCalledTimes(1);
   });
 });
@@ -109,6 +111,6 @@ describe("TrustedConnectCard", () => {
     render(<TrustedConnectCard consent={consent({ pairing_proof_ok: true })} />);
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(screen.getByText(/trusted machine/i)).toBeTruthy();
+    expect(screen.getByText(/remembered machine/i)).toBeTruthy();
   });
 });

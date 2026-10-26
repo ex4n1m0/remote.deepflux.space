@@ -1,14 +1,15 @@
 /** Component tests (jsdom + testing-library). No Tauri imports here —
- * components receive data via props and report via callbacks. */
+ * components receive data via props and report via callbacks. The
+ * simplify pass (2026-10-26) replaced ConnectPanel/SessionControls with
+ * the pinned SessionCard; HostPanel/Computers/Favorites were dead code
+ * and are gone (host status lives in the rail's This-machine card). */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { HostPanel } from "../components/HostPanel";
-import { Favorites } from "../components/Favorites";
-import { SessionControls } from "../components/ControllerPanel";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { SessionCard } from "../components/ControllerPanel";
 import { DiagnosticsOverlay } from "../components/DiagnosticsOverlay";
 import { ErrorBanner } from "../components/Common";
 import { SettingsPanel } from "../components/IdentityCard";
-import type { DiagSnapshot, Favorite } from "../types";
+import type { DiagSnapshot } from "../types";
 
 const monitor = (id: string, primary = false) => ({
   monitor_id: id,
@@ -22,152 +23,14 @@ const monitor = (id: string, primary = false) => ({
 
 afterEach(cleanup);
 
-describe("HostPanel consent prompt", () => {
-  it("shows accept/reject only while ConsentPrompted with a pending request", () => {
-    const onAccept = vi.fn();
-    const { rerender } = render(
-      <HostPanel
-        hostState="Online"
-        consent={null}
-        connectionCode="code"
-        onStart={() => {}}
-        onStop={() => {}}
-        onAccept={onAccept}
-        onReject={() => {}}
-      />,
-    );
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-
-    rerender(
-      <HostPanel
-        hostState="ConsentPrompted"
-        consent={{ controller_device_id: "ctrl-9", session_id: "s1", ai_session: false, paired: false, pairing_proof_ok: false, requester_name: null }}
-        connectionCode="code"
-        onStart={() => {}}
-        onStop={() => {}}
-        onAccept={onAccept}
-        onReject={() => {}}
-      />,
-    );
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-    expect(screen.getByText("ctrl-9")).toBeTruthy();
-    expect(
-      screen.getByText(
-        (_, el) =>
-          el?.tagName === "P" && (el.textContent ?? "") === "ctrl-9 asks to control this machine.",
-      ),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    expect(onAccept).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the distinct AI-agent prompt when the controller advertises AI_SESSION", () => {
-    render(
-      <HostPanel
-        hostState="ConsentPrompted"
-        consent={{ controller_device_id: "ctrl-ai", session_id: "s2", ai_session: true, paired: false, pairing_proof_ok: false, requester_name: null }}
-        connectionCode="code"
-        onStart={() => {}}
-        onStop={() => {}}
-        onAccept={() => {}}
-        onReject={() => {}}
-      />,
-    );
-    expect(
-      screen.getByText(
-        (_, el) =>
-          el?.tagName === "P" &&
-          (el.textContent ?? "") === "ctrl-ai requests AI-agent control of this machine.",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        (_, el) =>
-          el?.tagName === "P" && (el.textContent ?? "").includes("take over at any time"),
-      ),
-    ).toBeTruthy();
-  });
-
-  it("offers Share when idle and Stop when online", () => {
-    const onStart = vi.fn();
-    const onStop = vi.fn();
-    const { rerender } = render(
-      <HostPanel hostState="Idle" consent={null} connectionCode="c" onStart={onStart} onStop={onStop} onAccept={() => {}} onReject={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Share this machine" }));
-    expect(onStart).toHaveBeenCalledTimes(1);
-    rerender(
-      <HostPanel hostState="Online" consent={null} connectionCode="c" onStart={onStart} onStop={onStop} onAccept={() => {}} onReject={() => {}} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
-    expect(onStop).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("Favorites", () => {
+describe("SessionCard", () => {
   const base = {
-    peerOnline: {},
-    canConnect: true,
-    onConnect: vi.fn(),
-    onAdd: vi.fn(async () => {}),
-    onRemove: vi.fn(),
-    onRename: vi.fn(),
-  };
-  const favs: Favorite[] = [
-    { id: "f1", name: "Office PC", code: "aaaaaaaaaaaaaaaa" },
-    { id: "f2", name: "", code: "bbbbbbbbbbbbbbbb" },
-  ];
-
-  it("adds via the form (code normalized by the caller wiring)", async () => {
-    render(<Favorites {...base} favorites={[]} />);
-    fireEvent.change(screen.getByLabelText("Connection code"), {
-      target: { value: "CCCCDDDD" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add favorite" }));
-    await waitFor(() => expect(base.onAdd).toHaveBeenCalled());
-    expect(base.onAdd).toHaveBeenCalledWith("", "ccccdddd");
-  });
-
-  it("lists favorites with connect/remove/rename", () => {
-    render(<Favorites {...base} favorites={favs} />);
-    expect(screen.getByText("Office PC")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Connect to Office PC" }));
-    expect(base.onConnect).toHaveBeenCalledWith("aaaaaaaaaaaaaaaa");
-    fireEvent.click(screen.getByRole("button", { name: "Remove Office PC" }));
-    expect(base.onRemove).toHaveBeenCalledWith("f1");
-  });
-
-  it("renames inline", () => {
-    render(<Favorites {...base} favorites={favs} />);
-    fireEvent.click(screen.getByRole("button", { name: "Rename Office PC" }));
-    const input = screen.getByLabelText("New name for Office PC");
-    fireEvent.change(input, { target: { value: "Workstation" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(base.onRename).toHaveBeenCalledWith("f1", "Workstation");
-  });
-
-  it("marks online favorites", () => {
-    render(
-      <Favorites {...base} favorites={favs} peerOnline={{ aaaaaaaaaaaaaaaa: true }} />,
-    );
-    const dot = screen.getByLabelText("online");
-    expect(dot).toBeTruthy();
-  });
-
-  it("F57: shows 'status unknown', never a definite Offline, without a session", () => {
-    render(<Favorites {...base} favorites={favs} peerOnline={{}} />);
-    const unknown = screen.getAllByLabelText("status unknown");
-    expect(unknown).toHaveLength(favs.length);
-    expect(screen.queryByLabelText("offline")).toBeNull();
-  });
-});
-
-describe("SessionControls", () => {
-  const base = {
+    machineName: "Mom's PC",
     activeMonitor: "\\\\.\\DISPLAY1",
     quality: "balanced",
     scale: "fit",
     viewerCreated: true,
+    onCancel: vi.fn(),
     onQuality: vi.fn(),
     onMonitor: vi.fn(),
     onScale: vi.fn(),
@@ -175,10 +38,24 @@ describe("SessionControls", () => {
     onDisconnect: vi.fn(),
   };
 
-  it("picks monitors and quality, toggles scale and fullscreen, disconnects", () => {
+  it("while asking: names the machine, offers cancel — no session controls yet", () => {
+    render(<SessionCard {...base} controllerState="Requesting" monitors={[]} />);
+    expect(screen.getByText(/Asking Mom's PC to allow control/i)).toBeTruthy();
+    expect(screen.getByText(/Waiting for the host user to accept/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel request" }));
+    expect(base.onCancel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Monitor")).toBeNull();
+  });
+
+  it("while live: names the machine, folds in the session controls, stops controlling", () => {
     render(
-      <SessionControls {...base} monitors={[monitor("\\\\.\\DISPLAY1", true), monitor("\\\\.\\DISPLAY2")]} />,
+      <SessionCard
+        {...base}
+        controllerState="Connected"
+        monitors={[monitor("\\\\.\\DISPLAY1", true), monitor("\\\\.\\DISPLAY2")]}
+      />,
     );
+    expect(screen.getByText(/Controlling Mom's PC/i)).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/DISPLAY2/));
     expect(base.onMonitor).toHaveBeenCalledWith("\\\\.\\DISPLAY2");
     fireEvent.click(screen.getByLabelText(/High \(1440p60/));
@@ -187,13 +64,20 @@ describe("SessionControls", () => {
     expect(base.onScale).toHaveBeenCalledWith("one_to_one");
     fireEvent.click(screen.getByRole("button", { name: /Fullscreen/ }));
     expect(base.onFullscreen).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop controlling" }));
     expect(base.onDisconnect).toHaveBeenCalledTimes(1);
   });
 
   it("waits for the host monitor list", () => {
-    render(<SessionControls {...base} monitors={[]} />);
+    render(<SessionCard {...base} controllerState="Connected" monitors={[]} />);
     expect(screen.getByText(/Waiting for the host's monitor list/)).toBeTruthy();
+  });
+
+  it("falls back to a neutral name when the machine is unknown", () => {
+    render(
+      <SessionCard {...base} machineName={null} controllerState="Offering" monitors={[]} />,
+    );
+    expect(screen.getByText(/Asking the other machine to allow control/i)).toBeTruthy();
   });
 });
 
@@ -266,9 +150,7 @@ describe("ErrorBanner", () => {
   });
 
   it("defaults to a neutral title for non-connection errors", () => {
-    render(
-      <ErrorBanner message="favorite rename failed" hint={null} onDismiss={() => {}} />,
-    );
+    render(<ErrorBanner message="favorite rename failed" hint={null} onDismiss={() => {}} />);
     expect(screen.getByRole("alert").textContent).toContain("Something went wrong");
     expect(screen.queryByText("Connection problem")).toBeNull();
   });

@@ -2,9 +2,12 @@
  * left column. ONE merged contact list — the ADR-003 union (local
  * favorites + signed-in roster computers) plus the family-circle
  * directory, union-by-code with name precedence roster > favorite >
- * circle nickname. Search filters by name and code client-side; trusted
- * (paired) rows carry the shield badge; circle-only rows carry the circle
- * tag. Also home to the pinned "This machine" card (host role). */
+ * circle nickname. Same list for messaging AND remote control (the
+ * simplify pass made that explicit): open a row for its page, or hit
+ * Control for one-step remote control. Search filters by name and code
+ * client-side; trusted (paired) rows carry the shield badge; circle-only
+ * rows carry the circle tag. Also home to the pinned "This machine" card
+ * (host role). */
 import { useState } from "react";
 import { hostView } from "../state/mapping";
 import type { Computer, DirectoryMachine, Favorite, HostStateName } from "../types";
@@ -144,7 +147,7 @@ export function MachinesRail({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  const submitAdd = async () => {
+  const submitAdd = async (thenControl: boolean) => {
     const c = code.trim().toLowerCase();
     if (!c) return;
     setError(null);
@@ -153,6 +156,9 @@ export function MachinesRail({
       setName("");
       setCode("");
       setAdding(false);
+      if (thenControl) {
+        onConnect(c);
+      }
     } catch (err) {
       setError(String(err));
     }
@@ -174,6 +180,7 @@ export function MachinesRail({
           + Add
         </button>
       </div>
+      <p className="rail-sub muted">message or control — same list</p>
 
       <input
         type="search"
@@ -208,7 +215,14 @@ export function MachinesRail({
           />
           {error ? <p className="hint" role="alert">{error}</p> : null}
           <div className="row">
-            <button type="button" className="primary small" onClick={() => void submitAdd()}>
+            <button
+              type="button"
+              className="primary small"
+              onClick={() => void submitAdd(true)}
+            >
+              Save &amp; control
+            </button>
+            <button type="button" className="small" onClick={() => void submitAdd(false)}>
               Save
             </button>
             <button type="button" className="ghost small" onClick={() => setAdding(false)}>
@@ -223,11 +237,11 @@ export function MachinesRail({
           <li className="rail-empty muted">
             {filtering
               ? "No machines match that search."
-              : "No machines yet — add one with its connection code, join a family circle in Settings, or ask the assistant."}
+              : "No machines yet. This one list is for messaging and remote control — add a machine with its connection code, join a family circle in Settings, or ask the assistant."}
           </li>
         ) : (
           visible.map((m) => (
-            /* One interactive element per row (a11y): select and connect are
+            /* One interactive element per row (a11y): select and control are
              * sibling buttons, never nested. */
             <li key={m.id} className="rail-item">
               <button
@@ -252,11 +266,15 @@ export function MachinesRail({
               <button
                 type="button"
                 className="ghost small rail-connect"
-                aria-label={`Connect to ${m.name}${m.online === false ? " (offline)" : ""}`}
-                title={m.online === false ? "Offline — the app isn't running there; you can still try" : undefined}
+                aria-label={`Control ${m.name}${m.online === false ? " (offline)" : ""}`}
+                title={
+                  m.online === false
+                    ? "Offline — the app isn't running there; you can still try"
+                    : "Ask to control this machine"
+                }
                 onClick={() => onConnect(m.code)}
               >
-                Connect
+                Control
               </button>
             </li>
           ))

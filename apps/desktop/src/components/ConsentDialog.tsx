@@ -1,44 +1,44 @@
 /** Host-side consent prompt (extracted from App.tsx by ADR-006).
  *
- * The ADR-005 §5 "remember this device" choice lives here: accept
- * once vs accept-and-remember (pairing + silent reconnect + the
- * controller's favorite). The device code is ALWAYS shown beside the
- * self-chosen nickname — nicknames are advisory; the code is the
- * identity that cannot be impersonated inside the prompt.
+ * UX-simplify pass (user feedback, 2026-10-26): ONE simple request —
+ * title, one explanatory line, and three plain verbs. "Allow once" is
+ * the primary; "Always allow this machine" is the deliberate, explicit
+ * remember action (the old checkbox + changing button label asked the
+ * user to read a form before answering). The device code is ALWAYS
+ * shown beside the self-chosen nickname — nicknames are advisory; the
+ * code is the identity that cannot be impersonated inside the prompt.
  *
  * A paired-and-proven controller renders the passive status card instead
  * (no dialog at all); a claimed-trusted request without a valid proof
  * renders the warning variant (fail open to the human). */
 
-import { useState } from "react";
 import type { ConsentEvent } from "../types";
 
 export function consentCopy(consent: {
   controller_device_id: string;
   requester_name: string | null;
   ai_session: boolean;
-  paired: boolean;
-  pairing_proof_ok: boolean;
-}): { title: string; detail: string; rememberLabel: string; rememberHint: string } {
+}): { who: string; title: string; detail: string; alwaysHint: string } {
   const who = consent.requester_name
     ? `${consent.requester_name} (${consent.controller_device_id})`
     : consent.controller_device_id;
   if (consent.ai_session) {
     return {
-      title: `${who} requests AI-agent control of this machine.`,
+      who,
+      title: `${who} — an AI assistant asks to control this computer.`,
       detail:
-        "An AI agent will see the screen and drive mouse/keyboard for this one session. You can watch and take over at any time; the agent cannot type your passwords.",
-      rememberLabel: "Remember this machine — let its agent start without asking next time",
-      rememberHint:
-        "Remembering means an AI agent on that machine can begin controlling this computer without a prompt whenever it is on.",
+        "It will see the screen and drive the mouse and keyboard to help. Your family can watch and take over at any time; it cannot type your passwords.",
+      alwaysHint:
+        "Always allow means this machine's AI agent can start controlling this computer without asking, whenever it is on.",
     };
   }
   return {
-    title: `${who} asks to control this machine.`,
+    who,
+    title: `${who} asks to control this computer.`,
     detail:
-      "Accepting hands over screen viewing and keyboard/mouse control for this one session. The other side sees nothing until you accept.",
-    rememberLabel: "Remember this machine — skip this prompt next time",
-    rememberHint: "You can remove it anytime in Settings → Trusted machines.",
+      "They'll see your screen and use the mouse and keyboard. You can watch everything and stop it at any time.",
+    alwaysHint:
+      "Always allow remembers this machine — it connects without asking next time. Manage it in Settings → Trusted machines.",
   };
 }
 
@@ -51,10 +51,6 @@ export function ConsentDialog({
   onAccept: (remember: boolean) => void;
   onReject: () => void;
 }) {
-  // Default ON for humans (family-support scenario, ADR-005 §5); the
-  // AI-session variant defaults OFF (an agent remembering is a bigger
-  // grant — the blunt copy says so).
-  const [remember, setRemember] = useState(!consent.ai_session);
   const copy = consentCopy(consent);
 
   return (
@@ -76,31 +72,18 @@ export function ConsentDialog({
           </p>
         ) : null}
         <p className="muted">{copy.detail}</p>
-        <label className="consent-remember">
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-          />
-          <span>
-            {copy.rememberLabel}
-            <br />
-            <span className="hint">{copy.rememberHint}</span>
-          </span>
-        </label>
         <div className="row">
-          <button
-            type="button"
-            className="primary"
-            autoFocus
-            onClick={() => onAccept(remember)}
-          >
-            {remember ? "Accept & remember" : "Accept once"}
+          <button type="button" className="primary" autoFocus onClick={() => onAccept(false)}>
+            Allow once
           </button>
-          <button type="button" onClick={() => onReject()}>
-            Reject
+          <button type="button" onClick={() => onAccept(true)}>
+            Always allow this machine
+          </button>
+          <button type="button" className="ghost" onClick={() => onReject()}>
+            Decline
           </button>
         </div>
+        <p className="hint">{copy.alwaysHint}</p>
       </div>
     </>
   );
@@ -119,7 +102,7 @@ export function TrustedConnectCard({
   return (
     <div className="center-card" role="status">
       <p>
-        <strong>{who}</strong> is connecting — trusted machine, no approval
+        <strong>{who}</strong> is connecting — remembered machine, no approval
         needed.
       </p>
     </div>

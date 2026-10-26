@@ -1,7 +1,11 @@
 /** The shell: webview control surface only — video lives in the native
  * viewer window owned by the engine (invariant 1). Agent-first layout
- * (ADR-005): machines rail (left) · selected machine / session (center) ·
- * assistant panel (right). The accounts onboarding gate stays in front. */
+ * (ADR-005), simplified 2026-10-26 per user feedback: ONE machine list
+ * (rail, left) where every row is both a chat and a remote-control
+ * target; the center column is the selected machine's page (header +
+ * one Control action + conversation); a connect/session card pins above
+ * it while in flight; the assistant panel stays on the right. The
+ * accounts onboarding gate stays in front. */
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
@@ -16,9 +20,9 @@ import { CircleSection, TrustedMachinesSection } from "./components/CircleSettin
 import { AssistantPanel } from "./components/AssistantPanel";
 import { Conversation } from "./components/Conversation";
 import { Onboarding } from "./components/Onboarding";
-import { ConnectPanel, SessionControls } from "./components/ControllerPanel";
+import { SessionCard } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
-import { ErrorBanner, StatusChip } from "./components/Common";
+import { ErrorBanner } from "./components/Common";
 import { api, normalizeCode } from "./ipc";
 import { accountErrorCopy, accountGate } from "./state/account";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
@@ -51,6 +55,9 @@ export default function App() {
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  // The machine the current connect/session belongs to — the session card
+  // stays labeled with it even when the user browses another machine.
+  const [sessionCode, setSessionCode] = useState<string | null>(null);
   const chat = useChat(selectedCode);
   useEffect(() => {
     void refreshTrusted();
@@ -106,6 +113,34 @@ export default function App() {
           circleJoined: directoryUi.joined,
         });
 
+  // Machine list + selection: computed before the onboarding gate so the
+  // hooks below it never become conditional (Rules of Hooks).
+  const signedIn = accountUi.status === "logged_in";
+  // This machine's own directory row never becomes a connectable contact —
+  // the pinned "This machine" card already represents self.
+  const directoryRows =
+    directoryUi.joined && directoryUi.loaded
+      ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
+      : null;
+  const machines = unifiedMachines(
+    engine.favorites,
+    signedIn ? accountUi.computers : null,
+    signedIn ? accountUi.online : [],
+    ui.peerOnline,
+    selectedCode,
+    directoryRows,
+    trustedCodes,
+  );
+  const selected = machines.find((m) => m.code === selectedCode) ?? null;
+  // Landing with machines but no selection: open the first one — the
+  // center column should never be an empty "pick something" screen when
+  // there is an obvious page to show.
+  useEffect(() => {
+    if (selectedCode === null && machines.length > 0) {
+      setSelectedCode(machines[0].code);
+    }
+  });
+
   const ensureEngine = async (): Promise<boolean> => {
     if (ui.engineStarted) {
       return true;
@@ -144,11 +179,17 @@ export default function App() {
     await engine.refreshFavorites();
   };
 
-  const connectByCode = async (code: string) => {
+  // One-step remote control: the ONLY connect path (rail Control button,
+  // machine-page Control button, add-machine "Save & control" — all end
+  // up here). Starts the engine if needed, then asks to control.
+  const controlMachine = async (code: string) => {
+    const normalized = normalizeCode(code);
+    setSelectedCode(normalized);
+    setSessionCode(normalized);
     if (await ensureEngine()) {
       await engine.run(async () => {
         await api.controllerStart();
-        await api.connect(code);
+        await api.connect(normalized);
       });
     }
   };
@@ -188,24 +229,10 @@ export default function App() {
     );
   }
 
-  const signedIn = accountUi.status === "logged_in";
-  // This machine's own directory row never becomes a connectable contact —
-  // the pinned "This machine" card already represents self.
-  const directoryRows =
-    directoryUi.joined && directoryUi.loaded
-      ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
-      : null;
-  const machines = unifiedMachines(
-    engine.favorites,
-    signedIn ? accountUi.computers : null,
-    signedIn ? accountUi.online : [],
-    ui.peerOnline,
-    selectedCode,
-    directoryRows,
-    trustedCodes,
-  );
-  const selected = machines.find((m) => m.code === selectedCode) ?? null;
   const sharing = ui.hostState !== "Idle" && ui.hostState !== "Registering";
+  // The session card pins while a connect is in flight or a session is
+  // live; afterwards its label is not needed (the end banner names it).
+  const sessionRow = sessionCode ? machines.find((m) => m.code === sessionCode) ?? null : null;
 
   const share = async () => {
     if (await ensureEngine()) {
@@ -229,8 +256,6 @@ export default function App() {
           ) : null}
         </div>
         <div className="chips">
-          <StatusChip tone={host.tone} label="Host" text={host.status} />
-          <StatusChip tone={controller.tone} label="Controller" text={controller.status} />
           {signedIn && accountUi.username ? (
             <span className="chip chip-good account-chip" title="Signed in">
               <span className="chip-dot" aria-hidden="true" />
@@ -294,16 +319,16 @@ export default function App() {
       {!ui.engineStarted ? (
         <div className="banner banner-info" role="status">
           <p>
-            The engine is not started yet — press <strong>Start engine</strong> once
-            the signaling service is configured (Settings), or just ask the
-            assistant to connect: it starts the engine for you.
+            The app isn't online yet — start it to control machines and be
+            reachable yourself, or just pick a machine: it starts
+            automatically.
           </p>
           <button
             type="button"
             className="primary"
             onClick={() => engine.run(() => api.engineStart())}
           >
-            Start engine
+            Start now
           </button>
         </div>
       ) : null}
@@ -347,10 +372,7 @@ export default function App() {
           hostState={ui.hostState}
           sharing={sharing}
           onPick={(code) => setSelectedCode(code)}
-          onConnect={(code) => {
-            setSelectedCode(code);
-            void connectByCode(normalizeCode(code));
-          }}
+          onConnect={(code) => void controlMachine(code)}
           onAdd={async (name, code) => {
             await api.addFavorite(name, code);
             await engine.refreshFavorites();
@@ -364,7 +386,7 @@ export default function App() {
           {/* Host-side consent prompt: the one modal-ish interruption.
            * ADR-006: paired-and-PROVEN reconnects render a passive status
            * card (the app layer already auto-accepted); everything else
-           * gets the dialog with the "remember this machine" choice. */}
+           * gets the one-request dialog with the explicit remember verb. */}
           {host.can.accept && ui.consent ? (
             ui.consent.pairing_proof_ok ? (
               <TrustedConnectCard consent={ui.consent} />
@@ -379,47 +401,12 @@ export default function App() {
             )
           ) : null}
 
-          {selected ? (
-            <div className="machine-head">
-              <h2>{selected.name}</h2>
-              <p className="muted">
-                code <code className="code">{selected.code}</code> ·{" "}
-                {selected.online === true ? "online" : selected.online === false ? "offline" : "presence unknown"}
-              </p>
-              {controller.can.connect || ui.controllerState === "Online" ? (
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => void connectByCode(normalizeCode(selected.code))}
-                >
-                  Connect
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="machine-head">
-              <h2>Pick a machine</h2>
-              <p className="muted">
-                Select one on the left, paste a code below, or ask the assistant
-                to set things up.
-              </p>
-            </div>
-          )}
-
-          <Conversation name={selected?.name ?? null} chat={chat} />
-
-          <ConnectPanel
-            controllerState={ui.controllerState}
-            onConnect={async (code) => {
-              const normalized = normalizeCode(code);
-              setSelectedCode((current) => current ?? normalized);
-              await connectByCode(normalized);
-            }}
-            onCancel={() => engine.run(() => api.cancelConnect())}
-          />
-
-          {controller.can.controls ? (
-            <SessionControls
+          {/* Controller session card: pinned while asking/connecting/
+           * controlling, whatever machine is selected below it. */}
+          {controller.view === "connecting" || controller.view === "session" ? (
+            <SessionCard
+              controllerState={ui.controllerState}
+              machineName={sessionRow?.name ?? sessionCode}
               monitors={ui.peerMonitors}
               activeMonitor={ui.activeMonitor}
               quality={ui.quality}
@@ -429,6 +416,7 @@ export default function App() {
                 "fit"
               }
               viewerCreated={ui.viewer.created}
+              onCancel={() => engine.run(() => api.cancelConnect())}
               onQuality={(preset) => engine.run(() => api.setQuality(preset))}
               onMonitor={(monitorId) => engine.run(() => api.selectMonitor(monitorId))}
               onScale={(mode) => engine.run(() => api.viewerSetScale(mode))}
@@ -436,6 +424,51 @@ export default function App() {
               onDisconnect={() => engine.run(() => api.disconnect())}
             />
           ) : null}
+
+          {/* The selected machine's page: one primary action (remote
+           * control) + the conversation. Same list, same verbs. */}
+          {selected ? (
+            <div className="machine-head">
+              <div className="machine-title">
+                <h2>{selected.name}</h2>
+                <p className="muted">
+                  <span
+                    className={`dot ${selected.online === true ? "on" : selected.online === false ? "off" : "unknown"}`}
+                    aria-hidden="true"
+                  />{" "}
+                  {selected.online === true
+                    ? "online"
+                    : selected.online === false
+                      ? "offline"
+                      : "presence unknown"}{" "}
+                  · code <code className="code">{selected.code}</code>
+                </p>
+              </div>
+              <button
+                type="button"
+                className="primary machine-control"
+                onClick={() => void controlMachine(selected.code)}
+                title={
+                  selected.trusted
+                    ? "Trusted machine — connects without asking again"
+                    : "They'll be asked to allow it — once per machine"
+                }
+              >
+                Control
+              </button>
+            </div>
+          ) : (
+            <div className="machine-head">
+              <h2>Your machines</h2>
+              <p className="muted">
+                One list for messaging and remote control: pick a machine on
+                the left (or add one with + Add / ask the assistant), then
+                press Control. The other machine just allows it once.
+              </p>
+            </div>
+          )}
+
+          <Conversation name={selected?.name ?? null} chat={chat} />
 
           {endCopy && ui.controllerState === "Disconnected" ? (
             <div className="banner banner-info" role="status">

@@ -256,16 +256,10 @@ input:focus {
   color: var(--text);
 }
 
-.connect-form,
 .favorites-form,
 .settings-form {
   display: flex;
   flex-direction: column;
-}
-
-.connect-form button {
-  align-self: flex-start;
-  margin-top: 8px;
 }
 
 .favorites {
@@ -569,6 +563,12 @@ legend {
   padding: 2px 4px 8px;
 }
 
+.rail-sub {
+  margin: -4px 0 6px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
 .rail-add {
   display: flex;
   flex-direction: column;
@@ -684,8 +684,56 @@ legend {
   gap: 12px;
 }
 
+.machine-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .machine-head h2 {
   margin: 0 0 4px;
+}
+
+.machine-head .muted {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.machine-head .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.machine-head .dot.on {
+  background: var(--good);
+}
+
+.machine-head .dot.off {
+  background: var(--line);
+}
+
+.machine-head .dot.unknown {
+  background: transparent;
+  border: 1px solid var(--muted);
+}
+
+.machine-control {
+  flex: none;
+}
+
+/* The pinned session card reads as the active thing: accent border while
+ * a request is pending, calm while the session is live. */
+.session-card {
+  margin-bottom: 0;
+}
+
+.session-card.connecting {
+  border-color: var(--accent);
 }
 
 .center-card {

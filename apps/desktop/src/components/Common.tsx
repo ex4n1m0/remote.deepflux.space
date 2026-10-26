@@ -23,14 +23,17 @@ export function StatusChip({
 export function Section({
   title,
   actions,
+  className,
   children,
 }: {
   title: string;
   actions?: ReactNode;
+  /** Extra classes for the section element (e.g. `session-card`). */
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="section">
+    <section className={`section${className ? ` ${className}` : ""}`}>
       <header className="section-head">
         <h2>{title}</h2>
         {actions}
