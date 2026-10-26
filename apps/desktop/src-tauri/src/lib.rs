@@ -41,6 +41,7 @@ pub fn run() {
                 engine: Mutex::new(None),
                 account: Mutex::new(account),
                 assistant: agent::AssistantState::new(),
+                trust: Mutex::new(chat::TrustState::default()),
             });
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.

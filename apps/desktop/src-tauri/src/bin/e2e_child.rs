@@ -289,7 +289,9 @@ fn run_host(
         pump_events(&events, verdict, |_| {});
         if verdict.consent_prompted && !accepted {
             std::thread::sleep(Duration::from_millis(400));
-            handle.send(EngineCmd::ConsentAccept).expect("accept");
+            handle
+                .send(EngineCmd::ConsentAccept { remember: true })
+                .expect("accept");
             accepted = true;
             accepted_at = Some(Instant::now());
             eprintln!("[e2e-host] consent accepted");

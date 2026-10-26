@@ -44,6 +44,61 @@ pub struct Pairing {
     /// Controller-side offers keep `pending_ack` until the host's PairAck.
     #[serde(default)]
     pub pending_ack: bool,
+    /// ADR-006: which side recorded it — "host" (they may connect without
+    /// asking) or "controller" (we may connect/chat with them). Entries
+    /// from before the field existed load as "legacy".
+    #[serde(default = "legacy_role")]
+    pub role: String,
+}
+
+fn legacy_role() -> String {
+    "legacy".to_owned()
+}
+
+/// Host-side pairing-ceremony state (ADR-006). The consent click happens
+/// BEFORE the controller's PairOffer arrives (the offer is sent on session
+/// establishment), so the host records its DECISION at click time and
+/// applies it when the offer lands: persist + ack only on an
+/// accept-with-remember; otherwise the offer is dropped un-acked. Nothing
+/// touches `pairings.json` before the owner's explicit choice. Also
+/// carries the prompt-flood cooldowns (explicit reject: 5 min; timeout:
+/// 60 s; in-memory, cleared on restart, bounded server-side by the
+/// send-path rate limits).
+#[derive(Default)]
+pub struct TrustState {
+    /// The recorded consent decision for the current session:
+    /// (controller code, remember?).
+    pub decision: Option<(String, bool)>,
+    /// The consent prompt currently (or last) shown: (controller, accepted,
+    /// rejected) — resolved by the accept command, the reject command, or
+    /// host-state inference for the timeout.
+    pub prompt: Option<(String, bool, bool)>,
+    /// controller code -> blocked-until epoch ms.
+    pub block_until: std::collections::HashMap<String, u64>,
+}
+
+/// Prompt-flood cooldown after an explicit user reject (ADR-006 B3).
+pub const REJECT_COOLDOWN_MS: u64 = 5 * 60 * 1000;
+/// Cooldown after a consent timeout (the prompt expired unanswered).
+pub const TIMEOUT_COOLDOWN_MS: u64 = 60 * 1000;
+/// Controller-side pending offers older than this are purged on read.
+pub const PENDING_PAIRING_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+
+impl TrustState {
+    pub fn blocked(&self, controller: &str, now: u64) -> bool {
+        self.block_until
+            .get(controller)
+            .is_some_and(|until| *until > now)
+    }
+
+    pub fn block(&mut self, controller: &str, until_ms: u64) {
+        self.block_until.insert(controller.to_owned(), until_ms);
+    }
+
+    /// Forget expired blocks (bounded memory).
+    pub fn sweep(&mut self, now: u64) {
+        self.block_until.retain(|_, until| *until > now);
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -122,37 +177,79 @@ fn write_pairings(app: &AppHandle, doc: &PairingsDoc) {
 }
 
 pub fn pairings(app: &AppHandle) -> Vec<Pairing> {
+    purge_stale_pending(app);
     read_pairings(app).pairings
 }
 
 pub fn pairing_for(app: &AppHandle, code: &str) -> Option<Pairing> {
+    purge_stale_pending(app);
     read_pairings(app)
         .pairings
         .into_iter()
         .find(|p| p.code == code && !p.pending_ack)
 }
 
-/// Host side: store a pairing offered by a controller (PairOfferReceived).
-pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str) {
+/// Controller-side housekeeping: un-acked offers expire — the host chose
+/// not to remember (or crashed); a stale `pending_ack` row must not linger
+/// forever (ADR-006).
+fn purge_stale_pending(app: &AppHandle) {
     let mut doc = read_pairings(app);
+    if purge_stale_pending_in_doc(&mut doc, now_ms()) {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Pure core of [`purge_stale_pending`]. Returns whether the doc changed.
+fn purge_stale_pending_in_doc(doc: &mut PairingsDoc, now: u64) -> bool {
+    let before = doc.pairings.len();
+    doc.pairings.retain(|p| {
+        !p.pending_ack || now.saturating_sub(p.created_ms) < PENDING_PAIRING_MAX_AGE_MS
+    });
+    doc.pairings.len() != before
+}
+
+/// Host side: store a pairing offered by a controller — but only on the
+/// owner's explicit "remember" choice (ADR-006). An ESTABLISHED (non-
+/// pending) pairing is never silently overwritten: re-pairing requires
+/// removing it first (Trusted machines), so a squatter holding the id
+/// cannot re-arm trust. Returns whether the pairing is now established.
+pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str) -> bool {
+    let mut doc = read_pairings(app);
+    let recorded = record_pairing_in_doc(&mut doc, code, secret_hex, now_ms());
+    if recorded {
+        write_pairings(app, &doc);
+    }
+    recorded
+}
+
+/// Pure core of [`record_pairing`] (testable without an app handle).
+fn record_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, now: u64) -> bool {
     let code = code.trim().to_lowercase();
     let valid = secret_hex.len() == 64 && secret_hex.chars().all(|c| c.is_ascii_hexdigit());
     if !valid {
-        return; // malformed offers are ignored, never stored
+        return false; // malformed offers are ignored, never stored
     }
     match doc.pairings.iter_mut().find(|p| p.code == code) {
         Some(existing) => {
+            if !existing.pending_ack {
+                // Established pairing: refuse the overwrite — the existing
+                // trust stands, and re-pairing requires an explicit remove
+                // (Trusted machines) first.
+                return true;
+            }
             existing.secret_hex = secret_hex.to_owned();
             existing.pending_ack = false;
+            existing.role = "host".to_owned();
         }
         None => doc.pairings.push(Pairing {
             code,
             secret_hex: secret_hex.to_owned(),
-            created_ms: now_ms(),
+            created_ms: now,
             pending_ack: false,
+            role: "host".to_owned(),
         }),
     }
-    write_pairings(app, &doc);
+    true
 }
 
 /// Controller side: our offer was acknowledged — clear the pending flag.
@@ -176,12 +273,14 @@ pub fn mint_pairing(app: &AppHandle, code: &str) -> String {
         Some(existing) => {
             existing.secret_hex = secret_hex.clone();
             existing.pending_ack = true;
+            existing.role = "controller".to_owned();
         }
         None => doc.pairings.push(Pairing {
             code,
             secret_hex: secret_hex.clone(),
             created_ms: now_ms(),
             pending_ack: true,
+            role: "controller".to_owned(),
         }),
     }
     write_pairings(app, &doc);
@@ -270,7 +369,7 @@ pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) ->
     line
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -446,9 +545,11 @@ pub fn spawn_poller(app: AppHandle) {
 // Silent reconnect for paired controllers (user decision 2, 2026-10-24)
 // ---------------------------------------------------------------------------
 
-/// Called by the event forwarder on `ConsentRequested`: if the controller
-/// is paired, auto-accept (full control, silently). Returns true when the
-/// prompt was auto-accepted (the UI's prompt resolves via state change).
+/// Called by the event forwarder on `ConsentRequested` — but only after the
+/// ADR-006 pairing PROOF verified: a proven-paired controller is
+/// auto-accepted (full control, silently). Returns true when the prompt was
+/// auto-accepted (the UI's prompt resolves via state change). `remember: true`
+/// is moot here — the pairing already exists, so nothing new is persisted.
 pub fn auto_accept_if_paired(app: &AppHandle, controller_device_id: &str) -> bool {
     if pairing_for(app, controller_device_id).is_none() {
         return false;
@@ -460,7 +561,9 @@ pub fn auto_accept_if_paired(app: &AppHandle, controller_device_id: &str) -> boo
     let Some(handle) = slot.as_ref() else {
         return false;
     };
-    handle.send(crate::engine::EngineCmd::ConsentAccept).is_ok()
+    handle
+        .send(crate::engine::EngineCmd::ConsentAccept { remember: true })
+        .is_ok()
 }
 
 /// Controller side of auto-pairing: after `SessionEstablished`, offer
@@ -483,5 +586,143 @@ pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
         && let Some(handle) = slot.as_ref()
     {
         let _ = handle.send(crate::engine::EngineCmd::SendPairOffer { secret_hex });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SECRET_A: &str = "aa9d6c507d4a3e2f1b8c7d6e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4";
+    const SECRET_B: &str = "bb1e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4aa9d6c507d4a3e2f8c7d";
+
+    fn doc(pairs: Vec<Pairing>) -> PairingsDoc {
+        PairingsDoc { pairings: pairs }
+    }
+
+    #[test]
+    fn trust_state_blocks_and_sweeps() {
+        let mut t = TrustState::default();
+        let now = 1_000u64;
+        assert!(!t.blocked("ctrl", now));
+        t.block("ctrl", now + REJECT_COOLDOWN_MS);
+        assert!(t.blocked("ctrl", now + 1));
+        assert!(!t.blocked("ctrl", now + REJECT_COOLDOWN_MS + 1), "expired");
+        assert!(!t.blocked("other", now), "per-controller");
+        t.block("old", now - 1);
+        t.sweep(now);
+        assert!(t.block_until.len() == 1, "swept the expired block");
+    }
+
+    #[test]
+    fn record_pairing_tags_host_role_and_normalizes() {
+        let mut d = doc(vec![]);
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "  ABCDEF0123456789 ",
+            SECRET_A,
+            10
+        ));
+        assert_eq!(d.pairings.len(), 1);
+        assert_eq!(d.pairings[0].code, "abcdef0123456789");
+        assert_eq!(d.pairings[0].role, "host");
+        assert!(!d.pairings[0].pending_ack);
+    }
+
+    #[test]
+    fn established_pairing_is_never_overwritten() {
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: false,
+            role: "host".to_owned(),
+        }]);
+        // A squatter's re-offer: same id, fresh secret — must be refused.
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_B,
+            20
+        ));
+        assert_eq!(d.pairings[0].secret_hex, SECRET_A, "secret unchanged");
+        assert_eq!(d.pairings.len(), 1);
+    }
+
+    #[test]
+    fn pending_offer_is_replaced_by_the_real_one() {
+        // Controller-side pending row (our own outbound offer) — the host's
+        // ack path re-records host-side with the SAME secret once acked.
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: true,
+            role: "controller".to_owned(),
+        }]);
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_A,
+            20
+        ));
+        assert!(!d.pairings[0].pending_ack);
+    }
+
+    #[test]
+    fn malformed_secrets_are_refused() {
+        let mut d = doc(vec![]);
+        assert!(!record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            "nothex",
+            1
+        ));
+        assert!(!record_pairing_in_doc(&mut d, "abcdef0123456789", "ab", 1));
+        assert!(d.pairings.is_empty());
+    }
+
+    #[test]
+    fn stale_pending_offers_purge_at_24h() {
+        let now = 100 * PENDING_PAIRING_MAX_AGE_MS;
+        let mut d = doc(vec![
+            Pairing {
+                code: "0000000000000001".to_owned(),
+                secret_hex: SECRET_A.to_owned(),
+                created_ms: now - PENDING_PAIRING_MAX_AGE_MS - 1,
+                pending_ack: true,
+                role: "controller".to_owned(),
+            },
+            Pairing {
+                code: "0000000000000002".to_owned(),
+                secret_hex: SECRET_A.to_owned(),
+                created_ms: now - PENDING_PAIRING_MAX_AGE_MS + 1,
+                pending_ack: true,
+                role: "controller".to_owned(),
+            },
+            Pairing {
+                code: "0000000000000003".to_owned(),
+                secret_hex: SECRET_A.to_owned(),
+                created_ms: 1,
+                pending_ack: false,
+                role: "host".to_owned(),
+            },
+        ]);
+        assert!(purge_stale_pending_in_doc(&mut d, now));
+        assert_eq!(
+            d.pairings.len(),
+            2,
+            "stale pending gone; fresh pending + established stay"
+        );
+    }
+
+    #[test]
+    fn pre_adr006_pairings_load_as_legacy_role() {
+        let json = format!(
+            "{{\"code\":\"abcdef0123456789\",\"secret_hex\":\"{SECRET_A}\",\"created_ms\":1}}"
+        );
+        let p: Pairing = serde_json::from_str(&json).expect("legacy pairing loads");
+        assert_eq!(p.role, "legacy");
+        assert!(!p.pending_ack);
     }
 }

@@ -83,8 +83,16 @@ pub enum EngineCmd {
     },
     CancelConnect,
     Disconnect,
-    ConsentAccept,
+    /// ADR-006: `remember` is the consent dialog's "remember this machine"
+    /// choice — the sole path to a persisted pairing + `PairAck` (see
+    /// `drain_chat_and_pairing`).
+    ConsentAccept {
+        remember: bool,
+    },
     ConsentReject,
+    /// Host side: acknowledge the pending pairing offer (sent only by the
+    /// app layer after a consent accept with `remember` — ADR-006).
+    SendPairAck,
     SetQuality(QualityPreset),
     SelectMonitor {
         monitor_id: String,
@@ -349,6 +357,13 @@ pub enum EngineEvent {
         /// app layer to verify against its pairing store (single-use HMAC;
         /// not secret material).
         pairing_proof_hex: Option<String>,
+    },
+    /// Host user accepted the consent prompt; `remember` is the ADR-006
+    /// "remember this machine" choice — the app layer persists + acks the
+    /// pending pairing offer only when it is true.
+    ConsentAccepted {
+        controller_device_id: String,
+        remember: bool,
     },
     SessionEstablished {
         session_id: String,
@@ -1202,17 +1217,31 @@ impl Engine {
                 }
                 _ => self.node.controller_cancel(&mut self.observer),
             },
-            EngineCmd::ConsentAccept => {
+            EngineCmd::ConsentAccept { remember } => {
                 if self.observer.pending_consent().is_none() {
                     self.error("no_consent", "No consent prompt is pending.", None);
                     return;
                 }
+                let controller = self.observer.pending_consent().unwrap_or_default();
                 self.ensure_transport(MachineKind::Host);
                 let secret = ids::new_session_secret();
                 self.node.user_accept_consent(secret, &mut self.observer);
+                // ADR-006: the pairing decision rides the accept event so
+                // the app layer (which holds the in-memory pairing offer)
+                // can persist + ack exactly when "remember" was checked.
+                let _ = self.events.try_send(EngineEvent::ConsentAccepted {
+                    controller_device_id: controller,
+                    remember,
+                });
             }
             EngineCmd::ConsentReject => {
                 self.node.user_reject_consent(&mut self.observer);
+            }
+            EngineCmd::SendPairAck => {
+                let ack = WireMessage::PairAck;
+                if let Err(err) = self.node.send_wire(Channel::Control, &ack) {
+                    eprintln!("[engine] pair ack send: {err}");
+                }
             }
             EngineCmd::SetQuality(preset) => self.cmd_set_quality(preset),
             EngineCmd::SelectMonitor { monitor_id } => self.cmd_select_monitor(&monitor_id),
@@ -1861,11 +1890,14 @@ impl Engine {
         }
     }
 
-    /// ADR-005 (RD-022/023): drain observer-side chat input + pairing
-    /// offers. Chat becomes events (app layer persists); a pairing offer
-    /// is auto-acked — the session's consent click was the ceremony.
+    /// ADR-005 (RD-022/023) + ADR-006: drain observer-side chat input and
+    /// pairing offers. Both become events; the app layer holds the offered
+    /// pairing secret IN MEMORY until the owner's consent click — the ack
+    /// and the persistence happen only on accept-with-remember (the
+    /// pre-ADR-006 unconditional auto-ack is gone; the controller-side
+    /// un-acked offer simply expires).
     fn drain_chat_and_pairing(&mut self) {
-        let (chat_in, pair_offer) = {
+        let (chat_in, _pair_offer) = {
             let mut flags = self.observer.flags.lock().expect("observer flags");
             (
                 std::mem::take(&mut flags.chat_in),
@@ -1884,12 +1916,6 @@ impl Engine {
                 },
                 body: chat.body,
             });
-        }
-        if pair_offer.is_some() {
-            let ack = WireMessage::PairAck;
-            if let Err(err) = self.node.send_wire(Channel::Control, &ack) {
-                eprintln!("[engine] pair ack send: {err}");
-            }
         }
     }
 
@@ -2156,7 +2182,10 @@ impl Engine {
                 })
                 .collect(),
             max_bitrate_kbps: 50_000,
-            features: shared_features(),
+            // ADR-006: hosts gate pairing on the consent dialog's
+            // "remember" choice — advertising the bit lets 0.5 controllers
+            // label trust as deliberate (vs a legacy host's auto-ack).
+            features: shared_features().with(FeatureFlags::PAIRING_REMEMBER),
         })
     }
 

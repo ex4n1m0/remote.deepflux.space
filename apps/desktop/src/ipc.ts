@@ -98,7 +98,7 @@ export const api = {
   cancelConnect: (): Promise<void> => invoke("cancel_connect"),
   disconnect: (): Promise<void> => invoke("disconnect"),
 
-  consentAccept: (): Promise<void> => invoke("consent_accept"),
+  consentAccept: (remember: boolean): Promise<void> => invoke("consent_accept", { remember }),
   consentReject: (): Promise<void> => invoke("consent_reject"),
 
   setQuality: (preset: string): Promise<void> =>

@@ -132,6 +132,10 @@ fn all_events() -> Vec<EngineEvent> {
             session_id: "s1".into(),
             ai_session: true,
         },
+        EngineEvent::ConsentAccepted {
+            controller_device_id: "ctrl-1".into(),
+            remember: true,
+        },
         EngineEvent::SessionEstablished {
             session_id: "s1".into(),
             peer: Some("ctrl-1".into()),

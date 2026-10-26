@@ -37,6 +37,9 @@ pub struct AppServices {
     pub account: Mutex<crate::account::AccountManager>,
     /// In-app assistant (ADR-005): worker thread + busy flag.
     pub assistant: crate::agent::AssistantState,
+    /// ADR-006 pairing-ceremony state: the in-memory pairing offer, the
+    /// live prompt mark, and prompt-flood cooldowns.
+    pub trust: Mutex<crate::chat::TrustState>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -160,12 +163,31 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             machine,
             state,
             session_id,
-        } => emit(
-            events::STATE,
-            Some(
-                serde_json::json!({ "machine": machine, "state": state, "session_id": session_id }),
-            ),
-        ),
+        } => {
+            // ADR-006 B3: a host consent prompt that fell back to Online
+            // without an accept or an explicit reject was a TIMEOUT — cool
+            // the controller down so an unanswered prompt cannot be
+            // re-spammed.
+            if machine == "Host" && state == "Online" {
+                let now = crate::chat::now_ms();
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                trust.sweep(now);
+                if let Some((controller, accepted, rejected)) = trust.prompt.take()
+                    && !accepted
+                    && !rejected
+                    && !trust.blocked(&controller, now)
+                {
+                    trust.block(&controller, now + crate::chat::TIMEOUT_COOLDOWN_MS);
+                }
+            }
+            emit(
+                events::STATE,
+                Some(
+                    serde_json::json!({ "machine": machine, "state": state, "session_id": session_id }),
+                ),
+            )
+        }
         EngineEvent::ConsentRequested {
             controller_device_id,
             session_id,
@@ -203,6 +225,20 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 // control. The emitted event still fires; the state change
                 // resolves any prompt within a tick.
                 crate::chat::auto_accept_if_paired(app, &controller_device_id);
+            } else {
+                // ADR-006 B3 prompt-flood defense: a controller in cooldown
+                // (explicit reject / unanswered timeout) is auto-rejected
+                // without a prompt.
+                let now = crate::chat::now_ms();
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                trust.sweep(now);
+                if trust.blocked(&controller_device_id, now) {
+                    drop(trust);
+                    let _ = with_engine(app, |handle| handle.send(EngineCmd::ConsentReject));
+                    return true;
+                }
+                trust.prompt = Some((controller_device_id.clone(), false, false));
             }
             emit(
                 events::CONSENT,
@@ -214,6 +250,21 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     "pairing_proof_ok": proof_ok
                 })),
             );
+        }
+        EngineEvent::ConsentAccepted {
+            controller_device_id,
+            remember,
+        } => {
+            // ADR-006: the owner's click IS the pairing ceremony — but the
+            // controller's PairOffer arrives only after the session
+            // establishes, so RECORD the decision now and apply it when the
+            // offer lands (see PairOfferReceived below).
+            let services = app.state::<AppServices>();
+            let mut trust = services.trust.lock().expect("trust state");
+            if let Some((_, accepted, _)) = trust.prompt.as_mut() {
+                *accepted = true;
+            }
+            trust.decision = Some((controller_device_id.clone(), remember));
         }
         EngineEvent::SessionEstablished { session_id, peer } => {
             // RD-023: controller side — offer pairing on first contact.
@@ -230,12 +281,23 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             code,
             message,
             hint,
-        } => emit(
-            events::SESSION_ENDED,
-            Some(
-                serde_json::json!({ "cause": cause, "code": code, "message": message, "hint": hint }),
-            ),
-        ),
+        } => {
+            // ADR-006: the ceremony state dies with the session — an
+            // un-applied decision or lingering prompt never crosses into
+            // the next one.
+            {
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                trust.decision = None;
+                trust.prompt = None;
+            }
+            emit(
+                events::SESSION_ENDED,
+                Some(
+                    serde_json::json!({ "cause": cause, "code": code, "message": message, "hint": hint }),
+                ),
+            )
+        }
         EngineEvent::PeerOnline { device_id } => emit(
             events::PEER,
             Some(serde_json::json!({ "device_id": device_id, "online": true })),
@@ -289,11 +351,29 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             controller_device_id,
             secret_hex,
         } => {
-            crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
-            emit(
-                events::PAIRING,
-                Some(serde_json::json!({ "device_id": controller_device_id, "paired": true })),
-            );
+            // ADR-006: apply the decision the owner made at the consent
+            // click (the offer arrives after session establishment, so the
+            // decision was recorded then). Remember → persist + ack; not
+            // remembered → drop un-acked (the controller's pending offer
+            // expires client-side; nothing is stored).
+            let remember = {
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                trust
+                    .decision
+                    .take_if(|(controller, _)| controller == &controller_device_id)
+                    .is_some_and(|(_, remember)| remember)
+            };
+            if remember {
+                let paired = crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
+                let _ = with_engine(app, |handle| handle.send(EngineCmd::SendPairAck));
+                emit(
+                    events::PAIRING,
+                    Some(
+                        serde_json::json!({ "device_id": controller_device_id, "paired": paired }),
+                    ),
+                );
+            }
         }
         EngineEvent::PairAckReceived { host_device_id } => {
             crate::chat::pairing_ack(app, &host_device_id);
@@ -603,12 +683,29 @@ pub fn disconnect(app: AppHandle) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn consent_accept(app: AppHandle) -> CmdResult<()> {
-    with_engine(&app, |handle| handle.send(EngineCmd::ConsentAccept))
+pub fn consent_accept(app: AppHandle, remember: bool) -> CmdResult<()> {
+    with_engine(&app, |handle| {
+        handle.send(EngineCmd::ConsentAccept { remember })
+    })
 }
 
 #[tauri::command]
 pub fn consent_reject(app: AppHandle) -> CmdResult<()> {
+    // ADR-006 B3: an explicit reject puts the controller in cooldown —
+    // repeat prompts from it are auto-rejected for REJECT_COOLDOWN_MS.
+    {
+        let services = app.state::<AppServices>();
+        let mut trust = services.trust.lock().expect("trust state");
+        let controller = trust.prompt.as_ref().map(|(c, _, _)| c.clone());
+        if let Some(controller) = controller {
+            if let Some((_, _, rejected)) = trust.prompt.as_mut() {
+                *rejected = true;
+            }
+            let now = crate::chat::now_ms();
+            trust.block(&controller, now + crate::chat::REJECT_COOLDOWN_MS);
+        }
+        trust.decision = None;
+    }
     with_engine(&app, |handle| handle.send(EngineCmd::ConsentReject))
 }
 

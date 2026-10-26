@@ -289,7 +289,7 @@ export default function App() {
                   type="button"
                   className="primary"
                   autoFocus
-                  onClick={() => engine.run(() => api.consentAccept())}
+                  onClick={() => engine.run(() => api.consentAccept(true))}
                 >
                   Accept
                 </button>

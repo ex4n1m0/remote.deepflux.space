@@ -114,7 +114,8 @@ fn full_session_state_flow_through_the_command_layer() {
     )));
 
     // 4. Accept → both Connected (real loopback transport).
-    host.send(EngineCmd::ConsentAccept).expect("accept");
+    host.send(EngineCmd::ConsentAccept { remember: true })
+        .expect("accept");
     wait_for("both Connected", deadline, || {
         collect(&host_events, &mut host_log);
         collect(&ctrl_events, &mut ctrl_log);
@@ -270,7 +271,8 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
         collect(&host_events, &mut host_log);
         host.status().host_state == "ConsentPrompted"
     });
-    host.send(EngineCmd::ConsentAccept).expect("accept");
+    host.send(EngineCmd::ConsentAccept { remember: true })
+        .expect("accept");
     wait_for("both Connected", deadline, || {
         collect(&host_events, &mut host_log);
         collect(&ctrl_events, &mut ctrl_log);
