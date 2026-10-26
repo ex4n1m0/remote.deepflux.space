@@ -24,10 +24,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KEYDIR="$HOME/.deepflux"
 KEYFILE="$KEYDIR/circle-key.txt"
 
+# The assistant key is OPTIONAL: without it this is a circle-only family
+# build (machines join the circle automatically; the assistant asks for a
+# pasted key on first use). With it, family machines are fully zero-config.
 if [ -z "${DEEPFLUX_AGENT_KEY:-}" ]; then
-  echo "error: DEEPFLUX_AGENT_KEY is not set (the assistant provider key)." >&2
-  echo "       Export it in your shell; it is never stored by this script." >&2
-  exit 1
+  echo "note: DEEPFLUX_AGENT_KEY is not set - building CIRCLE-ONLY (the" >&2
+  echo "      assistant will ask each machine for an API key)." >&2
 fi
 
 mkdir -p "$KEYDIR"
@@ -54,7 +56,7 @@ echo "==> building FAMILY installer (embedded circle key + agent key)"
 echo "    artifact: apps/desktop/src-tauri/target/release/bundle/nsis/"
 echo "    NEVER publish this build — it carries the circle credential."
 cd "$ROOT/apps/desktop"
-DEEPFLUX_AGENT_KEY="$DEEPFLUX_AGENT_KEY" \
+DEEPFLUX_AGENT_KEY="${DEEPFLUX_AGENT_KEY:-}" \
 DEEPFLUX_CIRCLE_KEY="$CIRCLE_KEY" \
 DEEPFLUX_FAMILY_BUILD=1 \
   pnpm tauri build

@@ -421,7 +421,7 @@ pub fn get_identity(app: AppHandle) -> CmdResult<Identity> {
     })
 }
 
-fn display_name(settings: &AppSettings) -> String {
+pub(crate) fn display_name(settings: &AppSettings) -> String {
     if settings.device_name.trim().is_empty() {
         hostname()
     } else {

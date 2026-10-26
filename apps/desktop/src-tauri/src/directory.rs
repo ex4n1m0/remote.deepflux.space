@@ -188,7 +188,10 @@ fn circle_ctx(app: &AppHandle) -> Option<CircleCtx> {
         (
             s.device_id.clone(),
             s.device_token.clone(),
-            s.device_name.clone(),
+            // The directory nickname must be 1-64 chars — resolve the
+            // "empty = OS hostname" display-name fallback the same way
+            // get_identity does, or the put would be refused forever.
+            crate::commands::display_name(s),
             s.signaling_base_url.clone(),
         )
     };
