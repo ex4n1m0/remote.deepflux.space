@@ -68,9 +68,10 @@ fn with_account<T>(
     let url = store.settings().signaling_base_url.clone();
     account.set_base_url(&url);
     if url.trim().is_empty() {
-        return Err(
-            "No account service configured. Open Settings and set the service URL first.".into(),
-        );
+        return Err(format!(
+            "No account service configured. Open Settings and set the service URL to {} first.",
+            crate::store::DEFAULT_SIGNALING_BASE_URL
+        ));
     }
     f(&mut store, &mut account)
 }

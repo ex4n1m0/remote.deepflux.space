@@ -357,9 +357,32 @@ pub fn invite(app: &AppHandle) -> Result<String, String> {
 /// Family-build first run: auto-join from the embedded key. The embedded
 /// installer IS the consent moment for sharing (the first-run banner in
 /// the UI explains it and Settings can revoke).
+///
+/// Also self-heals an EMPTY signaling URL: the embedded key only means
+/// anything against the service this build was made for, so a leftover
+/// empty URL (the old opt-out, preserved by upgrades from pre-0.4 installs)
+/// would silently kill login, the engine, AND circle registration — the
+/// family build restores the production default instead.
 pub fn auto_join_embedded(app: &AppHandle) -> bool {
     let embedded = EMBEDDED_CIRCLE_KEY.trim();
-    if embedded.is_empty() || read_circle(app).is_some() {
+    if embedded.is_empty() {
+        return false;
+    }
+    // Family build: an empty URL is never meaningful here (the embedded
+    // key only works against this build's service) — heal it on EVERY
+    // launch, so machines already joined by an older build recover too.
+    {
+        let services = app.state::<crate::commands::AppServices>();
+        if let Ok(mut store) = services.store.lock() {
+            let url = store.settings().signaling_base_url.clone();
+            if url.trim().is_empty() {
+                let mut next = store.settings().clone();
+                next.signaling_base_url = crate::store::DEFAULT_SIGNALING_BASE_URL.to_owned();
+                let _ = store.update_settings(next);
+            }
+        }
+    }
+    if read_circle(app).is_some() {
         return false;
     }
     match join(app, embedded, true) {
