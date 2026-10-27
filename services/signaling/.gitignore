@@ -2,3 +2,5 @@
 .env*
 # Built API bundles (scripts/bundle-api.mjs output; sources are the truth)
 api/*.js
+
+.env*

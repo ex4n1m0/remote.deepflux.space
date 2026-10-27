@@ -44,7 +44,14 @@ pub fn run() {
         ))
         .setup(|app| {
             let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let store = store::LocalStore::load(&dir).map_err(|e| e.to_string())?;
+            let mut store = store::LocalStore::load(&dir).map_err(|e| e.to_string())?;
+            // Durable identity anchor: mirror/restore this machine's
+            // identity via the Credential Manager so a reinstall (wiped
+            // appdata) keeps the same device id — one circle-directory
+            // entry per machine, pairings survive reinstalls.
+            store
+                .adopt_identity_anchor(&crate::credstore::WindowsCredStore)
+                .map_err(|e| e.to_string())?;
             // Account manager. The startup session validation (credential
             // manager → cheap authenticated roster_get) runs lazily in the
             // first `account_state` command — off the window's critical

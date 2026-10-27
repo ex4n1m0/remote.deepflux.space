@@ -142,6 +142,29 @@ pub fn normalize_machine_code(code: &str) -> String {
     code.trim().to_lowercase()
 }
 
+/// Credential-manager synthetic user for the durable identity anchor
+/// (see [`LocalStore::adopt_identity_anchor`]).
+const IDENTITY_ANCHOR_USER: &str = "machine-identity";
+
+/// The identity mirror stored under [`IDENTITY_ANCHOR_USER`]. `Debug`
+/// redacts the token (invariant-6 discipline — it is a bearer secret).
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+struct AnchorDoc {
+    v: u8,
+    device_id: String,
+    device_token: String,
+}
+
+impl core::fmt::Debug for AnchorDoc {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AnchorDoc")
+            .field("v", &self.v)
+            .field("device_id", &self.device_id)
+            .field("device_token", &"<redacted>")
+            .finish()
+    }
+}
+
 /// User-facing copy for a rejected code (the Add form and the roster add
 /// path surface it as-is).
 pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's the 16-character code shown on the other machine's \"This machine\" card (or in its Share prompt).";
@@ -212,6 +235,10 @@ pub struct LocalStore {
     favorites: FavoritesDoc,
     account: Option<AccountDoc>,
     roster_cache: Option<RosterCacheDoc>,
+    /// True when this load minted an identity (no settings file / empty
+    /// ids) — the app-startup [`LocalStore::adopt_identity_anchor`] uses
+    /// it to restore a surviving identity instead.
+    pub(crate) fresh_identity: bool,
 }
 
 impl LocalStore {
@@ -245,7 +272,7 @@ impl LocalStore {
         // here: until a settings change writes the file, every launch would
         // otherwise regenerate the connection code (favorites and pairing
         // key on it staying stable).
-        let mut fresh_identity = false;
+        let mut fresh_identity = !had_settings; // default() mints ids already
         if settings.device_id.trim().is_empty() {
             settings.device_id = crate::engine::ids::new_device_id();
             fresh_identity = true;
@@ -295,7 +322,59 @@ impl LocalStore {
             favorites,
             account,
             roster_cache,
+            fresh_identity,
         })
+    }
+
+    /// Durable identity anchor (2026-10-27 duplicate-directory incident):
+    /// a machine's device id/token live in `settings.json` inside the app
+    /// data dir, which a reinstall wipes — and a wiped identity means a
+    /// NEW id, which registers a SECOND circle-directory entry for the
+    /// same machine (the duplicate row every family member then sees).
+    /// The Windows Credential Manager survives an appdata wipe, so the
+    /// identity is mirrored there: a fresh install restores its old
+    /// identity instead of minting a new one, keeping one directory entry
+    /// per machine — and pairings/trust survive reinstalls too.
+    ///
+    /// Called once at app startup, right after [`LocalStore::load`]:
+    /// - fresh identity (appdata was wiped) → adopt the anchor's
+    ///   id/token when present, persisting them to settings.json;
+    /// - no valid anchor → backfill it with the current identity (this
+    ///   is how the existing fleet gets covered); an existing anchor is
+    ///   NEVER overwritten — a settings folder cloned from another
+    ///   machine must not destroy this machine's own anchor.
+    pub fn adopt_identity_anchor(
+        &mut self,
+        creds: &dyn crate::credstore::SessionStore,
+    ) -> StoreResult<()> {
+        let anchored = creds
+            .load(IDENTITY_ANCHOR_USER)
+            .ok()
+            .flatten()
+            .and_then(|blob| serde_json::from_str::<AnchorDoc>(&blob).ok())
+            .filter(|a| is_machine_code(&a.device_id) && !a.device_token.trim().is_empty());
+        if self.fresh_identity
+            && let Some(anchor) = &anchored
+        {
+            self.settings.device_id = anchor.device_id.clone();
+            self.settings.device_token = anchor.device_token.clone();
+            self.persist_settings()?;
+        }
+        if anchored.is_none() {
+            let current = AnchorDoc {
+                v: 1,
+                device_id: self.settings.device_id.clone(),
+                device_token: self.settings.device_token.clone(),
+            };
+            if let Ok(blob) = serde_json::to_string(&current) {
+                let _ = creds.save(IDENTITY_ANCHOR_USER, &blob);
+            }
+        }
+        Ok(())
+    }
+
+    fn persist_settings(&self) -> StoreResult<()> {
+        write_json_atomic(&self.dir.join(SETTINGS_FILE), &self.settings)
     }
 
     pub fn settings(&self) -> &AppSettings {
@@ -424,6 +503,7 @@ impl LocalStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::credstore::{InMemorySessionStore, SessionStore as _};
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -634,6 +714,74 @@ mod tests {
         let reloaded = LocalStore::load(&dir).unwrap();
         assert_eq!(reloaded.favorites().len(), 2);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn identity_anchor_restores_identity_after_appdata_wipe() {
+        // The 2026-10-27 incident: a reinstall wipes appdata → a minted
+        // new id registers a SECOND circle-directory row for the same
+        // machine. The anchor (Credential Manager survives the wipe)
+        // must restore the old identity instead.
+        let dir = temp_dir("anchor-restore");
+        let creds = InMemorySessionStore::default();
+        let (id, token) = {
+            let mut store = LocalStore::load(&dir).unwrap();
+            assert!(store.fresh_identity);
+            store.adopt_identity_anchor(&creds).unwrap();
+            (
+                store.settings().device_id.clone(),
+                store.settings().device_token.clone(),
+            )
+        };
+        assert_anchor(&creds, &id);
+        // "Reinstall": appdata gone, credential store intact.
+        std::fs::remove_dir_all(&dir).unwrap();
+        let store = LocalStore::load(&dir).unwrap();
+        assert!(store.fresh_identity, "wiped appdata mints fresh");
+        let mut store = store;
+        store.adopt_identity_anchor(&creds).unwrap();
+        assert_eq!(store.settings().device_id, id, "old id restored");
+        assert_eq!(store.settings().device_token, token, "old token restored");
+        let reloaded = LocalStore::load(&dir).unwrap();
+        assert_eq!(reloaded.settings().device_id, id, "restored id persisted");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn identity_anchor_backfills_but_never_overwrites() {
+        // Existing installs (no anchor yet) get backfilled with their
+        // current identity; an existing anchor is never clobbered — even
+        // by a settings folder cloned from another machine.
+        let dir = temp_dir("anchor-backfill");
+        let creds = InMemorySessionStore::default();
+        let mut store = LocalStore::load(&dir).unwrap();
+        let id = store.settings().device_id.clone();
+        assert!(creds.load(IDENTITY_ANCHOR_USER).unwrap().is_none());
+        store.adopt_identity_anchor(&creds).unwrap();
+        assert_anchor(&creds, &id);
+
+        // Foreign settings.json (folder cloned from another machine):
+        // adopting must NOT overwrite this machine's anchor.
+        let mut foreign = store.settings().clone();
+        foreign.device_id = "1111111111111111".to_owned();
+        foreign.device_token = "2222".to_owned();
+        write_json_atomic(&dir.join(SETTINGS_FILE), &foreign).unwrap();
+        let mut store = LocalStore::load(&dir).unwrap();
+        assert!(!store.fresh_identity);
+        store.adopt_identity_anchor(&creds).unwrap();
+        assert_anchor(&creds, &id);
+        assert_eq!(store.settings().device_id, "1111111111111111");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn assert_anchor(creds: &InMemorySessionStore, device_id: &str) {
+        let blob = creds
+            .load(IDENTITY_ANCHOR_USER)
+            .unwrap()
+            .expect("anchor saved");
+        let anchor: AnchorDoc = serde_json::from_str(&blob).unwrap();
+        assert_eq!(anchor.device_id, device_id);
+        assert!(!anchor.device_token.is_empty());
     }
 
     #[test]
