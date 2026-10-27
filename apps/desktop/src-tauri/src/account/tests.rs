@@ -16,7 +16,8 @@ use protocol::account::RosterDoc;
 
 use super::{
     AccountManager, AccountService, AccountStatus, ComputersList, Favorite, LocalStore,
-    SavedAccount, import_favorites, merge_rosters, normalize_username, union_favorites,
+    SavedAccount, import_favorites, merge_roster_into_favorites, merge_rosters, normalize_username,
+    union_favorites,
 };
 use crate::credstore::{InMemorySessionStore, SessionStore};
 
@@ -382,6 +383,59 @@ fn import_favorites_keeps_identity_fields() {
     assert_eq!(entries[0].name, "Laptop");
     assert_eq!(entries[0].code, "0123456789abcdef");
     assert_eq!(entries[0].added_at_ms, 5);
+}
+
+// -- dead-code guards (2026-10-27 duplicate-list fix) ------------------------
+//
+// A code that isn't a device id can never be dialed, so it must never
+// enter the roster (union/import) and never come back from it
+// (write-back); it would only shadow the same machine's circle row.
+
+#[test]
+fn union_and_import_skip_non_device_id_codes() {
+    let dead = Favorite {
+        id: "11111111".into(),
+        source: "manual".to_owned(),
+        name: "Dead".into(),
+        code: "291452".into(),
+    };
+    let live = Favorite {
+        id: "22222222".into(),
+        source: "manual".to_owned(),
+        name: "Live".into(),
+        code: "ed2b841dc442622e".into(),
+    };
+    let merged = union_favorites(doc(vec![]), &[dead.clone(), live.clone()], 99);
+    assert_eq!(merged.computers.len(), 1);
+    assert_eq!(merged.computers[0].code, "ed2b841dc442622e");
+    let imported = import_favorites(&[dead, live], 5);
+    assert_eq!(imported.len(), 1);
+    assert_eq!(imported[0].code, "ed2b841dc442622e");
+}
+
+#[test]
+fn merge_roster_into_favorites_drops_dead_rows_both_directions() {
+    let current = vec![
+        Favorite {
+            id: "11111111".into(),
+            source: "manual".to_owned(),
+            name: "Dead favorite".into(),
+            code: "291452".into(),
+        },
+        Favorite {
+            id: "22222222".into(),
+            source: "directory".to_owned(),
+            name: "Upper".into(),
+            code: "AAAAAAAAAAAAAAAA".into(),
+        },
+    ];
+    let roster = doc(vec![
+        entry("291452", 10),           // dead roster row stays out
+        entry("BBBBBBBBBBBBBBBB", 10), // live roster row joins, lowercased
+    ]);
+    let merged = merge_roster_into_favorites(&current, &roster);
+    let codes: Vec<&str> = merged.iter().map(|f| f.code.as_str()).collect();
+    assert_eq!(codes, vec!["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]);
 }
 
 // ---------------------------------------------------------------------------

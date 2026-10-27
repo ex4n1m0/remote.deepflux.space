@@ -232,7 +232,7 @@ pub fn union_favorites(doc: RosterDoc, favorites: &[Favorite], now_ms: u64) -> R
     let mut computers = doc.computers;
     for favorite in favorites {
         let code = favorite.code.trim().to_lowercase();
-        if !code.is_empty() && !computers.iter().any(|e| e.code == code) {
+        if crate::store::is_machine_code(&code) && !computers.iter().any(|e| e.code == code) {
             computers.push(RosterEntry {
                 id: favorite.id.clone(),
                 name: favorite.name.clone(),
@@ -251,7 +251,7 @@ pub fn union_favorites(doc: RosterDoc, favorites: &[Favorite], now_ms: u64) -> R
 pub fn import_favorites(favorites: &[Favorite], now_ms: u64) -> Vec<RosterEntry> {
     favorites
         .iter()
-        .filter(|f| !f.code.trim().is_empty())
+        .filter(|f| crate::store::is_machine_code(&f.code))
         .map(|f| RosterEntry {
             id: f.id.clone(),
             name: f.name.clone(),
@@ -268,15 +268,30 @@ pub fn import_favorites(favorites: &[Favorite], now_ms: u64) -> Vec<RosterEntry>
 /// them wholesale — the old replace wiped directory-sourced favorites on
 /// every login.
 pub fn merge_roster_into_favorites(current: &[Favorite], doc: &RosterDoc) -> Vec<Favorite> {
-    let mut out: Vec<Favorite> = current.to_vec();
+    let mut out = Vec::new();
+    for favorite in current {
+        // Favorites loaded through LocalStore::load are already purged of
+        // dead codes; re-filtering here keeps this pure function honest
+        // for callers holding older lists.
+        if !crate::store::is_machine_code(&favorite.code) {
+            continue;
+        }
+        let mut normalized = favorite.clone();
+        normalized.code = crate::store::normalize_machine_code(&favorite.code);
+        out.push(normalized);
+    }
     for entry in &doc.computers {
-        if out.iter().any(|f| f.code == entry.code) {
+        if !crate::store::is_machine_code(&entry.code) {
+            continue; // dead roster row — never becomes a favorite again
+        }
+        let code = crate::store::normalize_machine_code(&entry.code);
+        if out.iter().any(|f| f.code == code) {
             continue;
         }
         out.push(Favorite {
             id: entry.id.clone(),
             name: entry.name.clone(),
-            code: entry.code.clone(),
+            code,
             source: "manual".to_owned(),
         });
     }
@@ -722,6 +737,12 @@ impl AccountManager {
                 .doc
                 .computers
                 .iter()
+                // Dead-row guard (2026-10-27): roster entries with a
+                // non-device-id code (typed before validation existed)
+                // never surface — they can't be dialed and would duplicate
+                // the machine's circle row. They stay on the server,
+                // invisible, until removed.
+                .filter(|entry| crate::store::is_machine_code(&entry.code))
                 .map(|entry| ComputerRow {
                     id: entry.id.clone(),
                     name: entry.name.clone(),
@@ -747,6 +768,12 @@ impl AccountManager {
         let code = code.trim().to_lowercase();
         if code.is_empty() {
             return Err("Enter a connection code.".to_owned());
+        }
+        // Same shape rule as the favorite add: a non-device-id code is a
+        // dead row (nothing can ever dial it) and would shadow the same
+        // machine's circle-directory entry in the merged list.
+        if !crate::store::is_machine_code(&code) {
+            return Err(crate::store::BAD_CODE_COPY.to_owned());
         }
         let provided = validate_name(name)?;
         let now = now_ms();

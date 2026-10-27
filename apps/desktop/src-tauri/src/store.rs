@@ -124,6 +124,28 @@ pub struct FavoritesDoc {
     pub favorites: Vec<Favorite>,
 }
 
+/// A machine's connection code IS its device id: 16 hex chars
+/// (`engine::ids::new_device_id`). A saved code of any other shape (a
+/// short or mistyped code, a pre-device-id leftover) can never be dialed,
+/// paired, chatted with, or seen in presence — the engine and every store
+/// key by device id. Such rows are dead data that shadows the same
+/// machine's live circle-directory row (the duplicate-list bug,
+/// 2026-10-27), so they are refused at entry and purged on load.
+pub fn is_machine_code(code: &str) -> bool {
+    let c = code.trim();
+    c.len() == 16 && c.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+/// Canonical stored form of a machine code: trimmed, lowercase (device
+/// ids are minted lowercase; the roster paths already normalize this way).
+pub fn normalize_machine_code(code: &str) -> String {
+    code.trim().to_lowercase()
+}
+
+/// User-facing copy for a rejected code (the Add form and the roster add
+/// path surface it as-is).
+pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's the 16-character code shown on the other machine's \"This machine\" card (or in its Share prompt).";
+
 /// Account material (post-MVP accounts): everything needed to log in again
 /// except the password. The session token is NOT here (it lives in the
 /// Windows Credential Manager) and the roster is NOT here (it lives
@@ -235,9 +257,38 @@ impl LocalStore {
         if fresh_identity || !had_settings || healed_url {
             write_json_atomic(&settings_path, &settings)?;
         }
-        let favorites = read_json::<FavoritesDoc>(&dir.join(FAVORITES_FILE))?.unwrap_or_default();
+        let mut favorites =
+            read_json::<FavoritesDoc>(&dir.join(FAVORITES_FILE))?.unwrap_or_default();
+        // Dead-row purge (2026-10-27): drop favorites whose code isn't a
+        // device id and normalize the survivors to canonical lowercase —
+        // both so the merged machine list can dedupe against the circle
+        // directory (same machine = same code = one row).
+        let mut purged_dead_favorites = false;
+        {
+            let before = favorites.favorites.len();
+            favorites.favorites = favorites
+                .favorites
+                .iter()
+                .filter(|f| is_machine_code(&f.code))
+                .map(|f| {
+                    let mut f = f.clone();
+                    f.code = normalize_machine_code(&f.code);
+                    f
+                })
+                .collect();
+            if favorites.favorites.len() != before {
+                purged_dead_favorites = true;
+                eprintln!(
+                    "[store] dropped {} favorite(s) with a non-device-id code",
+                    before - favorites.favorites.len()
+                );
+            }
+        }
         let account = read_json::<AccountDoc>(&dir.join(ACCOUNT_FILE))?;
         let roster_cache = read_json::<RosterCacheDoc>(&dir.join(ROSTER_FILE))?;
+        if purged_dead_favorites {
+            write_json_atomic(&dir.join(FAVORITES_FILE), &favorites)?;
+        }
         Ok(Self {
             dir: dir.to_owned(),
             settings,
@@ -290,7 +341,10 @@ impl LocalStore {
         code: &str,
         source: &str,
     ) -> StoreResult<Favorite> {
-        let code_norm = code.trim().to_owned();
+        let code_norm = normalize_machine_code(code);
+        if !is_machine_code(&code_norm) {
+            return Err(BAD_CODE_COPY.to_owned());
+        }
         if let Some(existing) = self
             .favorites
             .favorites
@@ -322,9 +376,9 @@ impl LocalStore {
     }
 
     pub fn add_favorite(&mut self, name: &str, code: &str) -> StoreResult<Favorite> {
-        let code = code.trim().to_owned();
-        if code.is_empty() {
-            return Err("connection code is empty".to_owned());
+        let code = normalize_machine_code(code);
+        if !is_machine_code(&code) {
+            return Err(BAD_CODE_COPY.to_owned());
         }
         if self.favorites.favorites.iter().any(|f| f.code == code) {
             return Err("this code is already in favorites".to_owned());
@@ -517,6 +571,68 @@ mod tests {
         let reloaded = LocalStore::load(&dir).unwrap();
         assert_eq!(reloaded.favorites().len(), 1);
         assert_eq!(reloaded.favorites()[0].name, "Work laptop");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn favorites_reject_non_device_id_codes() {
+        let dir = temp_dir("badcode");
+        let mut store = LocalStore::load(&dir).unwrap();
+        // The duplicate-list bug (2026-10-27): a short or mistyped code
+        // used to be accepted, then shadowed the same machine's live
+        // circle-directory row forever.
+        assert!(store.add_favorite("Old", "291452").is_err());
+        assert!(store.add_favorite("Words", "not-a-code").is_err());
+        assert!(store.add_favorite("Empty", "   ").is_err());
+        // Valid 16-hex codes are accepted and normalized to lowercase.
+        let f = store.add_favorite("Laptop", "  ED2B841DC442622E ").unwrap();
+        assert_eq!(f.code, "ed2b841dc442622e");
+        // The sourced path (pairing / directory auto-save) enforces the
+        // same shape.
+        assert!(store.add_favorite_sourced("X", "291452", "manual").is_err());
+        let s = store
+            .add_favorite_sourced("Y", "BBBBBBBBBBBBBBBB", "directory")
+            .unwrap();
+        assert_eq!(s.code, "bbbbbbbbbbbbbbbb");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_purges_dead_favorites_and_normalizes_case() {
+        let dir = temp_dir("purge");
+        let doc = FavoritesDoc {
+            favorites: vec![
+                Favorite {
+                    id: "1".into(),
+                    name: "Dead".into(),
+                    code: "291452".into(),
+                    source: "manual".into(),
+                },
+                Favorite {
+                    id: "2".into(),
+                    name: "Live".into(),
+                    code: "ed2b841dc442622e".into(),
+                    source: "directory".into(),
+                },
+                Favorite {
+                    id: "3".into(),
+                    name: "Upper".into(),
+                    code: "AAAAAAAAAAAAAAAA".into(),
+                    source: "manual".into(),
+                },
+            ],
+        };
+        std::fs::write(
+            dir.join(FAVORITES_FILE),
+            serde_json::to_string(&doc).unwrap(),
+        )
+        .unwrap();
+        let store = LocalStore::load(&dir).unwrap();
+        let codes: Vec<&str> = store.favorites().iter().map(|f| f.code.as_str()).collect();
+        assert_eq!(codes, vec!["ed2b841dc442622e", "aaaaaaaaaaaaaaaa"]);
+        // The purge persists: a second load sees the cleaned file.
+        let reloaded = LocalStore::load(&dir).unwrap();
+        assert_eq!(reloaded.favorites().len(), 2);
         std::fs::remove_dir_all(&dir).ok();
     }
 

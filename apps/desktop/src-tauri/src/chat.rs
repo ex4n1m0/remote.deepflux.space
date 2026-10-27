@@ -305,6 +305,44 @@ pub fn remove_pairing(app: &AppHandle, code: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// Dead-key purge (2026-10-27 duplicate-list fix)
+// ---------------------------------------------------------------------------
+
+/// Pairing rows keyed by anything but a device id can never match a live
+/// machine (connect, chat, and the trust lookups all key by device id) —
+/// drop them from the doc.
+fn purge_dead_pairings_in_doc(doc: &mut PairingsDoc) -> bool {
+    let before = doc.pairings.len();
+    doc.pairings
+        .retain(|p| crate::store::is_machine_code(&p.code));
+    doc.pairings.len() != before
+}
+
+/// Startup sweep: dead pairing rows out of `pairings.json`, dead chat
+/// threads (`chat/<key>.json` for a non-device-id key) deleted. Idempotent;
+/// mirrors the favorite purge in `LocalStore::load` so every store that
+/// keys machines by code agrees on which keys are real.
+pub fn purge_dead_data(app: &AppHandle) {
+    let mut doc = read_pairings(app);
+    if purge_dead_pairings_in_doc(&mut doc) {
+        write_pairings(app, &doc);
+    }
+    if let Ok(entries) = std::fs::read_dir(chat_dir(app)) {
+        for entry in entries.flatten() {
+            let dead = entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|stem| !crate::store::is_machine_code(stem))
+                .unwrap_or(true);
+            if dead {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // History
 // ---------------------------------------------------------------------------
 
@@ -608,6 +646,34 @@ mod tests {
 
     fn doc(pairs: Vec<Pairing>) -> PairingsDoc {
         PairingsDoc { pairings: pairs }
+    }
+
+    #[test]
+    fn dead_code_pairings_are_purged() {
+        // 2026-10-27 duplicate-list fix: a pairing keyed by anything but a
+        // device id can never match a live machine — dropped on startup.
+        let mut d = doc(vec![
+            Pairing {
+                code: "291452".to_owned(),
+                secret_hex: SECRET_A.to_owned(),
+                created_ms: 1,
+                pending_ack: false,
+                role: "controller".to_owned(),
+            },
+            Pairing {
+                code: "abcdef0123456789".to_owned(),
+                secret_hex: SECRET_B.to_owned(),
+                created_ms: 2,
+                pending_ack: false,
+                role: "host".to_owned(),
+            },
+        ]);
+        assert!(purge_dead_pairings_in_doc(&mut d));
+        assert_eq!(d.pairings.len(), 1);
+        assert_eq!(d.pairings[0].code, "abcdef0123456789");
+        // Idempotent: a clean doc reports no change.
+        assert!(!purge_dead_pairings_in_doc(&mut d));
+        assert!(!purge_dead_pairings_in_doc(&mut doc(vec![])));
     }
 
     #[test]

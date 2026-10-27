@@ -75,7 +75,11 @@ pub fn run() {
                 .assistant
                 .spawn(app.handle().clone());
             // Machine-chat inbox poller (RD-022): out-of-session chat is
-            // always available while the app runs.
+            // always available while the app runs. The purge first drops
+            // pairing rows / chat threads keyed by a non-device-id code
+            // (dead data from the pre-validation era) — one sweep per
+            // launch, alongside the favorite purge in LocalStore::load.
+            chat::purge_dead_data(app.handle());
             chat::spawn_poller(app.handle().clone());
             // Always-ready, both directions (0.6.3): the engine and the
             // controller role start at launch for everyone — controlling
