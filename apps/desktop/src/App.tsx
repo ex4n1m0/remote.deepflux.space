@@ -5,26 +5,32 @@
  * target; the center column is the selected machine's page (header +
  * one Control action + conversation); a connect/session card pins above
  * it while in flight; the assistant panel stays on the right. The
- * accounts onboarding gate stays in front. */
-import { useEffect, useState } from "react";
+ * accounts onboarding gate stays in front.
+ *
+ * 0.8.0: everything configurable moved into the top menu bar
+ * (File / Config / Help — see MenuBar + ConfigDialog); controlling a
+ * machine requires a signed-in account WITH a display name (ADR-007) —
+ * the name travels on the connect request and the host's prompt shows
+ * it. */
+import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAccount } from "./hooks/useAccount";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useDirectory } from "./hooks/useDirectory";
-import { SettingsPanel } from "./components/IdentityCard";
 import { excludeSelf, MachinesRail, RemoveMachineButton, unifiedMachines } from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
-import { CircleSection, TrustedMachinesSection } from "./components/CircleSettings";
+import { MenuBar } from "./components/MenuBar";
+import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { Conversation } from "./components/Conversation";
-import { Onboarding } from "./components/Onboarding";
+import { Onboarding, displayNameValid } from "./components/Onboarding";
 import { SessionCard } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
 import { ErrorBanner } from "./components/Common";
 import { api, normalizeCode } from "./ipc";
-import { accountErrorCopy, accountGate } from "./state/account";
+import { CONTROL_GATE_MARKER, accountErrorCopy, accountGate } from "./state/account";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
 import mark from "./assets/mark.png";
 
@@ -48,9 +54,14 @@ export default function App() {
     }
   };
   const [showDiag, setShowDiag] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  // ADR-006 §5 first-run circle notice: session-only dismissal — the
-  // point is the one-time notice on first contact, not a settings gate.
+  // 0.8.0 GUI restructure: configuration lives in the Config modal behind
+  // the top menu bar; About is its own small modal.
+  const [configSection, setConfigSection] = useState<ConfigSection | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [addMachineSignal, setAddMachineSignal] = useState(0);
+  // ADR-006 §5 first-run circle notice: a PASSIVE toast now (0.8.0 — no
+  // OK button); it self-dismisses and visibility is managed in
+  // Config → Circle.
   const [circleNoticeDismissed, setCircleNoticeDismissed] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
@@ -58,7 +69,11 @@ export default function App() {
   // The machine the current connect/session belongs to — the session card
   // stays labeled with it even when the user browses another machine.
   const [sessionCode, setSessionCode] = useState<string | null>(null);
-  const chat = useChat(selectedCode);
+  // ADR-007 control gate: the machine the user tried to control before
+  // signing in / adding a name. Fired automatically the moment the
+  // account has a name — still one press, the first time only.
+  const [pendingControl, setPendingControl] = useState<string | null>(null);
+  const [namePromptOpen, setNamePromptOpen] = useState(false);  const chat = useChat(selectedCode);
   useEffect(() => {
     void refreshTrusted();
   }, []);
@@ -159,6 +174,10 @@ export default function App() {
 
   const skipOnboarding = async () => {
     setSignInOpen(false);
+    // ADR-007: skipping abandons any gate-deferred control — a stale
+    // intent must never fire a surprise session hours later.
+    setPendingControl(null);
+    setNamePromptOpen(false);
     if (engine.settings && !engine.settings.skipped_onboarding) {
       await engine.saveSettings({ ...engine.settings, skipped_onboarding: true });
     }
@@ -173,6 +192,8 @@ export default function App() {
 
   const signOut = async () => {
     await account.logout();
+    setPendingControl(null);
+    setNamePromptOpen(false);
     if (engine.settings && !engine.settings.skipped_onboarding) {
       await engine.saveSettings({ ...engine.settings, skipped_onboarding: true });
     }
@@ -184,14 +205,67 @@ export default function App() {
   // up here). Starts the engine if needed and asks to control; the
   // engine brings the controller role online itself when it isn't yet
   // (always-ready, 0.6.3) — there is no enable step anywhere.
+  //
+  // ADR-007 gate: the connect request must carry the account's display
+  // name, so controlling requires a signed-in named account. Not there
+  // yet? The intent is remembered and auto-fired the moment the name
+  // exists (see the pendingControl effect below) — the only extra work
+  // the user ever does is the one-time sign-in / add-name card.
   const controlMachine = async (code: string) => {
     const normalized = normalizeCode(code);
     setSelectedCode(normalized);
     setSessionCode(normalized);
+    if (accountUi.status !== "logged_in" || !accountUi.displayName) {
+      setPendingControl(normalized);
+      if (accountUi.status === "logged_in") {
+        setNamePromptOpen(true);
+      } else {
+        setOnboardingMode("create");
+        setSignInOpen(true);
+      }
+      return;
+    }
     if (await ensureEngine()) {
       await engine.run(() => api.connect(normalized));
     }
   };
+
+  // Fire a gate-deferred control attempt once the account qualifies. Runs
+  // on the reducer's state (not a stale closure): login/register/setName
+  // refresh accountUi, which re-triggers this effect.
+  useEffect(() => {
+    if (!pendingControl || accountUi.status !== "logged_in") return;
+    if (accountUi.displayName) {
+      const code = pendingControl;
+      setPendingControl(null);
+      setNamePromptOpen(false);
+      void (async () => {
+        if (await ensureEngine()) {
+          await engine.run(() => api.connect(code));
+        }
+      })();
+    } else if (!namePromptOpen) {
+      setNamePromptOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingControl, accountUi.status, accountUi.displayName]);
+
+  // ADR-007 belt-and-braces: if the UI's account state lagged the engine's
+  // (e.g. the session expired server-side), `connect` refuses with a
+  // marker string. Treat it as flow control — open the right card — never
+  // as a raw bracket-jargon error banner.
+  useEffect(() => {
+    if (engine.commandError?.startsWith(CONTROL_GATE_MARKER)) {
+      engine.clearCommandError();
+      if (accountUi.status === "logged_in") {
+        setNamePromptOpen(true);
+      } else {
+        setOnboardingMode("create");
+        setSignInOpen(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine.commandError]);
 
   // Remove a machine YOU added (or that's pending approval): drops the
   // saved entry (favorite + roster row when signed in) and forgets the
@@ -240,12 +314,17 @@ export default function App() {
           username={accountUi.username}
           busy={accountUi.busy}
           error={accountUi.error}
+          reason={
+            pendingControl
+              ? "Controlling another machine needs an account with your name — the other person sees who is asking. You only do this once; the connect continues by itself afterwards."
+              : null
+          }
           onModeChange={(mode) => setOnboardingMode(mode)}
           onSignIn={(username, password) => {
             void account.login(username, password).then(afterAuth);
           }}
-          onCreate={(username, password) => {
-            void account.register(username, password).then(afterAuth);
+          onCreate={(username, displayName, password) => {
+            void account.register(username, displayName, password).then(afterAuth);
           }}
           onUnlock={(password) => {
             void account.unlock(password).then(afterAuth);
@@ -271,6 +350,14 @@ export default function App() {
   return (
     <div className="app agent-first">
       <header className="app-head">
+        <MenuBar
+          version={appVersion}
+          onAddMachine={() => setAddMachineSignal((n) => n + 1)}
+          onOpenConfig={(section) => setConfigSection(section)}
+          onAbout={() => setAboutOpen(true)}
+          onDiagnostics={() => setShowDiag((v) => !v)}
+          onQuit={() => void api.quitApp()}
+        />
         <div className="brand">
           <img className="brand-mark" src={mark} alt="" width="28" height="28" />
           <h1>DeepFlux</h1>
@@ -285,9 +372,12 @@ export default function App() {
         </div>
         <div className="chips">
           {signedIn && accountUi.username ? (
-            <span className="chip chip-good account-chip" title="Signed in">
-              <span className="chip-dot" aria-hidden="true" />
-              @{accountUi.username}
+            <span
+              className="chip chip-good account-chip"
+              title={accountUi.displayName ? `Signed in as ${accountUi.displayName}` : "Signed in"}
+            >
+              <span className="chip-dot" aria-hidden="true" />@
+              {accountUi.username}
             </span>
           ) : (
             <button
@@ -306,22 +396,6 @@ export default function App() {
               Sign out
             </button>
           ) : null}
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setShowSettings((v) => !v)}
-            aria-pressed={showSettings}
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setShowDiag((v) => !v)}
-            aria-pressed={showDiag}
-          >
-            Diagnostics (Ctrl+Shift+D)
-          </button>
         </div>
       </header>
 
@@ -344,36 +418,11 @@ export default function App() {
       ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
 
-      {/* ADR-006 §5 consent moment: the one-time notice that this PC is
-       * now visible in the family circle (the Settings toggle rules
-       * afterwards; dismissal is session-only). */}
+      {/* ADR-006 §5 consent moment, passive since 0.8.0: a one-time notice
+       * that this PC is visible in the family circle. No OK press — it
+       * self-dismisses; visibility is managed in Config → Family circle. */}
       {directoryUi.loaded && directoryUi.joined && !circleNoticeDismissed ? (
-        <div className="banner banner-info" role="status">
-          <p>
-            This PC now appears in your family circle — family can see it's
-            online and ask to connect. You control who connects: every new
-            machine needs your approval.
-          </p>
-          <div className="row">
-            <button
-              type="button"
-              className="primary"
-              onClick={() => setCircleNoticeDismissed(true)}
-            >
-              OK
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                void directory.setShared(false);
-                setCircleNoticeDismissed(true);
-              }}
-            >
-              Hide me from the circle
-            </button>
-          </div>
-        </div>
+        <CircleNoticeToast onDone={() => setCircleNoticeDismissed(true)} />
       ) : null}
 
       <main className="workspace">
@@ -382,6 +431,7 @@ export default function App() {
           thisCode={engine.identity?.connection_code ?? "…"}
           hostState={ui.hostState}
           sharing={sharing}
+          addSignal={addMachineSignal}
           onPick={(code) => setSelectedCode(code)}
           onConnect={(code) => void controlMachine(code)}
           onAdd={async (name, code) => {
@@ -489,6 +539,21 @@ export default function App() {
             </div>
           )}
 
+          {/* ADR-007 name prompt: signed in, but the account predates
+           * display names — one input, then the deferred control fires. */}
+          {namePromptOpen && signedIn && !accountUi.displayName ? (
+            <NamePromptCard
+              busy={accountUi.busy}
+              error={accountUi.error}
+              onSave={(name) => void account.setName(name)}
+              onCancel={() => {
+                setNamePromptOpen(false);
+                setPendingControl(null);
+                account.clearError();
+              }}
+            />
+          ) : null}
+
           <Conversation name={selected?.name ?? null} chat={chat} />
 
           {endCopy && ui.controllerState === "Disconnected" ? (
@@ -497,24 +562,151 @@ export default function App() {
               {endCopy.hint ? <p className="hint">{endCopy.hint}</p> : null}
             </div>
           ) : null}
-
-          {showSettings ? (
-            <div className="center-card">
-              <SettingsPanel
-                settings={engine.settings}
-                onSave={engine.saveSettings}
-                version={appVersion}
-              />
-              <CircleSection directory={directory} />
-              <TrustedMachinesSection onRevoked={() => void refreshTrusted()} />
-            </div>
-          ) : null}
         </section>
 
-        <AssistantPanel assistant={assistant} />
+        <AssistantPanel
+          assistant={assistant}
+          onOpenConfig={() => setConfigSection("assistant")}
+        />
       </main>
 
+      {configSection ? (
+        <ConfigDialog
+          open
+          section={configSection}
+          settings={engine.settings}
+          onSaveSettings={engine.saveSettings}
+          version={appVersion}
+          directory={directory}
+          assistant={assistant}
+          onRevokedTrusted={() => void refreshTrusted()}
+          onClose={() => setConfigSection(null)}
+        />
+      ) : null}
+
+      {aboutOpen ? (
+        <div className="modal-backdrop" onClick={() => setAboutOpen(false)}>
+          <div className="modal about-modal" role="dialog" aria-modal="true" aria-label="About">
+            <header className="modal-head">
+              <h2>DeepFlux</h2>
+              <button
+                type="button"
+                className="ghost small"
+                onClick={() => setAboutOpen(false)}
+                aria-label="Close"
+                autoFocus
+              >
+                Close
+              </button>
+            </header>
+            <p>
+              Peer-to-peer remote desktop for the family — direct connection, no relay, video
+              never leaves the two machines.
+            </p>
+            <p className="muted">
+              Version {appVersion ?? "—"}
+              {directoryUi.familyBuild ? " (family build)" : ""}
+            </p>
+            <p className="muted small">
+              Diagnostics: Ctrl+Shift+D · Website: remote.deepflux.space
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {showDiag ? <DiagnosticsOverlay snapshot={ui.diagnostics} /> : null}
+    </div>
+  );
+}
+
+/** The ADR-006 §5 first-run circle notice as a passive toast: no buttons,
+ * self-dismisses, click to dismiss. The timer holds the callback in a ref
+ * with empty deps — App re-renders every poll tick (engine 1 Hz,
+ * assistant 2 s) and a deps-bound timer would restart forever. */
+function CircleNoticeToast({ onDone }: { onDone: () => void }) {
+  const doneRef = useRef(onDone);
+  doneRef.current = onDone;
+  useEffect(() => {
+    const timer = setTimeout(() => doneRef.current(), 12_000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div
+      className="banner banner-info circle-toast"
+      role="status"
+      onClick={() => doneRef.current()}
+      title="Click to dismiss"
+    >
+      <p>
+        This PC now appears in your family circle — family can see it's online and ask to
+        connect. You control who connects: every new machine needs your approval. (Manage
+        visibility in Config → Family circle.)
+      </p>
+    </div>
+  );
+}
+
+/** One input, one button: give the account its display name (ADR-007).
+ * Saving refreshes account state; App's pendingControl effect fires the
+ * deferred connect on success — no second press. */
+function NamePromptCard({
+  busy,
+  error,
+  onSave,
+  onCancel,
+}: {
+  busy: boolean;
+  error: string | null;
+  onSave: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const trimmed = draft.trim();
+  return (
+    <div className="center-card name-prompt" role="dialog" aria-label="Add your name">
+      <h3>Add your name</h3>
+      <p className="muted">
+        Controlling another machine needs a name — the other person sees who is asking
+        (&ldquo;Igor wants to control this PC&rdquo;) instead of a code. You only do this
+        once.
+      </p>
+      <form
+        className="onboarding-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy && displayNameValid(trimmed)) {
+            onSave(trimmed);
+          }
+        }}
+      >
+        <label>
+          Your name
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Igor"
+            autoComplete="name"
+            autoFocus
+          />
+        </label>
+        {error ? (
+          <p className="form-error" role="alert">
+            {accountErrorCopy(error)}
+          </p>
+        ) : null}
+        <div className="row">
+          <button
+            type="submit"
+            className="primary"
+            disabled={busy || !displayNameValid(trimmed)}
+          >
+            {busy ? "Saving…" : "Save name"}
+          </button>
+          <button type="button" className="ghost" onClick={onCancel}>
+            Not now
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -523,3 +715,6 @@ export default function App() {
 // from the previous layout; the roster Computers list rejoins the rail
 // with the chat phase).
 export { accountErrorCopy };
+// Exported for the toast-timer test (the self-dismiss depends on a stable
+// timer across the 1–2 s polls that re-render the shell).
+export { CircleNoticeToast };

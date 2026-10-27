@@ -189,7 +189,7 @@ fn nodes_drive_real_webrtc_transports_to_connected_and_back() {
         let mut obs = controller.rec.clone();
         controller
             .node
-            .controller_connect("test-host", None, &mut obs);
+            .controller_connect("test-host", None, None, &mut obs);
     }
     let accepted = Arc::new(AtomicBool::new(false));
     let accepted_flag = Arc::clone(&accepted);

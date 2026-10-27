@@ -238,7 +238,11 @@ impl World {
         let from: DeviceId = env.from_device_id.clone();
 
         match env.body {
-            SignalingBody::ConnectRequest { capabilities, .. } => {
+            SignalingBody::ConnectRequest {
+                capabilities,
+                requester_name,
+                ..
+            } => {
                 self.step_host(
                     target,
                     HostEvent::IncomingRequest {
@@ -247,6 +251,7 @@ impl World {
                         session_id: env.session_id.unwrap_or_default(),
                         capabilities,
                         pairing_proof_hex: None,
+                        requester_name,
                     },
                 );
                 // Mirror half of the node-level collision rule (QA F2): a

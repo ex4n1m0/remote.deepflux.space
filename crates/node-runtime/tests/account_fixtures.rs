@@ -28,6 +28,7 @@ use protocol::account::{
 fn register_call() -> AccountCall {
     AccountCall::new(AccountRequest::Register {
         username: "alice".to_owned(),
+        display_name: None,
         auth_key: "0a".repeat(AUTH_KEY_HEX_LEN / 2),
         auth_salt_hex: "1b".repeat(SALT_HEX_LEN / 2),
         wrap_salt_hex: "2c".repeat(SALT_HEX_LEN / 2),
@@ -38,7 +39,21 @@ fn register_call() -> AccountCall {
 
 fn requests() -> Vec<(&'static str, AccountCall)> {
     vec![
+        // The pre-0.8 register (no display_name key on the wire at all).
         ("register", register_call()),
+        // ADR-007: register with the person name shown on control requests.
+        (
+            "register_named",
+            AccountCall::new(AccountRequest::Register {
+                username: "alice".to_owned(),
+                display_name: Some("Alice Doe".to_owned()),
+                auth_key: "0a".repeat(AUTH_KEY_HEX_LEN / 2),
+                auth_salt_hex: "1b".repeat(SALT_HEX_LEN / 2),
+                wrap_salt_hex: "2c".repeat(SALT_HEX_LEN / 2),
+                wrapped_dek_hex: "3d".repeat(24),
+                dek_nonce_hex: "4e".repeat(NONCE_HEX_LEN / 2),
+            }),
+        ),
         (
             "login_pre",
             AccountCall::new(AccountRequest::LoginPre {
@@ -50,6 +65,13 @@ fn requests() -> Vec<(&'static str, AccountCall)> {
             AccountCall::new(AccountRequest::Login {
                 username: "alice".to_owned(),
                 auth_key: "0a".repeat(AUTH_KEY_HEX_LEN / 2),
+            }),
+        ),
+        // ADR-007: set/update the display name (authenticated).
+        (
+            "profile_set",
+            AccountCall::new(AccountRequest::ProfileSet {
+                display_name: "Alice Doe".to_owned(),
             }),
         ),
         ("logout", AccountCall::new(AccountRequest::Logout)),
@@ -83,6 +105,7 @@ fn responses() -> Vec<(&'static str, serde_json::Value)> {
                 "action": "register",
                 "session_token": "9b".repeat(SESSION_TOKEN_HEX_LEN / 2),
                 "expires_ms": 1_760_000_000_000u64,
+                "display_name": "Alice Doe",
             }),
         ),
         (
@@ -105,6 +128,7 @@ fn responses() -> Vec<(&'static str, serde_json::Value)> {
                 "expires_ms": 1_760_000_000_000u64,
                 "wrapped_dek_hex": "3d".repeat(24),
                 "dek_nonce_hex": "4e".repeat(NONCE_HEX_LEN / 2),
+                "display_name": "Alice Doe",
             }),
         ),
         (
@@ -113,6 +137,15 @@ fn responses() -> Vec<(&'static str, serde_json::Value)> {
                 "ok": true,
                 "protocol_version": ACCOUNT_PROTOCOL_VERSION,
                 "action": "logout",
+            }),
+        ),
+        (
+            "profile_set",
+            serde_json::json!({
+                "ok": true,
+                "protocol_version": ACCOUNT_PROTOCOL_VERSION,
+                "action": "profile_set",
+                "display_name": "Alice Doe",
             }),
         ),
         (

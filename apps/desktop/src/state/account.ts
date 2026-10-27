@@ -9,6 +9,8 @@ import type { AccountState, AccountStatus, Computer, ComputersList } from "../ty
 export interface AccountUiState {
   status: AccountStatus;
   username: string | null;
+  /** ADR-007 display name (null while logged out / name-less legacy). */
+  displayName: string | null;
   expiresMs: number | null;
   /** First account_state fetch resolved (gates the onboarding flash). */
   loaded: boolean;
@@ -25,6 +27,7 @@ export function initialAccountState(): AccountUiState {
   return {
     status: "logged_out",
     username: null,
+    displayName: null,
     expiresMs: null,
     loaded: false,
     computers: [],
@@ -45,12 +48,13 @@ export type AccountAction =
 export function accountReducer(state: AccountUiState, action: AccountAction): AccountUiState {
   switch (action.type) {
     case "state": {
-      const { status, username, expires_ms } = action.state;
+      const { status, username, display_name: displayName, expires_ms } = action.state;
       if (status === "logged_in") {
         return {
           ...state,
           status,
           username,
+          displayName,
           expiresMs: expires_ms,
           loaded: true,
           error: null,
@@ -62,6 +66,7 @@ export function accountReducer(state: AccountUiState, action: AccountAction): Ac
         ...state,
         status,
         username,
+        displayName: null,
         expiresMs: null,
         loaded: true,
         computers: [],
@@ -105,13 +110,20 @@ export function accountGate(
   if (account.status === "logged_in") {
     return "app";
   }
+  // An EXPLICIT sign-in request always wins — including on circle-joined
+  // (family-build) machines, where the ADR-007 control gate makes the
+  // header "Sign in" button and the blocked-Control card the path to a
+  // named account. Checked before the circle short-circuit below.
+  if (signInOpen) {
+    return account.status === "saved_account" ? "unlock" : "onboarding";
+  }
   // ADR-006: a family circle member goes straight to the app — the circle
   // is the identity that matters on family machines (the family build
   // auto-joins on first run); accounts stay reachable via Sign in.
   if (opts.circleJoined) {
     return "app";
   }
-  if (signInOpen || !skippedOnboarding) {
+  if (!skippedOnboarding) {
     return account.status === "saved_account" ? "unlock" : "onboarding";
   }
   return "app";
@@ -133,8 +145,17 @@ export function accountErrorCopy(raw: string): string {
   if (text.includes("rate_limited")) {
     return "Too many attempts — wait a minute and try again.";
   }
+  if (text.includes("unsupported_action")) {
+    // New client action hitting an old server (deploy-order window).
+    return "The account service needs an update — try again in a few minutes.";
+  }
   if (text.includes("network error") || text.includes("could not reach")) {
-    return "Could not reach the account service. Check your connection and the service URL in Settings.";
+    return "Could not reach the account service. Check your connection and the service URL in Config → Settings.";
   }
   return raw;
 }
+
+/** Rust's `ControlGate::message()` prefix — the connect command refuses
+ * nameless control with a marker so this layer can open the right card
+ * instead of a raw error banner. */
+export const CONTROL_GATE_MARKER = "[control-needs-account]";

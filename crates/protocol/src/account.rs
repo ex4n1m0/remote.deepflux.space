@@ -45,6 +45,10 @@ pub const USERNAME_MAX_CHARS: usize = 32;
 
 /// `auth_key` is scrypt output: 32 bytes → 64 hex chars.
 pub const AUTH_KEY_HEX_LEN: usize = 64;
+/// Display-name bound (ADR-007): 1–64 chars after trimming, no control
+/// characters. The name is advisory identity shown beside the device id on
+/// control requests — it must be non-empty and sane to be worth showing.
+pub const DISPLAY_NAME_MAX_CHARS: usize = 64;
 /// Salts are 16 bytes → 32 hex chars.
 pub const SALT_HEX_LEN: usize = 32;
 /// AES-GCM nonces are 12 bytes → 24 hex chars.
@@ -83,6 +87,18 @@ pub fn valid_hex(value: &str, bytes: usize) -> bool {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// Validates a display name (ADR-007): 1–64 chars after trimming, no
+/// control characters. Callers trim before validating; the stored value is
+/// always the trimmed form.
+pub fn valid_display_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    let len = trimmed.chars().count();
+    if !(1..=DISPLAY_NAME_MAX_CHARS).contains(&len) {
+        return false;
+    }
+    !trimmed.chars().any(|c| c.is_control())
+}
+
 /// One request. Carried as the JSON body of `POST /api/account` inside
 /// [`AccountCall`]; authenticated actions additionally send
 /// `Authorization: Bearer {session_token}` (header, never the body — same
@@ -96,8 +112,14 @@ pub fn valid_hex(value: &str, bytes: usize) -> bool {
 pub enum AccountRequest {
     /// Create an account. All key material is generated client-side; the
     /// server never sees the password or the unwrapped DEK.
+    ///
+    /// `display_name` (ADR-007, additive-optional within version 1) is the
+    /// person name shown to hosts on control requests. Pre-0.8 clients
+    /// omit it; the 0.8 client UI requires it at creation.
     Register {
         username: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_name: Option<String>,
         auth_key: String,
         auth_salt_hex: String,
         wrap_salt_hex: String,
@@ -112,6 +134,11 @@ pub enum AccountRequest {
     /// scrypt(password, auth_salt) value — a password equivalent protected
     /// in transit only by TLS, exactly like a password would be.
     Login { username: String, auth_key: String },
+    /// Set or update the account's display name (ADR-007). Authenticated.
+    /// Accounts created before 0.8 have no name; the client prompts for one
+    /// the first time the user tries to control a machine. The server
+    /// stores the trimmed name alongside the username.
+    ProfileSet { display_name: String },
     /// Invalidate the presented session token. Authenticated.
     Logout,
     /// Fetch the encrypted roster. Authenticated. A fresh account answers
@@ -137,9 +164,14 @@ pub enum AccountRequest {
 impl core::fmt::Debug for AccountRequest {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            AccountRequest::Register { username, .. } => f
+            AccountRequest::Register {
+                username,
+                display_name,
+                ..
+            } => f
                 .debug_struct("Register")
                 .field("username", username)
+                .field("display_name", display_name)
                 .field("auth_key", &"<redacted>")
                 .field("auth_salt_hex", &"<redacted>")
                 .field("wrap_salt_hex", &"<redacted>")
@@ -154,6 +186,10 @@ impl core::fmt::Debug for AccountRequest {
                 .debug_struct("Login")
                 .field("username", username)
                 .field("auth_key", &"<redacted>")
+                .finish(),
+            AccountRequest::ProfileSet { display_name } => f
+                .debug_struct("ProfileSet")
+                .field("display_name", display_name)
                 .finish(),
             AccountRequest::Logout => f.debug_struct("Logout").finish(),
             AccountRequest::RosterGet => f.debug_struct("RosterGet").finish(),
@@ -223,6 +259,10 @@ pub enum AccountResponse {
     Register {
         session_token: String,
         expires_ms: u64,
+        /// Echo of the stored name (ADR-007); `None` only for pre-0.8
+        /// servers. Always present when the account has one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_name: Option<String>,
     },
     LoginPre {
         auth_salt_hex: String,
@@ -236,8 +276,16 @@ pub enum AccountResponse {
         /// machine unwrap the roster without ever re-sending key material.
         wrapped_dek_hex: String,
         dek_nonce_hex: String,
+        /// The account's display name (ADR-007). `None` for name-less
+        /// legacy accounts — the client prompts for one before control.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_name: Option<String>,
     },
     Logout,
+    /// The stored name after a `profile_set` (trimmed form).
+    ProfileSet {
+        display_name: String,
+    },
     RosterGet {
         /// Empty string when `version == 0` (no roster stored yet).
         ciphertext_hex: String,
@@ -255,10 +303,15 @@ pub enum AccountResponse {
 impl core::fmt::Debug for AccountResponse {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            AccountResponse::Register { expires_ms, .. } => f
+            AccountResponse::Register {
+                expires_ms,
+                display_name,
+                ..
+            } => f
                 .debug_struct("Register")
                 .field("session_token", &"<redacted>")
                 .field("expires_ms", expires_ms)
+                .field("display_name", display_name)
                 .finish(),
             AccountResponse::LoginPre {
                 auth_salt_hex,
@@ -276,6 +329,10 @@ impl core::fmt::Debug for AccountResponse {
                 .field("dek_nonce_hex", &"<redacted>")
                 .finish(),
             AccountResponse::Logout => f.debug_struct("Logout").finish(),
+            AccountResponse::ProfileSet { display_name } => f
+                .debug_struct("ProfileSet")
+                .field("display_name", display_name)
+                .finish(),
             AccountResponse::RosterGet { version, .. } => f
                 .debug_struct("RosterGet")
                 .field("ciphertext_hex", &"<redacted>")
@@ -385,6 +442,7 @@ mod tests {
         vec![
             AccountRequest::Register {
                 username: "alice".to_owned(),
+                display_name: Some("Alice".to_owned()),
                 auth_key: "a".repeat(AUTH_KEY_HEX_LEN),
                 auth_salt_hex: "b".repeat(SALT_HEX_LEN),
                 wrap_salt_hex: "c".repeat(SALT_HEX_LEN),
@@ -397,6 +455,9 @@ mod tests {
             AccountRequest::Login {
                 username: "alice".to_owned(),
                 auth_key: "a".repeat(AUTH_KEY_HEX_LEN),
+            },
+            AccountRequest::ProfileSet {
+                display_name: "Alice Doe".to_owned(),
             },
             AccountRequest::Logout,
             AccountRequest::RosterGet,
@@ -424,6 +485,7 @@ mod tests {
     fn request_discriminants_and_fields_are_stable_snake_case() {
         let value = serde_json::to_value(sample_call(AccountRequest::Register {
             username: "alice".to_owned(),
+            display_name: Some("Alice".to_owned()),
             auth_key: "a".repeat(AUTH_KEY_HEX_LEN),
             auth_salt_hex: "b".repeat(SALT_HEX_LEN),
             wrap_salt_hex: "c".repeat(SALT_HEX_LEN),
@@ -434,9 +496,41 @@ mod tests {
         assert_eq!(value["protocol_version"], ACCOUNT_PROTOCOL_VERSION);
         assert_eq!(value["action"], "register");
         assert_eq!(value["username"], "alice");
+        assert_eq!(value["display_name"], "Alice");
         assert!(value.get("type").is_none(), "no signaling-style tag");
         // Flat layout: no nested body/payload object.
         assert!(value.get("payload").is_none());
+
+        // A pre-0.8 register (no display_name) stays byte-identical and
+        // decodes to None — additive-optional within version 1.
+        let value = serde_json::to_value(sample_call(AccountRequest::Register {
+            username: "alice".to_owned(),
+            display_name: None,
+            auth_key: "a".repeat(AUTH_KEY_HEX_LEN),
+            auth_salt_hex: "b".repeat(SALT_HEX_LEN),
+            wrap_salt_hex: "c".repeat(SALT_HEX_LEN),
+            wrapped_dek_hex: "d".repeat(96),
+            dek_nonce_hex: "e".repeat(NONCE_HEX_LEN),
+        }))
+        .expect("serialize");
+        assert!(
+            value.get("display_name").is_none(),
+            "None must not serialize"
+        );
+        let back: AccountCall = serde_json::from_value(value).unwrap();
+        match back.body {
+            AccountRequest::Register { display_name, .. } => {
+                assert_eq!(display_name, None);
+            }
+            other => panic!("expected Register, got {other:?}"),
+        }
+
+        let value = serde_json::to_value(sample_call(AccountRequest::ProfileSet {
+            display_name: "Alice Doe".to_owned(),
+        }))
+        .expect("serialize");
+        assert_eq!(value["action"], "profile_set");
+        assert_eq!(value["display_name"], "Alice Doe");
 
         let value = serde_json::to_value(sample_call(AccountRequest::RosterPut {
             ciphertext_hex: "ab".to_owned(),
@@ -454,6 +548,7 @@ mod tests {
             AccountResponse::Register {
                 session_token: "f".repeat(SESSION_TOKEN_HEX_LEN),
                 expires_ms: 1_750_000_000_000,
+                display_name: Some("Alice".to_owned()),
             },
             AccountResponse::LoginPre {
                 auth_salt_hex: "b".repeat(SALT_HEX_LEN),
@@ -464,8 +559,12 @@ mod tests {
                 expires_ms: 1_750_000_000_000,
                 wrapped_dek_hex: "d".repeat(96),
                 dek_nonce_hex: "e".repeat(NONCE_HEX_LEN),
+                display_name: Some("Alice".to_owned()),
             },
             AccountResponse::Logout,
+            AccountResponse::ProfileSet {
+                display_name: "Alice Doe".to_owned(),
+            },
             AccountResponse::RosterGet {
                 ciphertext_hex: String::new(),
                 nonce_hex: String::new(),
@@ -536,6 +635,23 @@ mod tests {
         ] {
             assert!(!valid_username(bad), "{bad:?} should be invalid");
         }
+    }
+
+    #[test]
+    fn display_name_rules() {
+        for good in ["Alice", "Alice Doe", "Igor", "J.-P. van Dijk", "Zoë"] {
+            assert!(valid_display_name(good), "{good:?} should be valid");
+        }
+        for bad in [
+            "",
+            "   ",                                           // trims to empty
+            "\t",                                            // control char
+            "Alice\u{7}",                                    // bell
+            "a".repeat(DISPLAY_NAME_MAX_CHARS + 1).as_str(), // too long
+        ] {
+            assert!(!valid_display_name(bad), "{bad:?} should be invalid");
+        }
+        assert!(valid_display_name(&"a".repeat(DISPLAY_NAME_MAX_CHARS)));
     }
 
     #[test]

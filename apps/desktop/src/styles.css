@@ -1023,3 +1023,230 @@ legend {
 .conversation-compose input {
   flex: 1;
 }
+
+/* ---- 0.8.0: top menu bar (File / Config / Help) + modals + toast ------- */
+
+.menu-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu-button:hover,
+.menu-button.menu-open {
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--panel-2);
+}
+
+.menu-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Modal shell (Config, About). */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 18, 0.66);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  padding: 24px;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  max-width: 720px;
+  width: 100%;
+  max-height: min(84vh, 780px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.about-modal {
+  max-width: 420px;
+  padding-bottom: 12px;
+}
+
+.about-modal p {
+  margin: 10px 16px 0;
+}
+
+.config-nav {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+  flex-wrap: wrap;
+}
+
+.config-nav-active {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 10px;
+}
+
+.config-body {
+  overflow-y: auto;
+  padding: 8px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  scroll-margin-top: 8px;
+}
+
+.config-body section {
+  scroll-margin-top: 8px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-section h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.settings-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.settings-section input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.settings-section .chip {
+  margin-left: 8px;
+}
+
+/* ADR-006 §5 notice as a passive toast (0.8.0: no OK button). */
+.circle-toast {
+  margin: 12px 0 0;
+  animation: toast-fade 12s ease-in forwards;
+}
+
+@keyframes toast-fade {
+  0%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ADR-007 add-your-name card (legacy accounts, one time). */
+.name-prompt {
+  margin-bottom: 12px;
+  border-color: var(--accent);
+}
+
+.name-prompt h3 {
+  margin: 0 0 6px;
+}
+
+.name-prompt form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.name-prompt label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.name-prompt input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 9px;
+  font: inherit;
+}
+
+/* Inline text link (assistant setup pointer). */
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}

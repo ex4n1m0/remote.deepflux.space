@@ -23,10 +23,11 @@ describe("accountReducer", () => {
     let state = initialAccountState();
     state = accountReducer(state, {
       type: "state",
-      state: { status: "logged_in", username: "alice", expires_ms: 123 },
+      state: { status: "logged_in", username: "alice", display_name: "Alice", expires_ms: 123 },
     });
     expect(state.loaded).toBe(true);
     expect(state.username).toBe("alice");
+    expect(state.displayName).toBe("Alice");
     expect(state.expiresMs).toBe(123);
 
     state = accountReducer(state, {
@@ -38,9 +39,10 @@ describe("accountReducer", () => {
 
     state = accountReducer(state, {
       type: "state",
-      state: { status: "saved_account", username: "alice", expires_ms: null },
+      state: { status: "saved_account", username: "alice", display_name: null, expires_ms: null },
     });
     expect(state.status).toBe("saved_account");
+    expect(state.displayName).toBeNull();
     expect(state.computers).toHaveLength(0);
     expect(state.online).toHaveLength(0);
     expect(state.expiresMs).toBeNull();
@@ -77,6 +79,17 @@ describe("accountGate", () => {
     expect(accountGate({ status: "logged_in", loaded: true }, false, false)).toBe("app");
     expect(accountGate({ status: "logged_out", loaded: true }, true, true)).toBe("onboarding");
     expect(accountGate({ status: "saved_account", loaded: true }, true, true)).toBe("unlock");
+  });
+
+  // ADR-007: on a circle-joined (family-build) machine the app is the
+  // default screen — but an EXPLICIT sign-in request (header button, or
+  // the blocked-Control card) must still open the card; the gate order
+  // decides whether Control-while-signed-out is a dead button.
+  it("circle-joined goes to the app, but an explicit sign-in still opens the card", () => {
+    expect(accountGate({ status: "logged_out", loaded: true }, false, false, { circleJoined: true })).toBe("app");
+    expect(accountGate({ status: "logged_out", loaded: true }, true, true, { circleJoined: true })).toBe("onboarding");
+    expect(accountGate({ status: "saved_account", loaded: true }, true, true, { circleJoined: true })).toBe("unlock");
+    expect(accountGate({ status: "saved_account", loaded: true }, false, false, { circleJoined: true })).toBe("app");
   });
 });
 

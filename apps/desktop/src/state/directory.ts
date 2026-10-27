@@ -74,10 +74,10 @@ export const CIRCLE_OFFLINE_HINT =
 /** Friendly copy for circle errors (the `accountErrorCopy` pattern). */
 export function circleErrorCopy(raw: string): string {
   if (raw.includes("64 hex")) {
-    return "That invite code doesn't look right — copy the whole 64-character code from the circle owner's Settings.";
+    return "That invite code doesn't look right — copy the whole 64-character code from the circle owner's Config.";
   }
   if (raw.includes("Already in a circle")) {
-    return "This machine is already in a circle — leave it first (Settings → Family circle).";
+    return "This machine is already in a circle — leave it first (Config → Family circle).";
   }
   if (raw.includes("circle_full")) {
     return "The circle is full (128 machines). Ask the owner to remove unused machines or create a new circle.";

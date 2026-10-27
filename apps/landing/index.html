@@ -104,7 +104,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 <header class="hero">
   <div class="wrap">
     <img class="hero-logo" src="./assets/logo.png" width="1536" height="1024" alt="Remote by DeepFlux — interlocking blue and teal screens on midnight navy">
-    <div class="pill"><span class="dot"></span> v0.7.2 beta — Windows 10/11</div>
+    <div class="pill"><span class="dot"></span> v0.8.0 beta — Windows 10/11</div>
     <h1>Your screen. Your network.<br><em>Nobody in between.</em></h1>
     <p class="lede">
       Remote is a peer-to-peer remote desktop for Windows. After a short handshake, your
@@ -182,7 +182,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </div>
       <div class="card">
         <h3><span class="ico">👤</span> Your computers, one login</h3>
-        <p>Sign in with a username and password to keep your machines in one saved list — encrypted locally and on the sync server, unlocked by a key only you hold. Skip it and nothing changes: a short connection code still works, no email ever.</p>
+        <p>Sign in with a username and your name to keep your machines in one saved list — encrypted locally and on the sync server, unlocked by a key only you hold. The name is what the other machine sees when you ask to control it, so controlling needs an account; machines without one can still be controlled and stay in the same list, and a short connection code still works, no email ever.</p>
       </div>
     </div>
   </div>
@@ -227,7 +227,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </div>
       <div class="card">
         <h3><span class="ico">🧑‍💻</span> An assistant on every machine</h3>
-        <p>Each machine&rsquo;s app has a built-in assistant (bring your own API key). Ask in plain language — it can set the app up for you, download files (multi-segment, resumable — you approve each new site once), and during a session it sees the remote screen and can click, type and scroll to get things done there.</p>
+        <p>Each machine&rsquo;s app has a built-in assistant that works out of the box — no API key to paste. Ask in plain language — it can set the app up for you, download files (multi-segment, resumable — you approve each new site once), and during a session it sees the remote screen and can click, type and scroll to get things done there.</p>
       </div>
       <div class="card">
         <h3><span class="ico">🤝</span> Agents hand tasks to each other</h3>
@@ -251,11 +251,11 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </div>
       <div class="step">
         <h3>Press Control</h3>
-        <p>Pick a machine and press Control. One press — nothing to enable, no codes to exchange. Everything is already running.</p>
+        <p>Sign in once with your name, then pick a machine and press Control — one press, nothing to enable, no codes to exchange. Everything is already running.</p>
       </div>
       <div class="step">
         <h3>They allow it — once</h3>
-        <p>The controlled machine answers one request: <em>Allow once</em>, <em>Always allow this machine</em>, or <em>Decline</em>. Trusted machines reconnect silently afterwards.</p>
+        <p>The controlled machine answers one request — the prompt shows who&rsquo;s asking, their name beside the machine code: <em>Allow once</em>, <em>Always allow this machine</em>, or <em>Decline</em>. Trusted machines reconnect silently afterwards.</p>
       </div>
     </div>
     <p class="sub" style="margin-top:28px">
@@ -271,13 +271,13 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <h2>Download</h2>
     <p class="sub">Windows 10/11, 64-bit. Per-user install — no admin prompt.</p>
     <div class="cta-row" style="margin-top:28px">
-      <a class="btn btn-primary" href="./download/Remote-Desktop-0.7.2-x64-setup.exe" download>
+      <a class="btn btn-primary" href="./download/Remote-Desktop-0.8.0-x64-setup.exe" download>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Remote-Desktop-0.7.2-x64-setup.exe
+        Remote-Desktop-0.8.0-x64-setup.exe
       </a>
     </div>
     <div class="kv">
-      <span>version</span><b>0.7.2 beta</b>
+      <span>version</span><b>0.8.0 beta</b>
       <span>size</span><b>~7.3 MB</b>
       <span>installer</span><b>NSIS, per-user</b>
       <span>signature</span><b>unsigned (beta)</b>
@@ -285,7 +285,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <div class="fineprint">
       <b>Know what you&rsquo;re installing — beta limitations, stated plainly:</b>
       <ul>
-        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Settings &rarr; Family circle). Joining grants no control on its own: connecting needs the owner&rsquo;s approval, and only machines someone explicitly trusted with &ldquo;Always allow&rdquo; reconnect without asking again.</li>
+        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Config &rarr; Family circle). Joining grants no control on its own: connecting needs the owner&rsquo;s approval, and only machines someone explicitly trusted with &ldquo;Always allow&rdquo; reconnect without asking again.</li>
         <li>Unsigned build: Windows SmartScreen will warn on first run. That&rsquo;s expected for a beta; code signing is on the roadmap.</li>
         <li>Direct connections only: on symmetric NAT or networks that block UDP, the session can&rsquo;t be established — the app will tell you plainly rather than fall back to a relay. Relaying is a deliberate non-feature.</li>
         <li>One controlled machine per session; Windows-to-Windows only for now.</li>

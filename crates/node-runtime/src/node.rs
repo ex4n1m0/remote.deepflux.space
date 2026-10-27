@@ -116,6 +116,26 @@ fn stamp_pairing_proof(
     }
 }
 
+/// Stamp the ADR-007 requester name onto a machine-built `connect_request`
+/// `Send` action. Like the pairing proof, the pure session machine cannot
+/// know it (account data lives in the app layer), so the composition layer
+/// patches the outgoing action in place.
+fn stamp_requester_name(actions: &mut [Action], requester_name: &str) {
+    for action in actions.iter_mut() {
+        let Action::Send(env) = action else {
+            continue;
+        };
+        let SignalingBody::ConnectRequest {
+            requester_name: name,
+            ..
+        } = &mut env.body
+        else {
+            continue;
+        };
+        *name = Some(requester_name.to_owned());
+    }
+}
+
 /// Callbacks the embedding binary (rig, tests, future Tauri shell) uses to
 /// react to node-level effects. Every method has a no-op default; input
 /// payloads and SDP bodies never appear here (invariant 6).
@@ -126,12 +146,16 @@ pub trait NodeObserver {
     /// `pairing_proof_hex` is the controller's claimed pairing proof
     /// (ADR-006), forwarded verbatim — the app layer verifies it against
     /// its pairing store and decides silent-accept vs prompt.
+    /// `requester_name` (ADR-007) is the controller's account display name
+    /// from the wire — advisory, the device id stays the identity.
+    #[allow(clippy::too_many_arguments)]
     fn prompt_consent(
         &mut self,
         _controller_device_id: &str,
         _session_id: &str,
         _ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _requester_name: Option<&str>,
         _message_id: &str,
     ) {
     }
@@ -361,10 +385,15 @@ impl Node {
     /// (the composition layer, which owns crypto) patches the machine's
     /// `Send` action in place. The secret itself never appears in any
     /// envelope or log.
+    ///
+    /// `requester_name` (ADR-007): the caller's account display name,
+    /// stamped the same way. Our 0.8 app refuses to connect without one;
+    /// `None` keeps the field absent for older/test callers.
     pub fn controller_connect(
         &mut self,
         host_device_id: &str,
         pairing_secret_hex: Option<&str>,
+        requester_name: Option<&str>,
         observer: &mut dyn NodeObserver,
     ) {
         if let Some(mut actions) = self.step_controller_raw(
@@ -376,6 +405,9 @@ impl Node {
         ) {
             if let Some(secret) = pairing_secret_hex {
                 stamp_pairing_proof(&mut actions, secret, host_device_id, self.clock.now_ms());
+            }
+            if let Some(name) = requester_name {
+                stamp_requester_name(&mut actions, name);
             }
             self.apply(MachineKind::Controller, actions, observer);
         }
@@ -514,6 +546,7 @@ impl Node {
             SignalingBody::ConnectRequest {
                 capabilities,
                 pairing_proof_hex,
+                requester_name,
             } => {
                 self.step_host(
                     HostEvent::IncomingRequest {
@@ -522,6 +555,7 @@ impl Node {
                         session_id: session_id.unwrap_or_default(),
                         capabilities,
                         pairing_proof_hex,
+                        requester_name,
                     },
                     observer,
                 );
@@ -877,6 +911,7 @@ impl Node {
                     session_id,
                     ai_session,
                     pairing_proof_hex,
+                    requester_name,
                     message_id,
                 } => {
                     observer.prompt_consent(
@@ -884,6 +919,7 @@ impl Node {
                         &session_id,
                         ai_session,
                         pairing_proof_hex.as_deref(),
+                        requester_name.as_deref(),
                         &message_id,
                     );
                 }

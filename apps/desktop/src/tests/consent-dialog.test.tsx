@@ -30,9 +30,13 @@ describe("consentCopy", () => {
 
   it("bare code when no nickname; distinct AI-session copy", () => {
     expect(consentCopy(consent({})).title).toContain("0123456789abcdef asks");
+    // ADR-007: with a name, the AI title says WHOSE assistant; without
+    // one, the code only (no weird possessive on a hex id).
     const ai = consentCopy(consent({ ai_session: true, requester_name: "Lab PC" }));
-    expect(ai.title).toContain("AI assistant asks to control");
-    expect(ai.alwaysHint.toLowerCase()).toContain("agent");
+    expect(ai.title).toContain("Lab PC's AI assistant (0123456789abcdef) asks to control");
+    const aiBare = consentCopy(consent({ ai_session: true }));
+    expect(aiBare.title).toContain("An AI assistant (0123456789abcdef) asks to control");
+    expect(ai.alwaysHint.toLowerCase()).toContain("ai assistant");
   });
 });
 
@@ -82,7 +86,7 @@ describe("ConsentDialog", () => {
     );
     // Title text appears twice by design (dialog + the screen-reader
     // live region) — assert at least one match, then the button wiring.
-    expect(screen.getAllByText(/AI assistant asks to control/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/AI assistant \(0123456789abcdef\) asks to control/i).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(onAccept).toHaveBeenCalledWith(false);
   });

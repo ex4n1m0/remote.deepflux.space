@@ -74,12 +74,15 @@ export const api = {
   // Accounts & roster (post-MVP). Passwords are arguments ONLY — results
   // never carry them (invariant 6 discipline).
   accountState: (): Promise<AccountState> => invoke("account_state"),
-  accountRegister: (username: string, password: string): Promise<AccountState> =>
-    invoke("account_register", { args: { username, password } }),
+  accountRegister: (username: string, displayName: string, password: string): Promise<AccountState> =>
+    invoke("account_register", { args: { username, display_name: displayName, password } }),
   accountLogin: (username: string, password: string): Promise<AccountState> =>
     invoke("account_login", { args: { username, password } }),
   accountUnlock: (password: string): Promise<AccountState> =>
     invoke("account_unlock", { args: { password } }),
+  // ADR-007: set/update the signed-in account's display name.
+  accountSetName: (displayName: string): Promise<AccountState> =>
+    invoke("account_set_name", { args: { display_name: displayName } }),
   accountLogout: (): Promise<AccountState> => invoke("account_logout"),
   computersList: (): Promise<ComputersList> => invoke("computers_list"),
   computerAdd: (name: string, code: string): Promise<ComputersList> =>
@@ -134,12 +137,15 @@ export const api = {
   // In-app assistant (ADR-005). The API key argument goes straight to the
   // Credential Manager on the Rust side — it is never stored in TS state.
   agentStatus: (): Promise<AssistantStatus> => invoke("agent_status"),
-  agentConfigure: (args: { apiKey?: string; model?: string }): Promise<AssistantStatus> =>
+  agentConfigure: (args: { apiKey?: string; baseUrl?: string; model?: string }): Promise<AssistantStatus> =>
     invoke("agent_configure", { args }),
   agentSend: (text: string): Promise<void> => invoke("agent_send", { args: { text } }),
   agentReset: (): Promise<void> => invoke("agent_reset"),
   agentConfirm: (id: number, allow: boolean, remember: boolean): Promise<void> =>
     invoke("agent_confirm", { id, allow, remember }),
+
+  // File → Quit: same shutdown path as the tray's Quit.
+  quitApp: (): Promise<void> => invoke("quit_app"),
 
   // Machine chat + pairing (RD-022/RD-023).
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>

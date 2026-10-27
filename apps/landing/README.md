@@ -15,7 +15,9 @@ There is ONE installer: the family build with the embedded circle key
 addendum). The website hosts it — that auto-join is the distribution model.
 
 ```bash
-# 1. build the installer (circle-only unless DEEPFLUX_AGENT_KEY is exported)
+# 1. build the installer — REQUIRES ~/.deepflux/agent-key.txt (the build
+#    fails without it; since 0.8.0 the key is file-backed exactly like the
+#    circle key, never a transient env var)
 scripts/build-family.sh
 
 # 2. stage it under the public filename (NOT committed to git — build artifact;

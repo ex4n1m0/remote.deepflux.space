@@ -47,6 +47,26 @@ export const ROSTER_MAX_CIPHERTEXT_BYTES = 64 * 1024;
 /** Maximum codes per `presence` query. */
 export const PRESENCE_MAX_CODES = 50;
 
+/** Display-name bound (ADR-007): 1-64 chars after trimming. */
+export const DISPLAY_NAME_MAX_CHARS = 64;
+
+/**
+ * Display name (ADR-007): the person name shown to hosts on control
+ * requests. Clients send the TRIMMED form; the trimmed-form and no-control-
+ * chars refinements pin that here so server storage never sees padding or
+ * control bytes. Mirrors Rust's `valid_display_name` exactly: the length
+ * cap counts UNICODE CODE POINTS (`[...v].length`, not UTF-16 units) and
+ * the control class covers C0 + DEL + C1 (Unicode Cc).
+ */
+export const displayNameSchema = z
+  .string()
+  .min(1)
+  .refine((v) => [...v].length <= DISPLAY_NAME_MAX_CHARS, {
+    message: `must be at most ${DISPLAY_NAME_MAX_CHARS} characters`,
+  })
+  .refine((v) => v === v.trim(), 'must be the trimmed form (clients trim before sending)')
+  .refine((v) => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'control characters are not allowed');
+
 /**
  * Username rules: 3-32 chars of [a-z0-9._-], starting with a letter or digit.
  * Clients normalize to lowercase before sending; the service does not.
@@ -104,6 +124,9 @@ export const accountActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('register'),
     username: usernameSchema,
+    // ADR-007 additive-optional: the person name shown on control requests.
+    // Pre-0.8 clients omit it; the 0.8 client requires it at creation.
+    display_name: displayNameSchema.optional(),
     auth_key: authKeySchema,
     auth_salt_hex: saltSchema,
     wrap_salt_hex: saltSchema,
@@ -118,6 +141,10 @@ export const accountActionSchema = z.discriminatedUnion('action', [
     action: z.literal('login'),
     username: usernameSchema,
     auth_key: authKeySchema,
+  }),
+  z.object({
+    action: z.literal('profile_set'),
+    display_name: displayNameSchema,
   }),
   z.object({ action: z.literal('logout') }),
   z.object({ action: z.literal('roster_get') }),
@@ -137,6 +164,7 @@ export const KNOWN_ACCOUNT_ACTIONS = [
   'register',
   'login_pre',
   'login',
+  'profile_set',
   'logout',
   'roster_get',
   'roster_put',
@@ -167,6 +195,8 @@ export const accountResponseActionSchema = z.discriminatedUnion('action', [
     action: z.literal('register'),
     session_token: sessionTokenSchema,
     expires_ms: z.number().int().nonnegative(),
+    /** Echo of the stored name (ADR-007); absent for pre-0.8 servers. */
+    display_name: displayNameSchema.optional(),
   }),
   z.object({
     action: z.literal('login_pre'),
@@ -179,8 +209,14 @@ export const accountResponseActionSchema = z.discriminatedUnion('action', [
     expires_ms: z.number().int().nonnegative(),
     wrapped_dek_hex: wrappedDekSchema,
     dek_nonce_hex: nonceSchema,
+    /** The account's name (ADR-007); absent for name-less legacy accounts. */
+    display_name: displayNameSchema.optional(),
   }),
   z.object({ action: z.literal('logout') }),
+  z.object({
+    action: z.literal('profile_set'),
+    display_name: displayNameSchema,
+  }),
   z.object({
     action: z.literal('roster_get'),
     /** Empty string iff version == 0 (no roster stored yet). */

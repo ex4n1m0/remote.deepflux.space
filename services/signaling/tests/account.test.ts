@@ -137,6 +137,8 @@ const MAIN = `acct${runId}a`; // primary account reused across cases
 const OTHER = `acct${runId}b`; // second account (rate-limit key separation)
 const RL = `acct${runId}rl`; // rate-limit victim
 const WP = `acct${runId}wp`; // wrong-password victim
+const NAMED = `acct${runId}n`; // ADR-007: registered WITH a display name
+const LEGACY = `acct${runId}l`; // ADR-007: pre-0.8 shape (no name)
 
 let mainToken = '';
 
@@ -251,6 +253,58 @@ test('duplicate register is a 409 username_taken', async () => {
   const dup = await call(registerBody(MAIN));
   assert.equal(dup.status, 409);
   assert.equal(dup.json['error'], 'username_taken');
+});
+
+test('ADR-007 display_name: register echo, legacy absence, profile_set, auth and validation', async () => {
+  // Register WITH a name: the response echoes it, and so does every login.
+  const reg = await call({ ...registerBody(NAMED), display_name: 'Alice Doe' });
+  assert.equal(reg.status, 200, JSON.stringify(reg.json));
+  assert.equal(reg.json['display_name'], 'Alice Doe');
+  const namedToken = String(reg.json['session_token']);
+  const namedLogin = await call({ protocol_version: V, action: 'login', username: NAMED, auth_key: AUTH_KEY });
+  assert.equal(namedLogin.status, 200);
+  assert.equal(namedLogin.json['display_name'], 'Alice Doe');
+
+  // Pre-0.8 shape (no display_name key at all) stays valid, and its
+  // logins carry no name — the client prompts for one before control.
+  const legacyReg = await call(registerBody(LEGACY));
+  assert.equal(legacyReg.status, 200, JSON.stringify(legacyReg.json));
+  assert.ok(!('display_name' in legacyReg.json), 'legacy register response has no name');
+  const legacyToken = String(legacyReg.json['session_token']);
+  const legacyLogin = await call({ protocol_version: V, action: 'login', username: LEGACY, auth_key: AUTH_KEY });
+  assert.equal(legacyLogin.status, 200);
+  assert.ok(!('display_name' in legacyLogin.json), 'legacy login response has no name');
+
+  // profile_set stores the name (the WIRE contract pins the trimmed form —
+  // clients trim before sending, the server stores verbatim); logins echo
+  // it from then on.
+  const set = await call(
+    { protocol_version: V, action: 'profile_set', display_name: 'Legacy User' },
+    { token: legacyToken },
+  );
+  assert.equal(set.status, 200, JSON.stringify(set.json));
+  assert.equal(set.json['action'], 'profile_set');
+  assert.equal(set.json['display_name'], 'Legacy User');
+  const relapse = await call({ protocol_version: V, action: 'login', username: LEGACY, auth_key: AUTH_KEY });
+  assert.equal(relapse.status, 200);
+  assert.equal(relapse.json['display_name'], 'Legacy User');
+
+  // Bearer discipline: profile_set without a token is 401.
+  const anon = await call({ protocol_version: V, action: 'profile_set', display_name: 'X' });
+  assert.equal(anon.status, 401);
+  assert.equal(anon.json['error'], 'unauthorized');
+
+  // Validation: empty / oversize / control-char / untrimmed names are 400.
+  for (const bad of ['', ' ', 'x'.repeat(65), 'bad\u0007name', ' padded ']) {
+    const r = await call({ protocol_version: V, action: 'profile_set', display_name: bad }, { token: legacyToken });
+    assert.equal(r.status, 400, `expected 400 for ${JSON.stringify(bad)}`);
+    assert.equal(r.json['error'], 'malformed');
+  }
+  // Same rules on register.
+  const badReg = await call({ ...registerBody(`acct${runId}z`), display_name: 'x'.repeat(65) });
+  assert.equal(badReg.status, 400);
+  assert.equal(badReg.json['error'], 'malformed');
+  void namedToken;
 });
 
 test('wrong password -> 401; unknown user leaks nothing (same error, decoy salts well-formed)', async () => {

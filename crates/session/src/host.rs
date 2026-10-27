@@ -79,14 +79,16 @@ pub enum HostEvent {
     HeartbeatDue,
     /// A controller sent `connect_request`. Deduplicated by `message_id`.
     /// Carries the controller's advertised capabilities so the consent
-    /// prompt can distinguish AI-agent control (ADR-004), and the pairing
-    /// proof (ADR-006) forwarded verbatim for app-layer verification.
+    /// prompt can distinguish AI-agent control (ADR-004), the pairing
+    /// proof (ADR-006) forwarded verbatim for app-layer verification, and
+    /// the requester's account display name (ADR-007, advisory).
     IncomingRequest {
         message_id: MessageId,
         controller_device_id: DeviceId,
         session_id: SessionId,
         capabilities: Capabilities,
         pairing_proof_hex: Option<String>,
+        requester_name: Option<String>,
     },
     /// Host user accepted the prompt; carries the one-time secret to hand over.
     ConsentAccepted { secret: SessionSecret },
@@ -241,7 +243,7 @@ impl HostSession {
                     session_id,
                     capabilities,
                     pairing_proof_hex,
-                    ..
+                    requester_name,
                 } => {
                     let request_message_id = message_id.clone();
                     let ai_session = capabilities.features.has(FeatureFlags::AI_SESSION);
@@ -257,6 +259,7 @@ impl HostSession {
                             session_id,
                             ai_session,
                             pairing_proof_hex,
+                            requester_name,
                             message_id: request_message_id,
                         },
                         Action::ScheduleTimer {
@@ -806,6 +809,7 @@ mod tests {
                 session_id: "ctrl-b-1".to_owned(),
                 capabilities: caps(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             HostEvent::ConsentAccepted {
                 secret: SessionSecret("s".to_owned()),
@@ -937,6 +941,7 @@ mod tests {
                     session_id: "ctrl-b-1".to_owned(),
                     capabilities: caps(),
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
                 10,
             )
@@ -951,6 +956,7 @@ mod tests {
                     session_id: "ctrl-b-1".to_owned(),
                     capabilities: caps(),
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
                 11,
             )
@@ -970,6 +976,7 @@ mod tests {
                 session_id: "ctrl-b-1".to_owned(),
                 capabilities: caps(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             10,
         )
@@ -982,6 +989,7 @@ mod tests {
                     session_id: "ctrl-c-1".to_owned(),
                     capabilities: caps(),
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
                 20,
             )
@@ -1021,6 +1029,7 @@ mod tests {
                     session_id: "ctrl-ai-1".to_owned(),
                     capabilities: ai_caps,
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
                 10,
             )
@@ -1043,6 +1052,7 @@ mod tests {
                     session_id: "ctrl-human-1".to_owned(),
                     capabilities: caps(),
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
                 10,
             )
@@ -1075,6 +1085,7 @@ mod tests {
                         session_id: "ctrl-c-7".to_owned(),
                         capabilities: caps(),
                         pairing_proof_hex: None,
+                        requester_name: None,
                     },
                     20,
                 )
@@ -1104,6 +1115,7 @@ mod tests {
                 session_id: "ctrl-b-1".to_owned(),
                 capabilities: caps(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             10,
         )
@@ -1134,6 +1146,7 @@ mod tests {
                 session_id: "ctrl-b-1".to_owned(),
                 capabilities: caps(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             10,
         )

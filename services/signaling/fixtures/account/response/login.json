@@ -1,6 +1,7 @@
 {
   "action": "login",
   "dek_nonce_hex": "4e4e4e4e4e4e4e4e4e4e4e4e",
+  "display_name": "Alice Doe",
   "expires_ms": 1760000000000,
   "ok": true,
   "protocol_version": 1,

@@ -8,7 +8,7 @@
  * client-side; trusted (paired) rows carry the shield badge; circle-only
  * rows carry the circle tag. Also home to the pinned "This machine" card
  * (host role). */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { hostView } from "../state/mapping";
 import type { Computer, DirectoryMachine, Favorite, HostStateName } from "../types";
 
@@ -210,6 +210,7 @@ export function MachinesRail({
   thisCode,
   hostState,
   sharing,
+  addSignal,
   onPick,
   onConnect,
   onAdd,
@@ -220,6 +221,8 @@ export function MachinesRail({
   thisCode: string;
   hostState: HostStateName;
   sharing: boolean;
+  /** Increments when File → Add machine… is picked (opens the add form). */
+  addSignal: number;
   onPick: (code: string) => void;
   onConnect: (code: string) => void;
   onAdd: (name: string, code: string) => Promise<void>;
@@ -231,6 +234,10 @@ export function MachinesRail({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (addSignal > 0) setAdding(true);
+  }, [addSignal]);
 
   const submitAdd = async (thenControl: boolean) => {
     const c = code.trim().toLowerCase();
@@ -322,7 +329,7 @@ export function MachinesRail({
           <li className="rail-empty muted">
             {filtering
               ? "No machines match that search."
-              : "No machines yet. This one list is for messaging and remote control — add a machine with its connection code, join a family circle in Settings, or ask the assistant."}
+              : "No machines yet. This one list is for messaging and remote control — add a machine with its connection code, join a family circle in Config → Family circle, or ask the assistant."}
           </li>
         ) : (
           (() => {

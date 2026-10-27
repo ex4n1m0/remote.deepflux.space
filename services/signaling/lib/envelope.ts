@@ -16,6 +16,7 @@
  *    a v0 payload cannot be mistaken for a validation error.
  */
 import { z } from 'zod';
+import { displayNameSchema } from './account-schema.ts';
 
 export const SIGNALING_PROTOCOL_VERSION = 1 as const;
 export const SIGNALING_SERVICE_ID = 'signaling';
@@ -92,6 +93,12 @@ export const signalingBodySchema = z.discriminatedUnion('type', [
       .string()
       .regex(/^[0-9a-f]{64}$|^[0-9a-f]{80}$/, 'expected 64 or 80 lowercase hex chars')
       .optional(),
+    // ADR-007 additive-optional: the controller's account display name,
+    // shown beside the device id in the host's consent prompt. Same
+    // stripped-if-unknown rule as above — MUST be a known key. Validated
+    // with the account surface's name schema (any peer can send this
+    // field; hosts render it, so the shape is pinned here too).
+    requester_name: displayNameSchema.optional(),
   }),
   z.object({ type: z.literal('accept'), session_secret: z.string().min(1) }),
   z.object({ type: z.literal('reject'), reason: z.enum(['busy', 'declined', 'timeout', 'unavailable']) }),

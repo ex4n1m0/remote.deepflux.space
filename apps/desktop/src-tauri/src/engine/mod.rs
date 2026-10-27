@@ -80,6 +80,10 @@ pub enum EngineCmd {
         /// to stamp the pairing proof on the outgoing `connect_request`.
         /// Redacted wrapper — see `chat::PairingSecret`.
         pairing_secret: Option<crate::chat::PairingSecret>,
+        /// ADR-007: the account display name stamped on the outgoing
+        /// `connect_request` so the host's prompt says who is asking.
+        /// The command layer refuses to connect without one.
+        requester_name: Option<String>,
     },
     CancelConnect,
     Disconnect,
@@ -357,6 +361,10 @@ pub enum EngineEvent {
         /// app layer to verify against its pairing store (v2: message-id
         /// bound + freshness-checked; not secret material).
         pairing_proof_hex: Option<String>,
+        /// ADR-007: the controller's account display name from the wire
+        /// (advisory; the device id stays the identity). `None` on
+        /// pre-0.8 controllers.
+        requester_name: Option<String>,
         /// The request envelope's message_id — part of the v2 proof MAC.
         message_id: String,
     },
@@ -891,6 +899,7 @@ pub fn scale_from_name(name: &str) -> Option<ScaleMode> {
 struct PendingConnect {
     code: String,
     pairing_secret: Option<crate::chat::PairingSecret>,
+    requester_name: Option<String>,
     queued_at: Instant,
 }
 
@@ -1221,7 +1230,8 @@ impl Engine {
             EngineCmd::Connect {
                 code,
                 pairing_secret,
-            } => self.cmd_connect(code, pairing_secret),
+                requester_name,
+            } => self.cmd_connect(code, pairing_secret, requester_name),
             EngineCmd::CancelConnect => {
                 self.pending_connect = None;
                 match self.node.controller_state() {
@@ -1352,7 +1362,12 @@ impl Engine {
     /// connect now; still coming online (first press after launch, or
     /// the auto re-online gap after a session) → start the role if it
     /// is down and defer the connect to the Online edge.
-    fn cmd_connect(&mut self, code: String, pairing_secret: Option<crate::chat::PairingSecret>) {
+    fn cmd_connect(
+        &mut self,
+        code: String,
+        pairing_secret: Option<crate::chat::PairingSecret>,
+        requester_name: Option<String>,
+    ) {
         if host_in_session(self.node.host_state()) {
             self.error(
                 "role_conflict",
@@ -1362,7 +1377,7 @@ impl Engine {
             return;
         }
         match self.node.controller_state() {
-            ControllerState::Online => self.connect_now(code, pairing_secret),
+            ControllerState::Online => self.connect_now(code, pairing_secret, requester_name),
             state if controller_in_session(state) => self.error(
                 "role_conflict",
                 "Finish or cancel the current control session first.",
@@ -1382,6 +1397,7 @@ impl Engine {
                 self.pending_connect = Some(PendingConnect {
                     code,
                     pairing_secret,
+                    requester_name,
                     queued_at: Instant::now(),
                 });
             }
@@ -1389,13 +1405,18 @@ impl Engine {
     }
 
     /// The connect body shared by the immediate and deferred paths.
-    fn connect_now(&mut self, code: String, pairing_secret: Option<crate::chat::PairingSecret>) {
+    fn connect_now(
+        &mut self,
+        code: String,
+        pairing_secret: Option<crate::chat::PairingSecret>,
+        requester_name: Option<String>,
+    ) {
         self.pending_connect = None;
         self.ensure_transport(MachineKind::Controller);
         self.observer.set_current_peer(code.clone());
         let secret = pairing_secret.as_ref().map(|s| s.0.as_str());
         self.node
-            .controller_connect(&code, secret, &mut self.observer);
+            .controller_connect(&code, secret, requester_name.as_deref(), &mut self.observer);
     }
 
     /// Fire a deferred connect once the controller role is Online, or
@@ -1415,7 +1436,9 @@ impl Engine {
             return;
         }
         match self.node.controller_state() {
-            ControllerState::Online => self.connect_now(pending.code, pending.pairing_secret),
+            ControllerState::Online => {
+                self.connect_now(pending.code, pending.pairing_secret, pending.requester_name)
+            }
             // RegistrationFailed dropped the role back to Idle — restart
             // it (legal from Idle) so the deferral rides the retry.
             ControllerState::Idle if pending.queued_at.elapsed() < PENDING_CONNECT_TIMEOUT => {

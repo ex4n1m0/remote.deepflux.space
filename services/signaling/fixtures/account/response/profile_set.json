@@ -1,0 +1,6 @@
+{
+  "action": "profile_set",
+  "display_name": "Alice Doe",
+  "ok": true,
+  "protocol_version": 1
+}

@@ -43,6 +43,7 @@ describe("unifiedMachines (ADR-003 union)", () => {
 
 describe("MachinesRail", () => {
   const base = {
+  addSignal: 0,
     thisCode: "abcd1234efgh5678",
     hostState: "Idle" as const,
     sharing: false,
@@ -162,26 +163,27 @@ describe("AssistantPanel", () => {
     confirm: null,
     answerConfirm: vi.fn(async () => {}),
     send: vi.fn(async () => {}),
-    configure: vi.fn(async () => {}),
+    configure: vi.fn(async () => true),
     reset: vi.fn(async () => {}),
     ...over,
   });
 
   it("shows prompt starters when configured and idle", () => {
-    render(<AssistantPanel assistant={makeAssistant()} />);
+    render(<AssistantPanel assistant={makeAssistant()} onOpenConfig={() => {}} />);
     expect(screen.getByText("Save a machine for me")).toBeTruthy();
     expect(screen.getByPlaceholderText(/ask anything/i)).toBeTruthy();
   });
 
-  it("shows the key setup card when unconfigured and disables the composer", () => {
+  it("points at Config for the key when unconfigured and disables the composer", () => {
     render(
       <AssistantPanel
         assistant={makeAssistant({
           status: { configured: false, busy: false, base_url: "", model: "" },
         })}
+        onOpenConfig={() => {}}
       />,
     );
-    expect(screen.getByLabelText("API key")).toBeTruthy();
+    expect(screen.getByText(/Config → Assistant/)).toBeTruthy();
     expect(screen.getByLabelText("Message the assistant")).toHaveProperty("disabled", true);
   });
 
@@ -197,6 +199,7 @@ describe("AssistantPanel", () => {
           },
           answerConfirm,
         })}
+        onOpenConfig={() => {}}
       />,
     );
     expect(screen.getByText("Allow downloading from example.com?")).toBeTruthy();
@@ -220,6 +223,7 @@ describe("AssistantPanel", () => {
             { kind: "error", message: "provider down", id: 4 },
           ],
         })}
+        onOpenConfig={() => {}}
       />,
     );
     expect(screen.getByText("add mom's pc")).toBeTruthy();
@@ -234,6 +238,7 @@ describe("AssistantPanel", () => {
         assistant={makeAssistant({
           messages: [{ kind: "error", message: "provider request failed", id: 1 }],
         })}
+        onOpenConfig={() => {}}
       />,
     );
     const alert = screen.getByRole("alert");
@@ -317,6 +322,7 @@ describe("groupMachines (three plain sections)", () => {
 
 describe("MachinesRail grouping render", () => {
   const base = {
+  addSignal: 0,
     thisCode: "abcd1234efgh5678",
     hostState: "Idle" as const,
     sharing: false,

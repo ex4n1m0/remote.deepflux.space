@@ -93,6 +93,10 @@ export type AccountStatus = "logged_out" | "saved_account" | "logged_in";
 export interface AccountState {
   status: AccountStatus;
   username: string | null;
+  /** ADR-007: the account's person name, shown on control requests.
+   * null while logged out and for legacy name-less accounts (control is
+   * gated until one is set). */
+  display_name: string | null;
   /** null = unknown (register carries no expiry). */
   expires_ms: number | null;
 }

@@ -20,7 +20,7 @@ use ureq::Agent;
 use protocol::account::{
     ACCOUNT_PROTOCOL_VERSION, AUTH_KEY_HEX_LEN, AccountCall, AccountRequest, AccountResponse,
     NONCE_HEX_LEN, PRESENCE_MAX_CODES, ROSTER_MAX_CIPHERTEXT_BYTES, SALT_HEX_LEN,
-    SESSION_TOKEN_HEX_LEN, error_code, valid_hex, valid_username,
+    SESSION_TOKEN_HEX_LEN, error_code, valid_display_name, valid_hex, valid_username,
 };
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -124,13 +124,16 @@ pub struct LoginSalts {
 }
 
 /// What a successful login hands back: the session plus the wrapped DEK
-/// (opened client-side with the locally derived KEK).
+/// (opened client-side with the locally derived KEK). `display_name`
+/// (ADR-007) is `None` for name-less legacy accounts — the app prompts for
+/// one before the user may control a machine.
 #[derive(Debug, Clone)]
 pub struct LoginOutcome {
     pub token: SessionToken,
     pub expires_ms: u64,
     pub wrapped_dek_hex: String,
     pub dek_nonce_hex: String,
+    pub display_name: Option<String>,
 }
 
 /// Encrypted roster as stored (hex + version for optimistic concurrency).
@@ -220,9 +223,13 @@ impl AccountClient {
 
     /// Create an account (all key material prepared by the caller via
     /// [`crate::account_crypto`]). Returns the first session.
+    /// `display_name` (ADR-007) is the person name shown on control
+    /// requests; `None` keeps the field off the wire (pre-0.8 shape).
+    #[allow(clippy::too_many_arguments)] // wire-shaped: mirrors the register body
     pub fn register(
         &self,
         username: &str,
+        display_name: Option<&str>,
         auth_key_hex: &str,
         auth_salt_hex: &str,
         wrap_salt_hex: &str,
@@ -241,9 +248,17 @@ impl AccountClient {
                 "register key material has wrong shape".to_owned(),
             ));
         }
+        if let Some(name) = display_name
+            && !valid_display_name(name)
+        {
+            return Err(AccountError::Invalid(
+                "display name must be 1-64 chars after trimming".to_owned(),
+            ));
+        }
         match self.call(
             AccountRequest::Register {
                 username: username.to_owned(),
+                display_name: display_name.map(str::to_owned),
                 auth_key: auth_key_hex.to_owned(),
                 auth_salt_hex: auth_salt_hex.to_owned(),
                 wrap_salt_hex: wrap_salt_hex.to_owned(),
@@ -303,14 +318,41 @@ impl AccountClient {
                 expires_ms,
                 wrapped_dek_hex,
                 dek_nonce_hex,
+                display_name,
             } => Ok(LoginOutcome {
                 token: SessionToken::validate(&session_token)?,
                 expires_ms,
                 wrapped_dek_hex,
                 dek_nonce_hex,
+                display_name,
             }),
             other => Err(AccountError::Decode(format!(
                 "expected login, got {other:?}"
+            ))),
+        }
+    }
+
+    /// Set or update the account's display name (ADR-007). Returns the
+    /// stored (trimmed) name.
+    pub fn profile_set(
+        &self,
+        token: &SessionToken,
+        display_name: &str,
+    ) -> Result<String, AccountError> {
+        if !valid_display_name(display_name) {
+            return Err(AccountError::Invalid(
+                "display name must be 1-64 chars after trimming".to_owned(),
+            ));
+        }
+        match self.call(
+            AccountRequest::ProfileSet {
+                display_name: display_name.trim().to_owned(),
+            },
+            Some(token),
+        )? {
+            AccountResponse::ProfileSet { display_name } => Ok(display_name),
+            other => Err(AccountError::Decode(format!(
+                "expected profile_set, got {other:?}"
             ))),
         }
     }

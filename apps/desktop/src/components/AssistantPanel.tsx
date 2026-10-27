@@ -1,6 +1,7 @@
 /** Assistant panel (ADR-005): the always-visible right rail. Shows the
- * chat log (user / assistant / tool cards), the provider setup card when
- * no key is configured, and the composer. */
+ * chat log (user / assistant / tool cards) and the composer. Provider
+ * setup (API key, base URL, model) lives in Config → Assistant since the
+ * 0.8.0 menu-bar restructure. */
 import { useEffect, useRef, useState } from "react";
 import type { AssistantBinding } from "../hooks/useAssistant";
 
@@ -10,10 +11,14 @@ const STARTERS = [
   "What can you do here?",
 ];
 
-export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
+export function AssistantPanel({
+  assistant,
+  onOpenConfig,
+}: {
+  assistant: AssistantBinding;
+  onOpenConfig: () => void;
+}) {
   const [draft, setDraft] = useState("");
-  const [keyDraft, setKeyDraft] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
 
   // Keep the newest message visible (jsdom: scrollTo is optional).
@@ -43,10 +48,10 @@ export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
         <button
           type="button"
           className="ghost small"
-          onClick={() => setShowKey((v) => !v)}
-          aria-expanded={showKey}
+          onClick={onOpenConfig}
+          title="Config → Assistant"
         >
-          {showKey ? "Hide setup" : "Setup"}
+          Setup
         </button>
       </header>
 
@@ -81,33 +86,15 @@ export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
         </div>
       ) : null}
 
-      {showKey || !configured ? (
+      {!configured ? (
         <div className="assistant-setup">
           <p className="muted">
-            Paste an OpenAI-compatible API key (DeepSeek by default). It is stored
-            in Windows Credential Manager — never in files or logs.
-          </p>
-          <div className="row">
-            <input
-              type="password"
-              value={keyDraft}
-              placeholder="sk-…"
-              onChange={(e) => setKeyDraft(e.target.value)}
-              aria-label="API key"
-            />
-            <button
-              type="button"
-              className="primary"
-              disabled={keyDraft.trim().length < 8}
-              onClick={async () => {
-                await assistant.configure({ apiKey: keyDraft.trim() });
-                setKeyDraft("");
-                setShowKey(false);
-              }}
-            >
-              Save key
+            No API key yet — add one (and pick the model) in{" "}
+            <button type="button" className="link" onClick={onOpenConfig}>
+              Config → Assistant
             </button>
-          </div>
+            .
+          </p>
         </div>
       ) : null}
 
@@ -179,7 +166,7 @@ export function AssistantPanel({ assistant }: { assistant: AssistantBinding }) {
       <footer className="assistant-compose">
         <textarea
           value={draft}
-          placeholder={configured ? "ask anything, or give a task…" : "add your API key above first"}
+          placeholder={configured ? "ask anything, or give a task…" : "add an API key in Config → Assistant first"}
           disabled={!configured}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

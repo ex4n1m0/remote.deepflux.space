@@ -128,6 +128,7 @@ fn all_events() -> Vec<EngineEvent> {
         },
         EngineEvent::ConsentRequested {
             pairing_proof_hex: None,
+            requester_name: None,
             controller_device_id: "ctrl-1".into(),
             session_id: "s1".into(),
             ai_session: true,
@@ -408,6 +409,7 @@ fn account_result_dtos_carry_metadata_only() {
         },
         AccountStatus::LoggedIn {
             username: "alice".into(),
+            display_name: None,
             expires_ms: 1_760_000_000_000,
         },
     ] {

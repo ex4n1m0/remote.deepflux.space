@@ -387,6 +387,7 @@ fn run_controller(
         .send(EngineCmd::Connect {
             code: host_device,
             pairing_secret: None,
+            requester_name: None,
         })
         .expect("connect");
     // Connected.
@@ -603,6 +604,7 @@ fn run_controller_expect_connect_failure(
         .send(EngineCmd::Connect {
             code: host_device,
             pairing_secret: None,
+            requester_name: None,
         })
         .expect("connect");
     let mut ended = None;

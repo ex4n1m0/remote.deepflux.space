@@ -142,6 +142,11 @@ pub struct RemoteCounters {
     pub inbound_overflow: u64,
 }
 
+// One Send variant carries a whole signaling envelope, so the size
+// spread is inherent to the shape (ADR-007's `requester_name` pushed it
+// past the lint's threshold). The channel is low-rate control traffic —
+// the copies are irrelevant next to a socket send.
+#[allow(clippy::large_enum_variant)]
 enum Cmd {
     Send {
         envelope: SignalingEnvelope,
@@ -1077,6 +1082,7 @@ mod tests {
             SignalingBody::ConnectRequest {
                 capabilities: caps(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             Some("s1"),
         );

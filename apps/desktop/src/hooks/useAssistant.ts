@@ -37,7 +37,9 @@ export interface AssistantBinding {
   /** Answer the pending confirmation card (Allow / Always allow / Deny). */
   answerConfirm: (allow: boolean, remember: boolean) => Promise<void>;
   send: (text: string) => Promise<void>;
-  configure: (args: { apiKey?: string; model?: string }) => Promise<void>;
+  /** Resolves false when the configure call failed (the Config section
+   * shows its own feedback; errors still land in the chat log). */
+  configure: (args: { apiKey?: string; baseUrl?: string; model?: string }) => Promise<boolean>;
   reset: () => Promise<void>;
 }
 
@@ -129,14 +131,15 @@ export function useAssistant(): AssistantBinding {
   );
 
   const configure = useCallback(
-    async (args: { apiKey?: string; model?: string }) => {
+    async (args: { apiKey?: string; baseUrl?: string; model?: string }) => {
       try {
         await api.agentConfigure(args);
       } catch (e) {
         push({ kind: "error", message: e instanceof Error ? e.message : String(e) });
-        return;
+        return false;
       }
       await refreshStatus();
+      return true;
     },
     [push, refreshStatus],
   );

@@ -251,6 +251,16 @@ impl AgentBridge {
         &self,
         Parameters(ConnectParams { device_code }): Parameters<ConnectParams>,
     ) -> String {
+        // ADR-007 control gate: the account display name travels on the
+        // request (same rule as the UI and the in-app agent tool).
+        let requester_name = {
+            let services = self.app.state::<crate::AppServices>();
+            let account = services.account.lock().expect("account");
+            match account.control_identity() {
+                Ok(name) => name,
+                Err(gate) => return err_json("connect", &gate.message()),
+            }
+        };
         // ADR-006: carry the pairing secret so the engine stamps the
         // pairing proof (silent paired accept must prove the secret).
         let pairing_secret = crate::chat::pairing_for(&self.app, &device_code)
@@ -259,6 +269,7 @@ impl AgentBridge {
             handle.send(engine::EngineCmd::Connect {
                 code: device_code,
                 pairing_secret,
+                requester_name: Some(requester_name),
             })
         }) {
             Ok(()) => {

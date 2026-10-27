@@ -152,10 +152,19 @@ pub enum SignalingBody {
     /// bare device id is claimable, so it proves nothing (the pre-ADR-006
     /// behavior). Absent on first contact and on 0.4 controllers; hosts
     /// that predate the field ignore it.
+    ///
+    /// `requester_name` (ADR-007, additive-optional within version 1) is
+    /// the controller's account display name, shown beside the device id in
+    /// the host's consent prompt. Advisory only — `from_device_id` stays
+    /// the identity. Absent on pre-0.8 controllers (our 0.8 client refuses
+    /// to send a control request without one); hosts fall back to the
+    /// circle nickname, then the bare device id.
     ConnectRequest {
         capabilities: Capabilities,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pairing_proof_hex: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requester_name: Option<String>,
     },
     /// Host grants the session and hands over the one-time secret.
     Accept { session_secret: SessionSecret },
@@ -243,6 +252,7 @@ mod tests {
             SignalingBody::ConnectRequest {
                 capabilities: capabilities_sample(),
                 pairing_proof_hex: None,
+                requester_name: None,
             },
             SignalingBody::Accept {
                 session_secret: SessionSecret("one-time-secret".to_owned()),
@@ -289,6 +299,7 @@ mod tests {
         let value = serde_json::to_value(envelope(SignalingBody::ConnectRequest {
             capabilities: capabilities_sample(),
             pairing_proof_hex: None,
+            requester_name: None,
         }))
         .expect("serialize");
 
@@ -306,6 +317,27 @@ mod tests {
         // "payload" object on the wire.
         assert!(value.get("payload").is_none());
         assert_eq!(value["capabilities"]["monitors"][0]["width_px"], 2560);
+        // ADR-007: the name serializes when present, and is absent (not
+        // null) when None — pre-0.7.6 payloads stay byte-identical.
+        let value = serde_json::to_value(envelope(SignalingBody::ConnectRequest {
+            capabilities: capabilities_sample(),
+            pairing_proof_hex: None,
+            requester_name: Some("Alice".to_owned()),
+        }))
+        .expect("serialize");
+        assert_eq!(value["requester_name"], "Alice");
+
+        // A pre-0.8 connect_request (no requester_name key) decodes to
+        // None — additive-optional within version 1.
+        let mut legacy = value.clone();
+        legacy.as_object_mut().unwrap().remove("requester_name");
+        let back: SignalingEnvelope = serde_json::from_value(legacy).expect("deserialize");
+        match back.body {
+            SignalingBody::ConnectRequest { requester_name, .. } => {
+                assert_eq!(requester_name, None)
+            }
+            other => panic!("expected ConnectRequest, got {other:?}"),
+        }
     }
 
     #[test]

@@ -41,13 +41,17 @@ export function SettingsPanel({
   settings,
   onSave,
   version,
+  initiallyOpen = false,
 }: {
   settings: Settings | null;
   onSave: (patch: Settings) => Promise<Settings | null>;
   /** Shell version (from tauri.conf via getVersion); null in tests/jsdom. */
   version?: string | null;
+  /** Inside the Config modal the user already chose this section — skip
+   * the extra Open disclosure. */
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [quality, setQuality] = useState("balanced");

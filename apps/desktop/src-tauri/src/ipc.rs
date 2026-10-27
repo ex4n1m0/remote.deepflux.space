@@ -69,6 +69,10 @@ pub struct ConnectArgs {
 #[derive(Clone, Deserialize)]
 pub struct AccountCredentialsArgs {
     pub username: String,
+    /// ADR-007 person name (register only; the login card omits it —
+    /// serde's default makes it optional on that path).
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// Password-equivalent input; exists ONLY as a command argument —
     /// never in a result DTO, never logged (invariant 6 discipline).
     pub password: String,
@@ -78,9 +82,16 @@ impl core::fmt::Debug for AccountCredentialsArgs {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("AccountCredentialsArgs")
             .field("username", &self.username)
+            .field("display_name", &self.display_name)
             .field("password", &"<redacted>")
             .finish()
     }
+}
+
+/// ADR-007: set the signed-in account's display name.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountNameArgs {
+    pub display_name: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -150,11 +161,14 @@ pub struct FavoriteDto {
 // -- account / computers results (clean metadata: no tokens, no secrets) ----
 
 /// Account state for the onboarding gate. `status` is one of
-/// `logged_out` | `saved_account` | `logged_in`.
+/// `logged_out` | `saved_account` | `logged_in`. `display_name`
+/// (ADR-007) is `None` while logged out and for legacy name-less
+/// accounts — the UI gates control on it.
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountStateDto {
     pub status: String,
     pub username: Option<String>,
+    pub display_name: Option<String>,
     pub expires_ms: Option<u64>,
 }
 
@@ -164,19 +178,23 @@ impl From<crate::account::AccountStatus> for AccountStateDto {
             crate::account::AccountStatus::LoggedOut => Self {
                 status: "logged_out".to_owned(),
                 username: None,
+                display_name: None,
                 expires_ms: None,
             },
             crate::account::AccountStatus::SavedAccount { username } => Self {
                 status: "saved_account".to_owned(),
                 username: Some(username),
+                display_name: None,
                 expires_ms: None,
             },
             crate::account::AccountStatus::LoggedIn {
                 username,
+                display_name,
                 expires_ms,
             } => Self {
                 status: "logged_in".to_owned(),
                 username: Some(username),
+                display_name,
                 expires_ms: if expires_ms == 0 {
                     None
                 } else {

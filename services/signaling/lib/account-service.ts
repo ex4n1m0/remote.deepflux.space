@@ -85,6 +85,8 @@ interface AccountRecord {
   wrapped_dek_hex: string;
   dek_nonce_hex: string;
   created_ms: number;
+  /** ADR-007 person name shown on control requests; absent on pre-0.8 records. */
+  display_name?: string;
 }
 
 interface RosterRecord {
@@ -178,6 +180,7 @@ export class AccountService {
       case 'login':
         return this.login(req, ctx.ip);
       case 'logout':
+      case 'profile_set':
       case 'roster_get':
       case 'roster_put':
       case 'presence': {
@@ -192,6 +195,8 @@ export class AccountService {
         switch (req.action) {
           case 'logout':
             return this.logout(ctx.token);
+          case 'profile_set':
+            return this.profileSet(username, req);
           case 'roster_get':
             return this.rosterGet(username);
           case 'roster_put':
@@ -291,6 +296,7 @@ export class AccountService {
       wrapped_dek_hex: req.wrapped_dek_hex,
       dek_nonce_hex: req.dek_nonce_hex,
       created_ms: Date.now(),
+      ...(req.display_name !== undefined ? { display_name: req.display_name } : {}),
     };
     // Atomic claim: SETNX makes concurrent registers for one username a race
     // with exactly one winner — no read-then-write `username_taken` window.
@@ -303,7 +309,10 @@ export class AccountService {
       return { ok: false, error: ACCOUNT_ERROR_CODES.USERNAME_TAKEN };
     }
     const session = await this.mintSession(req.username);
-    return { ok: true, body: { action: 'register', ...session } };
+    return {
+      ok: true,
+      body: { action: 'register', ...session, ...(rec.display_name !== undefined ? { display_name: rec.display_name } : {}) },
+    };
   }
 
   private parseAccount(raw: string | null): AccountRecord | null {
@@ -320,7 +329,8 @@ export class AccountService {
         typeof rec.auth_salt_hex === 'string' &&
         typeof rec.wrap_salt_hex === 'string' &&
         typeof rec.wrapped_dek_hex === 'string' &&
-        typeof rec.dek_nonce_hex === 'string'
+        typeof rec.dek_nonce_hex === 'string' &&
+        (rec.display_name === undefined || typeof rec.display_name === 'string')
       ) {
         return rec;
       }
@@ -396,6 +406,9 @@ export class AccountService {
         // key material (see protocol::account docs).
         wrapped_dek_hex: rec.wrapped_dek_hex,
         dek_nonce_hex: rec.dek_nonce_hex,
+        // ADR-007: absent for name-less legacy accounts — the client prompts
+        // for one before it may control a machine.
+        ...(rec.display_name !== undefined ? { display_name: rec.display_name } : {}),
       },
     };
   }
@@ -439,6 +452,33 @@ export class AccountService {
   private async logout(token: string): Promise<AccountCallResult> {
     await this.store.del(this.k('sess', sha256hex(token)));
     return { ok: true, body: { action: 'logout' } };
+  }
+
+  // -------------------------------------------------------------------------
+  // Profile (ADR-007: display name shown on control requests)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Set the account's display name. Last-write-wins on a single advisory
+   * string — no lock and no version counter needed (the record's auth fields
+   * are never touched). Rewrites the record with a fresh durable TTL.
+   */
+  private async profileSet(
+    username: string,
+    req: Extract<AccountRequest, { action: 'profile_set' }>,
+  ): Promise<AccountCallResult> {
+    const limited = await this.rateLimit(`profile-user:${username}`, this.cfg.rlRosterPutPerMin, 60);
+    if (limited !== null) {
+      return { ok: false, error: ACCOUNT_ERROR_CODES.RATE_LIMITED, retry_after_s: limited };
+    }
+    const rec = this.parseAccount(await this.store.get(this.k('acct', username)));
+    if (rec === null) {
+      // Authenticated session for a vanished record: treat as unauthorized.
+      return { ok: false, error: ACCOUNT_ERROR_CODES.UNAUTHORIZED };
+    }
+    rec.display_name = req.display_name;
+    await this.store.setEx(this.k('acct', username), JSON.stringify(rec), this.cfg.ttlAccountSec);
+    return { ok: true, body: { action: 'profile_set', display_name: req.display_name } };
   }
 
   // -------------------------------------------------------------------------

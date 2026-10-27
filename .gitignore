@@ -7,3 +7,5 @@ node_modules/
 apps/desktop/dist/
 # Vercel function bundles (services/signaling build output)
 services/signaling/api/*.js
+# Local ZCode agent state (plans, config) — never project data
+.zcode/

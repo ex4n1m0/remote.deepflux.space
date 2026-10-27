@@ -19,10 +19,12 @@ import { accountReducer, initialAccountState, type AccountAction, type AccountUi
 export interface AccountBinding {
   ui: [AccountUiState, Dispatch<AccountAction>];
   refresh: () => Promise<void>;
-  register: (username: string, password: string) => Promise<string | null>;
+  register: (username: string, displayName: string, password: string) => Promise<string | null>;
   login: (username: string, password: string) => Promise<string | null>;
   unlock: (password: string) => Promise<string | null>;
   logout: () => Promise<void>;
+  /** ADR-007: set/update the signed-in account's display name. */
+  setName: (displayName: string) => Promise<string | null>;
   addComputer: (name: string, code: string) => Promise<string | null>;
   addThisComputer: () => Promise<string | null>;
   removeComputer: (id: string) => Promise<string | null>;
@@ -83,8 +85,8 @@ export function useAccount(): AccountBinding {
   );
 
   const register = useCallback(
-    (username: string, password: string) =>
-      run(() => api.accountRegister(username, password)),
+    (username: string, displayName: string, password: string) =>
+      run(() => api.accountRegister(username, displayName, password)),
     [run],
   );
   const login = useCallback(
@@ -95,6 +97,10 @@ export function useAccount(): AccountBinding {
   const logout = useCallback(async () => {
     await run(() => api.accountLogout());
   }, [run]);
+  const setName = useCallback(
+    (displayName: string) => run(() => api.accountSetName(displayName)),
+    [run],
+  );
 
   const addComputer = useCallback(
     (name: string, code: string) => run(() => api.computerAdd(name, code)),
@@ -140,6 +146,7 @@ export function useAccount(): AccountBinding {
     login,
     unlock,
     logout,
+    setName,
     addComputer,
     addThisComputer,
     removeComputer,

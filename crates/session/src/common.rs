@@ -105,12 +105,15 @@ pub enum Action {
     /// `FeatureFlags::AI_SESSION` (ADR-004) and changes presentation only.
     /// `pairing_proof_hex` is the proof carried on the `connect_request`
     /// (ADR-006), forwarded verbatim — verification belongs to the app
-    /// layer, which owns the pairing store.
+    /// layer, which owns the pairing store. `requester_name` (ADR-007) is
+    /// the controller's account display name, advisory only — the device
+    /// id beside it is the identity.
     PromptConsent {
         controller_device_id: DeviceId,
         session_id: SessionId,
         ai_session: bool,
         pairing_proof_hex: Option<String>,
+        requester_name: Option<String>,
         /// The request envelope's message_id — the pairing-proof v2 MAC
         /// binds it (security review 2026-10-26: replay defense).
         message_id: MessageId,

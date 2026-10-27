@@ -362,6 +362,29 @@ pub fn execute(
                 return ToolOutput::text("connect requires {\"code\": ...}");
             };
             let code = code.trim().to_lowercase();
+            // ADR-007 control gate: identical rule to the UI — the account
+            // display name travels on the request so the host prompt says
+            // who is asking. Signed-out / name-less accounts cannot control.
+            // (Human-facing copy, no UI marker — an agent may relay this.)
+            let requester_name = {
+                let services = app.state::<crate::AppServices>();
+                let account = services.account.lock().expect("account");
+                match account.control_identity() {
+                    Ok(name) => name,
+                    Err(gate) => {
+                        let message = gate.message();
+                        let friendly = message
+                            .strip_prefix(crate::account::CONTROL_GATE_MARKER)
+                            .map(str::trim)
+                            .unwrap_or(message.as_str());
+                        return ToolOutput::text(format!(
+                            "connect blocked by the account gate: {friendly} — ask the \
+                             machine's owner to sign in (and add their name) in the app, then \
+                             retry."
+                        ));
+                    }
+                }
+            };
             // ADR-006: carry the pairing secret so the engine stamps the
             // pairing proof (silent paired accept must prove the secret).
             let pairing_secret = crate::chat::pairing_for(app, &code)
@@ -375,6 +398,7 @@ pub fn execute(
                         .send(engine::EngineCmd::Connect {
                             code,
                             pairing_secret,
+                            requester_name: Some(requester_name),
                         })
                         .map_err(|e| e.to_string())
                 })

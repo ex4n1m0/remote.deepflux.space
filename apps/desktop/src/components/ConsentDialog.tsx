@@ -20,25 +20,34 @@ export function consentCopy(consent: {
   ai_session: boolean;
 }): { who: string; title: string; detail: string; alwaysHint: string } {
   const who = consent.requester_name
+    ? consent.requester_name
+    : consent.controller_device_id;
+  // The device id is ALWAYS shown beside the name — names are advisory;
+  // the code is the identity that cannot be impersonated inside the prompt.
+  const whoWithCode = consent.requester_name
     ? `${consent.requester_name} (${consent.controller_device_id})`
     : consent.controller_device_id;
   if (consent.ai_session) {
+    // With a name: whose assistant it is. Without: the code only.
+    const aiTitle = consent.requester_name
+      ? `${who}'s AI assistant (${consent.controller_device_id}) asks to control this computer.`
+      : `An AI assistant (${consent.controller_device_id}) asks to control this computer.`;
     return {
-      who,
-      title: `${who} — an AI assistant asks to control this computer.`,
+      who: whoWithCode,
+      title: aiTitle,
       detail:
         "It will see the screen and drive the mouse and keyboard to help. Your family can watch and take over at any time; it cannot type your passwords.",
       alwaysHint:
-        "Always allow means this machine's AI agent can start controlling this computer without asking, whenever it is on.",
+        "Always allow means that machine's AI assistant can connect without asking, whenever it is on.",
     };
   }
   return {
-    who,
-    title: `${who} asks to control this computer.`,
+    who: whoWithCode,
+    title: `${whoWithCode} asks to control this computer.`,
     detail:
       "They'll see your screen and use the mouse and keyboard. You can watch everything and stop it at any time.",
     alwaysHint:
-      "Always allow remembers this machine — it connects without asking next time. Manage it in Settings → Trusted machines.",
+      "Always allow remembers this machine — it connects without asking next time. Manage it in Config → Trusted machines.",
   };
 }
 

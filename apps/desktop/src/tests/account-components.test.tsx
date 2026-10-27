@@ -28,23 +28,30 @@ describe("Onboarding", () => {
     expect(base.onModeChange).toHaveBeenCalledWith("create");
   });
 
-  it("validates username + password before calling back", () => {
+  it("validates username + name + password before calling back", () => {
     render(<Onboarding {...base} mode="create" />);
     fireEvent.change(screen.getByLabelText(/Username/), { target: { value: "Alice!" } });
+    fireEvent.change(screen.getByLabelText(/Your name/), { target: { value: "Alice" } });
     fireEvent.change(screen.getByLabelText(/Password/), { target: { value: "longenough" } });
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(base.onCreate).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain("Username");
 
     fireEvent.change(screen.getByLabelText(/Username/), { target: { value: "alice" } });
+    fireEvent.change(screen.getByLabelText(/Your name/), { target: { value: "   " } });
     fireEvent.change(screen.getByLabelText(/Password/), { target: { value: "short" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(base.onCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("Your name");
+
+    fireEvent.change(screen.getByLabelText(/Your name/), { target: { value: "Alice" } });
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(base.onCreate).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain("8 characters");
 
     fireEvent.change(screen.getByLabelText(/Password/), { target: { value: "longenough" } });
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(base.onCreate).toHaveBeenCalledWith("alice", "longenough");
+    expect(base.onCreate).toHaveBeenCalledWith("alice", "Alice", "longenough");
   });
 
   it("normalizes the username before submit", () => {
@@ -87,5 +94,33 @@ describe("Onboarding", () => {
     expect(usernameValid("Alice")).toBe(false);
     expect(usernameValid("-alice")).toBe(false);
     expect(usernameValid("a".repeat(33))).toBe(false);
+  });
+});
+
+describe("Onboarding reason line (ADR-007)", () => {
+  const base = {
+    busy: false,
+    error: null as string | null,
+    onModeChange: vi.fn(),
+    onSignIn: vi.fn(),
+    onCreate: vi.fn(),
+    onUnlock: vi.fn(),
+    onDismissError: vi.fn(),
+    onSkip: vi.fn(),
+  };
+  it("shows why the card opened when a reason is given", () => {
+    render(
+      <Onboarding
+        {...base}
+        mode="create"
+        reason="Controlling another machine needs an account with your name."
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("needs an account with your name");
+  });
+
+  it("omits the reason line by default", () => {
+    render(<Onboarding {...base} mode="signin" />);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

@@ -14,9 +14,14 @@ export interface OnboardingProps {
   username?: string | null;
   busy: boolean;
   error: string | null;
+  /** ADR-007: why the card opened (e.g. after a blocked Control press) —
+   * shown above the tabs so the user knows what this buys them. */
+  reason?: string | null;
   onModeChange: (mode: "signin" | "create") => void;
   onSignIn: (username: string, password: string) => void;
-  onCreate: (username: string, password: string) => void;
+  /** ADR-007: creation requires the person name shown on control
+   * requests. */
+  onCreate: (username: string, displayName: string, password: string) => void;
   onUnlock: (password: string) => void;
   onDismissError: () => void;
   onSkip: () => void;
@@ -31,14 +36,22 @@ export function usernameValid(normalized: string): boolean {
   );
 }
 
+/** ADR-007: the account display name (1–64 chars after trimming). */
+export function displayNameValid(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed.length >= 1 && trimmed.length <= 64;
+}
+
 export const USERNAME_HINT = "3–32 characters: lowercase letters, digits, . _ -";
 export const PASSWORD_HINT = "At least 8 characters.";
+export const NAME_HINT = "Shown when you ask to control someone's machine — e.g. Mom, Igor…";
 
 export function Onboarding({
   mode,
   username,
   busy,
   error,
+  reason,
   onModeChange,
   onSignIn,
   onCreate,
@@ -47,6 +60,7 @@ export function Onboarding({
   onSkip,
 }: OnboardingProps) {
   const [name, setName] = useState("");
+  const [yourName, setYourName] = useState("");
   const [password, setPassword] = useState("");
   const [validation, setValidation] = useState<string | null>(null);
 
@@ -66,13 +80,18 @@ export function Onboarding({
       setValidation(`Username: ${USERNAME_HINT}`);
       return;
     }
+    const displayName = yourName.trim();
+    if (mode === "create" && !displayNameValid(displayName)) {
+      setValidation("Your name: 1–64 characters — it is shown when you ask to control a machine.");
+      return;
+    }
     if (password.length < 8) {
       setValidation(PASSWORD_HINT);
       return;
     }
     setValidation(null);
     if (mode === "create") {
-      onCreate(normalized, password);
+      onCreate(normalized, displayName, password);
     } else {
       onSignIn(normalized, password);
     }
@@ -83,6 +102,11 @@ export function Onboarding({
     <div className="onboarding-wrap">
       <section className="onboarding-card" aria-label="Account">
         <h1>Remote Desktop</h1>
+        {reason ? (
+          <p className="onboarding-reason" role="status">
+            {reason}
+          </p>
+        ) : null}
         {mode === "unlock" ? (
           <>
             <p className="muted">Welcome back, @{username ?? "user"}</p>
@@ -143,6 +167,18 @@ export function Onboarding({
               <span className="hint">{USERNAME_HINT}</span>
             </label>
           ) : null}
+          {mode === "create" ? (
+            <label>
+              Your name
+              <input
+                value={yourName}
+                onChange={(event) => setYourName(event.target.value)}
+                placeholder="Igor"
+                autoComplete="name"
+              />
+              <span className="hint">{NAME_HINT}</span>
+            </label>
+          ) : null}
           <label>
             Password
             <input
@@ -180,7 +216,8 @@ export function Onboarding({
         ) : null}
 
         <button type="button" className="ghost onboarding-skip" onClick={onSkip}>
-          Skip for now →
+          Skip for now — this PC can be shared and controlled, but can't control other
+          machines →
         </button>
       </section>
     </div>

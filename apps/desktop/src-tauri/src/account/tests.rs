@@ -15,9 +15,9 @@ use node_runtime::account_remote::{
 use protocol::account::RosterDoc;
 
 use super::{
-    AccountManager, AccountService, AccountStatus, ComputersList, Favorite, LocalStore,
-    SavedAccount, import_favorites, merge_roster_into_favorites, merge_rosters, normalize_username,
-    union_favorites,
+    AccountManager, AccountService, AccountStatus, CONTROL_GATE_MARKER, ComputersList, ControlGate,
+    Favorite, LocalStore, SavedAccount, import_favorites, merge_roster_into_favorites,
+    merge_rosters, normalize_username, union_favorites,
 };
 use crate::credstore::{InMemorySessionStore, SessionStore};
 
@@ -47,6 +47,7 @@ struct FakeUser {
     wrap_salt_hex: String,
     wrapped_dek_hex: String,
     dek_nonce_hex: String,
+    display_name: Option<String>,
     roster: RosterBlob,
 }
 
@@ -112,6 +113,7 @@ impl AccountService for FakeService {
     fn register(
         &self,
         username: &str,
+        display_name: Option<&str>,
         auth_key_hex: &str,
         auth_salt_hex: &str,
         wrap_salt_hex: &str,
@@ -135,6 +137,7 @@ impl AccountService for FakeService {
                 wrap_salt_hex: wrap_salt_hex.to_owned(),
                 wrapped_dek_hex: wrapped_dek_hex.to_owned(),
                 dek_nonce_hex: dek_nonce_hex.to_owned(),
+                display_name: display_name.map(str::to_owned),
                 roster: RosterBlob {
                     ciphertext_hex: String::new(),
                     nonce_hex: String::new(),
@@ -180,6 +183,7 @@ impl AccountService for FakeService {
             ));
         }
         let (wrapped, nonce) = (user.wrapped_dek_hex.clone(), user.dek_nonce_hex.clone());
+        let display_name = user.display_name.clone();
         let token = Self::mint_token(&mut state);
         state
             .sessions
@@ -189,12 +193,33 @@ impl AccountService for FakeService {
             expires_ms: 1_760_000_000_000,
             wrapped_dek_hex: wrapped,
             dek_nonce_hex: nonce,
+            display_name,
         })
     }
 
     fn logout(&self, token: &SessionToken) -> Result<(), AccountError> {
         self.0.lock().unwrap().sessions.remove(token.secret());
         Ok(())
+    }
+
+    fn profile_set(
+        &self,
+        token: &SessionToken,
+        display_name: &str,
+    ) -> Result<String, AccountError> {
+        let mut state = self.0.lock().unwrap();
+        let username = state
+            .sessions
+            .get(token.secret())
+            .ok_or_else(|| api_err(401, protocol::account::error_code::UNAUTHORIZED, None))?
+            .clone();
+        let name = display_name.trim().to_owned();
+        state
+            .users
+            .get_mut(&username)
+            .expect("known user")
+            .display_name = Some(name.clone());
+        Ok(name)
     }
 
     fn roster_get(&self, token: &SessionToken) -> Result<RosterBlob, AccountError> {
@@ -285,13 +310,19 @@ fn new_manager(service: &FakeService, creds: &InMemorySessionStore) -> AccountMa
 }
 
 fn logged_in(status: &AccountStatus, username: &str) {
-    assert_eq!(
-        status,
-        &AccountStatus::LoggedIn {
-            username: username.to_owned(),
-            expires_ms: 1_760_000_000_000,
-        }
-    );
+    let AccountStatus::LoggedIn {
+        username: actual,
+        display_name,
+        expires_ms,
+    } = status
+    else {
+        panic!("expected LoggedIn, got {status:?}");
+    };
+    assert_eq!(actual, username);
+    // ADR-007: a live login always carries the account's stored name
+    // ("Alice"/"Bob" in these fixtures).
+    assert!(display_name.is_some(), "logged in without a display name");
+    assert_eq!(*expires_ms, 1_760_000_000_000);
 }
 
 fn codes(list: &ComputersList) -> Vec<String> {
@@ -452,13 +483,14 @@ fn register_imports_favorites_and_persists_only_encrypted_data() {
     store.add_favorite("Desk", "bbbbbbbbbbbbbbbb").unwrap();
     let mut manager = new_manager(&service, &creds);
 
-    let status = manager.register(&mut store, "Alice", PW).unwrap();
+    let status = manager.register(&mut store, "Alice", "Alice", PW).unwrap();
     // Normalized username; register carries no expiry (the wire response
     // has none), so 0 = unknown.
     assert_eq!(
         status,
         AccountStatus::LoggedIn {
             username: "alice".into(),
+            display_name: Some("Alice".to_owned()),
             expires_ms: 0,
         }
     );
@@ -496,9 +528,11 @@ fn register_validates_input_before_any_cryptography() {
     let mut store = LocalStore::load(&dir).unwrap();
     let mut manager = new_manager(&service, &creds);
 
-    let err = manager.register(&mut store, "alice", "short").unwrap_err();
+    let err = manager
+        .register(&mut store, "alice", "Alice", "short")
+        .unwrap_err();
     assert!(err.contains("Password must be"), "{err}");
-    let err = manager.register(&mut store, "x!", PW).unwrap_err();
+    let err = manager.register(&mut store, "x!", "Alice", PW).unwrap_err();
     assert!(err.contains("Username must be"), "{err}");
     assert_eq!(manager.status(&store), AccountStatus::LoggedOut);
     assert!(store.account().is_none(), "nothing persisted on rejection");
@@ -514,7 +548,9 @@ fn second_machine_login_merges_down_and_writes_favorites_back() {
     store_a.add_favorite("Laptop", "aaaaaaaaaaaaaaaa").unwrap();
     let creds_a = InMemorySessionStore::default();
     let mut manager_a = new_manager(&service, &creds_a);
-    manager_a.register(&mut store_a, "alice", PW).unwrap();
+    manager_a
+        .register(&mut store_a, "alice", "Alice", PW)
+        .unwrap();
 
     // Machine B: fresh profile + credential store, same account.
     let dir_b = temp_dir("machine-b");
@@ -541,7 +577,7 @@ fn offline_upload_self_heals_on_next_login() {
     let dir = temp_dir("offline");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut m = new_manager(&service, &creds);
-    m.register(&mut store, "alice", PW).unwrap();
+    m.register(&mut store, "alice", "Alice", PW).unwrap();
     let device = store.settings().device_id.clone();
 
     // The upload fails (offline) — the local cache still records the add.
@@ -568,7 +604,7 @@ fn conflict_re_fetches_re_merges_and_retries_once() {
     let dir = temp_dir("conflict");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut m = new_manager(&service, &creds);
-    m.register(&mut store, "alice", PW).unwrap();
+    m.register(&mut store, "alice", "Alice", PW).unwrap();
     let device = store.settings().device_id.clone();
 
     // Another device uploads between our fetch and our put.
@@ -588,7 +624,7 @@ fn add_by_code_dedupes_add_this_bumps_presence_filters() {
     let dir = temp_dir("mutations");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store, "alice", PW).unwrap();
+    manager.register(&mut store, "alice", "Alice", PW).unwrap();
     let device = store.settings().device_id.clone();
 
     // Dedupe by code: the second add renames + bumps instead of adding.
@@ -649,7 +685,7 @@ fn roster_capacity_is_enforced_with_a_friendly_error() {
         .collect();
     store.replace_favorites(favorites).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store, "alice", PW).unwrap();
+    manager.register(&mut store, "alice", "Alice", PW).unwrap();
     let device = store.settings().device_id.clone();
 
     let err = manager
@@ -666,7 +702,7 @@ fn unlock_reuses_the_saved_username_and_rejects_bad_passwords() {
     let dir = temp_dir("unlock");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store, "alice", PW).unwrap();
+    manager.register(&mut store, "alice", "Alice", PW).unwrap();
 
     // Fresh manager (app restart) — only the password is entered.
     let mut manager = new_manager(&service, &creds);
@@ -690,7 +726,7 @@ fn restore_validates_the_persisted_session_only() {
     let dir = temp_dir("restore");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store, "alice", PW).unwrap();
+    manager.register(&mut store, "alice", "Alice", PW).unwrap();
     drop(manager);
 
     // Valid persisted token → session_valid (the roster stays encrypted
@@ -730,7 +766,7 @@ fn damaged_key_material_has_its_own_error() {
     let dir = temp_dir("damaged");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store, "alice", PW).unwrap();
+    manager.register(&mut store, "alice", "Alice", PW).unwrap();
 
     service.damage_material("alice");
     let mut manager = new_manager(&service, &creds);
@@ -750,7 +786,9 @@ fn switching_users_retires_the_previous_session_and_credential() {
     let dir_a = temp_dir("switch-a");
     let mut store_a = LocalStore::load(&dir_a).unwrap();
     let mut manager = new_manager(&service, &creds);
-    manager.register(&mut store_a, "alice", PW).unwrap();
+    manager
+        .register(&mut store_a, "alice", "Alice", PW)
+        .unwrap();
     let alice_token = creds.load("alice").unwrap().expect("alice's token");
 
     // Somewhere else, bob exists.
@@ -758,7 +796,7 @@ fn switching_users_retires_the_previous_session_and_credential() {
     let mut store_b = LocalStore::load(&dir_b).unwrap();
     let creds_b = InMemorySessionStore::default();
     let mut manager_b = new_manager(&service, &creds_b);
-    manager_b.register(&mut store_b, "bob", PW).unwrap();
+    manager_b.register(&mut store_b, "bob", "Bob", PW).unwrap();
 
     // Same machine 1: log in as bob.
     manager.login(&mut store_a, "bob", PW).unwrap();
@@ -792,7 +830,7 @@ fn logout_keeps_files_and_clears_the_session() {
     let dir = temp_dir("logout");
     let mut store = LocalStore::load(&dir).unwrap();
     let mut m = new_manager(&service, &creds);
-    m.register(&mut store, "alice", PW).unwrap();
+    m.register(&mut store, "alice", "Alice", PW).unwrap();
     let device = store.settings().device_id.clone();
     m.add_computer(&mut store, &device, "Office", "aaaaaaaaaaaaaaaa")
         .unwrap();
@@ -818,5 +856,84 @@ fn logout_keeps_files_and_clears_the_session() {
         codes(&m.computers(&device).unwrap()),
         vec!["aaaaaaaaaaaaaaaa"]
     );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+// ---------------------------------------------------------------------------
+// ADR-007: the control gate + display-name plumbing
+// ---------------------------------------------------------------------------
+
+/// Register a LEGACY (pre-0.8, name-less) user straight into the fake, the
+/// shape every real account created before 0.8.0 has on the server.
+fn seed_legacy_user(service: &FakeService, username: &str) {
+    use node_runtime::account_crypto as crypto;
+    let material = crypto::generate_account_material();
+    let auth_key = crypto::derive_auth_key_hex(PW, &material.auth_salt).unwrap();
+    let (wrapped, nonce) = crypto::wrap_dek(
+        &crypto::derive_kek(PW, &material.wrap_salt).unwrap(),
+        &material.dek,
+        username,
+    )
+    .unwrap();
+    service.0.lock().unwrap().users.insert(
+        username.to_owned(),
+        FakeUser {
+            auth_key_hex: auth_key,
+            auth_salt_hex: crypto::encode_hex(&material.auth_salt),
+            wrap_salt_hex: crypto::encode_hex(&material.wrap_salt),
+            wrapped_dek_hex: crypto::encode_hex(&wrapped),
+            dek_nonce_hex: crypto::encode_hex(&nonce),
+            display_name: None,
+            roster: RosterBlob {
+                ciphertext_hex: String::new(),
+                nonce_hex: String::new(),
+                version: 0,
+            },
+        },
+    );
+}
+
+#[test]
+fn control_gate_requires_a_signed_in_named_account() {
+    let dir = temp_dir("gate");
+    let mut store = LocalStore::load(&dir).unwrap();
+    let service = FakeService::new();
+    let creds = InMemorySessionStore::default();
+    let mut m = new_manager(&service, &creds);
+
+    // Signed out entirely → SignedOut.
+    assert_eq!(m.control_identity().unwrap_err(), ControlGate::SignedOut);
+
+    // Legacy account: login succeeds, but there is no name → MissingName,
+    // and the messages carry the marker the UI keys on.
+    seed_legacy_user(&service, "legacy");
+    m.login(&mut store, "legacy", PW).unwrap();
+    let gate = m.control_identity().unwrap_err();
+    assert_eq!(gate, ControlGate::MissingName);
+    assert!(gate.message().starts_with(CONTROL_GATE_MARKER));
+
+    // profile_set clears the gate; the name is what control would stamp.
+    let status = m.set_display_name(&store, "  Alice Doe ").unwrap();
+    assert_eq!(
+        status,
+        AccountStatus::LoggedIn {
+            username: "legacy".into(),
+            display_name: Some("Alice Doe".into()),
+            expires_ms: 1_760_000_000_000,
+        }
+    );
+    assert_eq!(m.control_identity().unwrap(), "Alice Doe");
+
+    // A 0.8 registration carries its name from the start.
+    m.register(&mut store, "modern", "Modern User", PW).unwrap();
+    assert_eq!(m.control_identity().unwrap(), "Modern User");
+
+    // Logout re-closes the gate.
+    m.logout(&store);
+    assert_eq!(m.control_identity().unwrap_err(), ControlGate::SignedOut);
+
+    // Name validation reuses the friendly copy.
+    let err = m.set_display_name(&store, "   ").unwrap_err();
+    assert!(err.contains("Enter your name"), "{err}");
     std::fs::remove_dir_all(&dir).ok();
 }

@@ -121,6 +121,7 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                 SignalingBody::ConnectRequest {
                     capabilities: caps(),
                     pairing_proof_hex: None,
+                    requester_name: None,
                 },
             ),
         ),
@@ -137,6 +138,25 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                     // "pair-proof:v1|{controller}|{host}|{session_id}",
                     // present whenever the controller holds a pairing.
                     pairing_proof_hex: Some("9e".repeat(32)),
+                    requester_name: None,
+                },
+            ),
+        ),
+        (
+            "connect_request_named",
+            envelope(
+                "rig-ctrl-ctrl-1",
+                Some("rig-ctrl-ctrl-1"),
+                "rig-ctrl",
+                "rig-host",
+                SignalingBody::ConnectRequest {
+                    capabilities: caps(),
+                    pairing_proof_hex: Some("9e".repeat(32)),
+                    // ADR-007 additive-optional field: the controller's
+                    // account display name, shown beside the device id in
+                    // the host's consent prompt (advisory — the device id
+                    // stays the identity).
+                    requester_name: Some("Alice Doe".to_owned()),
                 },
             ),
         ),

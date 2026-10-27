@@ -36,8 +36,8 @@ use node_runtime::account_remote::{
     AccountClient, AccountError, LoginOutcome, LoginSalts, RosterBlob, SessionToken,
 };
 use protocol::account::{
-    ROSTER_MAX_CIPHERTEXT_BYTES, ROSTER_MAX_COMPUTERS, RosterDoc, RosterEntry, error_code,
-    valid_username,
+    DISPLAY_NAME_MAX_CHARS, ROSTER_MAX_CIPHERTEXT_BYTES, ROSTER_MAX_COMPUTERS, RosterDoc,
+    RosterEntry, error_code, valid_display_name, valid_username,
 };
 
 use crate::credstore::{SessionStore, WindowsCredStore};
@@ -52,6 +52,35 @@ const PASSWORD_MAX_CHARS: usize = 128;
 /// Display-name policy from the roster schema (`RosterEntry::name`).
 const NAME_MAX_CHARS: usize = 64;
 
+/// Why control is blocked (ADR-007 gate). The command layer maps each arm
+/// to a marker string the React layer recognizes to open the right card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlGate {
+    /// Not signed in at all.
+    SignedOut,
+    /// Signed in, but the account predates display names — ask once.
+    MissingName,
+}
+
+/// Marker prefix the React layer matches to open the sign-in/add-name
+/// card instead of showing a raw error (see `controlMachine` in App.tsx).
+pub const CONTROL_GATE_MARKER: &str = "[control-needs-account]";
+
+impl ControlGate {
+    pub fn message(self) -> String {
+        match self {
+            ControlGate::SignedOut => format!(
+                "{CONTROL_GATE_MARKER} Sign in to control other machines — your name is shown \
+                 when you ask to connect."
+            ),
+            ControlGate::MissingName => format!(
+                "{CONTROL_GATE_MARKER} Add your name to control other machines — it is shown \
+                 when you ask to connect."
+            ),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Service seam (tests drive the manager against an in-memory fake; the
 // product adapter is a thin wrapper over the blocking ureq client)
@@ -60,9 +89,11 @@ const NAME_MAX_CHARS: usize = 64;
 /// The account service surface the manager needs (one method per wire
 /// action). Implemented by [`RemoteAccountService`]; tests use a fake.
 pub trait AccountService: Send + Sync {
+    #[allow(clippy::too_many_arguments)] // wire-shaped: mirrors the register body
     fn register(
         &self,
         username: &str,
+        display_name: Option<&str>,
         auth_key_hex: &str,
         auth_salt_hex: &str,
         wrap_salt_hex: &str,
@@ -72,6 +103,8 @@ pub trait AccountService: Send + Sync {
     fn login_pre(&self, username: &str) -> Result<LoginSalts, AccountError>;
     fn login(&self, username: &str, auth_key_hex: &str) -> Result<LoginOutcome, AccountError>;
     fn logout(&self, token: &SessionToken) -> Result<(), AccountError>;
+    fn profile_set(&self, token: &SessionToken, display_name: &str)
+    -> Result<String, AccountError>;
     fn roster_get(&self, token: &SessionToken) -> Result<RosterBlob, AccountError>;
     fn roster_put(
         &self,
@@ -101,6 +134,7 @@ impl AccountService for RemoteAccountService {
     fn register(
         &self,
         username: &str,
+        display_name: Option<&str>,
         auth_key_hex: &str,
         auth_salt_hex: &str,
         wrap_salt_hex: &str,
@@ -109,6 +143,7 @@ impl AccountService for RemoteAccountService {
     ) -> Result<SessionToken, AccountError> {
         self.client.register(
             username,
+            display_name,
             auth_key_hex,
             auth_salt_hex,
             wrap_salt_hex,
@@ -127,6 +162,14 @@ impl AccountService for RemoteAccountService {
 
     fn logout(&self, token: &SessionToken) -> Result<(), AccountError> {
         self.client.logout(token)
+    }
+
+    fn profile_set(
+        &self,
+        token: &SessionToken,
+        display_name: &str,
+    ) -> Result<String, AccountError> {
+        self.client.profile_set(token, display_name)
     }
 
     fn roster_get(&self, token: &SessionToken) -> Result<RosterBlob, AccountError> {
@@ -189,6 +232,23 @@ fn validate_name(name: &str) -> Result<String, String> {
         Err("Enter a name.".to_owned())
     } else if len > NAME_MAX_CHARS {
         Err(format!("Name must be at most {NAME_MAX_CHARS} characters."))
+    } else {
+        Ok(name.to_owned())
+    }
+}
+
+/// Normalize + validate an ACCOUNT display name (ADR-007): trimmed, 1–64
+/// chars, no control characters — the name a host sees when this account
+/// asks to control their machine. Wire rules mirror
+/// `protocol::account::valid_display_name`.
+pub fn normalize_display_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        Err("Enter your name — it is shown when you ask to control a machine.".to_owned())
+    } else if !valid_display_name(name) {
+        Err(format!(
+            "Name must be at most {DISPLAY_NAME_MAX_CHARS} characters, without control characters."
+        ))
     } else {
         Ok(name.to_owned())
     }
@@ -333,6 +393,10 @@ fn is_unauthorized(err: &AccountError) -> bool {
 /// and on app exit.
 struct Session {
     username: String,
+    /// The account's display name (ADR-007) — what a host sees on our
+    /// control requests. `None` for legacy name-less accounts; the app
+    /// prompts for one before control is allowed.
+    display_name: Option<String>,
     dek: Zeroizing<[u8; crypto::KEY_LEN]>,
     token: SessionToken,
     expires_ms: u64,
@@ -372,8 +436,16 @@ pub struct SavedAccount {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountStatus {
     LoggedOut,
-    SavedAccount { username: String },
-    LoggedIn { username: String, expires_ms: u64 },
+    SavedAccount {
+        username: String,
+    },
+    LoggedIn {
+        username: String,
+        /// The account's display name (ADR-007); `None` for legacy
+        /// name-less accounts (control is gated until one is set).
+        display_name: Option<String>,
+        expires_ms: u64,
+    },
 }
 
 pub struct AccountManager {
@@ -433,6 +505,7 @@ impl AccountManager {
         if let Some(session) = &self.session {
             return AccountStatus::LoggedIn {
                 username: session.username.clone(),
+                display_name: session.display_name.clone(),
                 expires_ms: session.expires_ms,
             };
         }
@@ -453,13 +526,17 @@ impl AccountManager {
     /// Create an account and log in. The current favorites are imported as
     /// the initial roster (one entry each), encrypted, and uploaded; then
     /// everything persists (account.json, roster.json, credential token).
+    /// `display_name` (ADR-007) is required — it is the person name a host
+    /// sees when this account asks to control their machine.
     pub fn register(
         &mut self,
         store: &mut LocalStore,
         username: &str,
+        display_name: &str,
         password: &str,
     ) -> Result<AccountStatus, String> {
         let username = normalize_username(username)?;
+        let display_name = normalize_display_name(display_name)?;
         validate_password(password)?;
         self.retire_previous_session(&username);
 
@@ -480,6 +557,7 @@ impl AccountManager {
             .service
             .register(
                 &username,
+                Some(&display_name),
                 &auth_key,
                 &auth_salt_hex,
                 &wrap_salt_hex,
@@ -491,6 +569,7 @@ impl AccountManager {
         let doc = RosterDoc::v1(import_favorites(store.favorites(), now_ms()));
         self.session = Some(Session {
             username: username.clone(),
+            display_name: Some(display_name),
             dek: material.dek,
             token,
             expires_ms: 0, // the register response carries no expiry
@@ -602,6 +681,7 @@ impl AccountManager {
 
         self.session = Some(Session {
             username: username.clone(),
+            display_name: outcome.display_name.clone(),
             dek,
             token: outcome.token.clone(),
             expires_ms: outcome.expires_ms,
@@ -724,6 +804,38 @@ impl AccountManager {
             let _ = self.creds.clear(&session.username);
         }
         self.status(store)
+    }
+
+    /// Set or update the account's display name (ADR-007). The name lives
+    /// on the server record and in the live session; account.json is not
+    /// touched (the name returns with every future login).
+    pub fn set_display_name(
+        &mut self,
+        store: &LocalStore,
+        raw: &str,
+    ) -> Result<AccountStatus, String> {
+        let name = normalize_display_name(raw)?;
+        let token = self.session_mut()?.token.clone();
+        let stored = self
+            .service
+            .profile_set(&token, &name)
+            .map_err(service_err)?;
+        self.session_mut()?.display_name = Some(stored);
+        Ok(self.status(store))
+    }
+
+    /// The ADR-007 control gate: controlling another machine requires a
+    /// live login AND a display name (it travels on the connect_request so
+    /// the host's prompt can say who is asking). Returns the name when
+    /// control is allowed, or a user-facing reason when it is not.
+    pub fn control_identity(&self) -> Result<String, ControlGate> {
+        match &self.session {
+            None => Err(ControlGate::SignedOut),
+            Some(session) => match &session.display_name {
+                Some(name) => Ok(name.clone()),
+                None => Err(ControlGate::MissingName),
+            },
+        }
     }
 
     /// The decrypted list with the "this computer" flag resolved.

@@ -196,6 +196,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             session_id,
             ai_session,
             pairing_proof_hex,
+            requester_name,
             message_id,
         } => {
             // ADR-006: silent auto-accept requires a VALID pairing proof.
@@ -266,12 +267,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     "ai_session": ai_session,
                     "paired": paired,
                     "pairing_proof_ok": proof_ok,
-                    // ADR-006: the circle nickname (self-chosen, advisory —
-                    // the code beside it in the prompt is the identity).
-                    "requester_name": crate::directory::nickname_for(
-                        app,
-                        &controller_device_id
-                    ),
+                    // ADR-007: the account name from the wire wins; the
+                    // circle nickname (self-chosen, advisory — the code
+                    // beside it in the prompt is the identity) is the
+                    // fallback for pre-0.8 controllers.
+                    "requester_name": requester_name.or_else(|| {
+                        crate::directory::nickname_for(app, &controller_device_id)
+                    }),
                 })),
             );
         }
@@ -612,7 +614,9 @@ pub fn account_register(
     args: AccountCredentialsArgs,
 ) -> CmdResult<AccountStateDto> {
     with_account(&app, |store, account| {
-        account.register(store, &args.username, &args.password)?;
+        // `normalize_display_name` gives the friendly empty-name message.
+        let name = args.display_name.clone().unwrap_or_default();
+        account.register(store, &args.username, &name, &args.password)?;
         Ok(account.status(store).into())
     })
 }
@@ -621,6 +625,17 @@ pub fn account_register(
 pub fn account_login(app: AppHandle, args: AccountCredentialsArgs) -> CmdResult<AccountStateDto> {
     with_account(&app, |store, account| {
         account.login(store, &args.username, &args.password)?;
+        Ok(account.status(store).into())
+    })
+}
+
+/// ADR-007: set or update the signed-in account's display name (the name
+/// hosts see on control requests; also the unlock for legacy name-less
+/// accounts that want to control machines).
+#[tauri::command]
+pub fn account_set_name(app: AppHandle, args: AccountNameArgs) -> CmdResult<AccountStateDto> {
+    with_account(&app, |store, account| {
+        account.set_display_name(store, &args.display_name)?;
         Ok(account.status(store).into())
     })
 }
@@ -724,12 +739,34 @@ pub fn controller_stop(app: AppHandle) -> CmdResult<()> {
     with_engine(&app, |handle| handle.send(EngineCmd::ControllerStop))
 }
 
+/// File → Quit: the same shutdown path as the tray's Quit item (engine
+/// down, then process exit). Keeping the engine shutdown explicit means an
+/// in-flight host session tells the peer before the process dies.
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    if let Some(services) = app.try_state::<AppServices>()
+        && let Some(engine) = services.engine.lock().expect("engine slot").take()
+    {
+        engine.shutdown();
+    }
+    app.exit(0);
+}
+
 #[tauri::command]
 pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
     let code = args.code.trim().to_owned();
     if code.is_empty() {
         return Err("Enter the host machine's connection code.".into());
     }
+    // ADR-007 control gate: the connect_request carries the account's
+    // display name so the host's prompt says who is asking. Anonymous
+    // users can host and be controlled, but not control — the marker
+    // error opens the sign-in / add-name card instead of a raw error.
+    let requester_name = {
+        let services = app.state::<AppServices>();
+        let account = services.account.lock().expect("account");
+        account.control_identity().map_err(|gate| gate.message())?
+    };
     // ADR-006: attach the pairing secret (when one is held with this host)
     // so the engine stamps the single-use pairing proof on the
     // connect_request — silent paired accept must prove the secret, not
@@ -740,6 +777,7 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
         handle.send(EngineCmd::Connect {
             code,
             pairing_secret,
+            requester_name: Some(requester_name),
         })
     })
 }

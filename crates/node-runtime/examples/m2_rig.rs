@@ -1732,6 +1732,7 @@ impl NodeObserver for RigObserver {
         session_id: &str,
         ai_session: bool,
         _pairing_proof_hex: Option<&str>,
+        _requester_name: Option<&str>,
         _message_id: &str,
     ) {
         self.last_activity = Instant::now();
@@ -2712,7 +2713,7 @@ fn run(args: Args) -> i32 {
                     let online = read_peer_state(&peer_status_path).is_some_and(|s| s == "Online");
                     if online || now.duration_since(script_start) > Duration::from_secs(20) {
                         phase = CtrlPhase::Connecting(Instant::now());
-                        node.controller_connect(peer_device, None, &mut observer);
+                        node.controller_connect(peer_device, None, None, &mut observer);
                         eprintln!("[{device}] connect_request sent");
                     }
                 }
@@ -2914,7 +2915,7 @@ fn run(args: Args) -> i32 {
                                 continue;
                             }
                         }
-                        node.controller_connect(peer_device, None, &mut observer);
+                        node.controller_connect(peer_device, None, None, &mut observer);
                         phase = CtrlPhase::Reconnecting(Instant::now());
                     } else if wait_started.elapsed() > Duration::from_secs(30) {
                         failure_reason = format!(
@@ -3014,7 +3015,7 @@ fn run(args: Args) -> i32 {
                             }
                         }
                         phase = CtrlPhase::Connecting(Instant::now());
-                        node.controller_connect(peer_device, None, &mut observer);
+                        node.controller_connect(peer_device, None, None, &mut observer);
                     } else {
                         phase = CtrlPhase::Finished;
                     }

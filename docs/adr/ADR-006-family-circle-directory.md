@@ -143,6 +143,12 @@ and the signaling send path gains fixed-window rate limits (60
 envelopes/min/sender, 5 connect_request/min per sender+target) — the
 M3-audit gap that until now only the account surface had closed.
 
+*0.8.0 note (ADR-007 release):* the first-run circle notice is a
+PASSIVE toast now — it self-dismisses and has no OK button (the user's
+"no button presses that can be avoided" rule). Visibility stays
+user-controlled from the start via Config → Circle's "Show this machine
+in the circle" toggle; nothing about the consent model above changes.
+
 ### 6. Desktop composition
 
 `node-runtime::directory_remote` (ureq, mirrors `account_remote`:

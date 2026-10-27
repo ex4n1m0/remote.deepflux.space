@@ -90,6 +90,7 @@ fn full_session_state_flow_through_the_command_layer() {
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
+        requester_name: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -219,6 +220,7 @@ fn reject_leaves_host_online_and_controller_disconnected() {
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
+        requester_name: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -265,6 +267,7 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
+        requester_name: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -327,6 +330,7 @@ fn connect_from_idle_is_one_press() {
     ctrl.send(EngineCmd::Connect {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
+        requester_name: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
