@@ -20,6 +20,22 @@ pub fn https_agent(timeout: Duration, user_agent: &str) -> ureq::Agent {
         .build()
 }
 
+/// A streaming variant for long bodies (downloads): per-I/O timeouts
+/// only, deliberately NO overall timeout — [`https_agent`]'s request
+/// timeout would abort a multi-minute transfer mid-body. A stalled
+/// server still errors out via the read timeout; healthy streams run
+/// as long as they need.
+pub fn https_agent_io(connect: Duration, io: Duration, user_agent: &str) -> ureq::Agent {
+    let connector = native_tls::TlsConnector::new().expect("schannel TlsConnector");
+    ureq::AgentBuilder::new()
+        .tls_connector(Arc::new(connector))
+        .timeout_connect(connect)
+        .timeout_read(io)
+        .timeout_write(io)
+        .user_agent(user_agent)
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -29,5 +45,6 @@ mod tests {
         // Construction alone pins the fix (a bare AgentBuilder builds too,
         // so this is a smoke, not a TLS proof; real proof = live probe).
         let _agent = https_agent(Duration::from_secs(5), "test");
+        let _streaming = https_agent_io(Duration::from_secs(5), Duration::from_secs(30), "test");
     }
 }
