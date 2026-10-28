@@ -236,3 +236,63 @@ build; releases copy its artifact to `apps/landing/download/` under the
 public filename and deploy the landing. Landing fineprint discloses the
 auto-join and the opt-out. v0.6.0 was the first release shipped this
 way (SHA-256 `96507d1a4962…`, byte-verified live).
+
+## Addendum — the "Always allow" click is durable (2026-10-28)
+
+Field report: a host owner clicked **Always allow this machine** and was
+prompted again by the same controller later. Evidence on the reporting
+host: no host-side pairing row existed at all — the ceremony had never
+completed, in either direction. Root causes, all in the ceremony glue
+(§3), not in the proof (§4):
+
+1. **The click lived only in memory.** `trust.decision` was recorded at
+   click time and consumed when the controller's `PairOffer` arrived —
+   but the offer is a data-channel message sent once, at the
+   controller's session establishment, with no retry. A session that
+   ends first (short session, teardown race — the transport's send pump
+   drops the in-flight message and exits on a close error) silently
+   voided the click. `SessionEnded` wiped the decision. Result: prompt
+   every time, exactly the reported symptom.
+2. **A lost `PairAck` deadlocked re-pairing.** The host persists before
+   acking; if the ack is lost, the controller stays `pending_ack`,
+   re-mints a FRESH secret next session, and the host (per §3's
+   "never silently overwrite" rule) refused the new secret forever —
+   endless prompts until a human found Settings → Trusted machines.
+3. **The host also offered pairings.** The establish handler ran
+   `offer_pairing_if_new` for BOTH roles, so a host minted a pending
+   pairing row toward its own controller and sent it an offer the
+   controller always drops — noise in the Trusted list, and a
+   cross-wiring hazard once intents (below) could accept such offers.
+
+Amendment (accepted; supersedes the quoted §3 rules where they
+conflict, same threat model):
+
+- **Durable remember-intent.** "Always allow" is persisted at click
+  time (`pairings.json` → `remembered`, one 16-hex device id per click,
+  capped at 32). The pairing still records only when a `PairOffer`
+  arrives — but from ANY later session the owner allowed (the intent
+  outlives the session that armed it). Nothing touches the pairing
+  SECRETS before the owner's explicit choice; the intent IS the choice,
+  made durable. Revoked by an explicit **Decline** on the consent
+  prompt or by removing the machine in Trusted machines; consumed when
+  the pairing records. "Allow once" neither arms nor revokes.
+- **Human-backed secret replacement.** `record_pairing` accepts a
+  `human_backed` flag: an established pairing's secret may be REPLACED
+  when the ceremony carries a human "Always allow" (this session's
+  click or a standing intent) — closing the lost-ack/reinstall
+  deadlock (one Always-click re-pairs). The silent-overwrite ban stands
+  for every non-human path: a squatter's fresh secret still changes
+  nothing without a human click for that exact device id in an allowed
+  session.
+- **Only the controller offers.** The connect command marks the
+  outbound offer it owes (`TrustState::owed_pair_offer`); the establish
+  handler sends it only when the established session matches — the
+  host side of a session never mints or offers pairings.
+- Purge fix riding along: a controller re-minting its pending offer
+  refreshes `created_ms`, so the 24 h stale-pending purge measures the
+  LAST offer, not the first.
+
+No wire changes (`pairings.json` is a client-side file; the signaling
+and binary surfaces are untouched — no version bumps). No UI changes:
+the dialog's copy ("Always allow remembers this machine") becomes
+simply true.

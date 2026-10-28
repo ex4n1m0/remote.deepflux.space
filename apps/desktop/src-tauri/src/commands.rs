@@ -289,16 +289,44 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // controller's PairOffer arrives only after the session
             // establishes, so RECORD the decision now and apply it when the
             // offer lands (see PairOfferReceived below).
-            let services = app.state::<AppServices>();
-            let mut trust = services.trust.lock().expect("trust state");
-            if let Some((_, accepted, _)) = trust.prompt.as_mut() {
-                *accepted = true;
+            {
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                if let Some((_, accepted, _)) = trust.prompt.as_mut() {
+                    *accepted = true;
+                }
+                trust.decision = Some((controller_device_id.clone(), remember));
             }
-            trust.decision = Some((controller_device_id.clone(), remember));
+            // ADR-006 amendment (2026-10-28): "Always allow" is durable at
+            // click time. The in-memory decision above dies with the
+            // session — if the controller's PairOffer is lost to a short
+            // session or a teardown race, the standing intent completes
+            // the pairing in the next session the owner allows instead of
+            // silently voiding the click (the "approved forever, asked
+            // again" bug). "Allow once" neither arms nor revokes: a
+            // standing Always survives it; only Decline or removing the
+            // machine in Trusted machines revokes.
+            if remember {
+                crate::chat::remember_intent(app, &controller_device_id);
+            }
         }
         EngineEvent::SessionEstablished { session_id, peer } => {
-            // RD-023: controller side — offer pairing on first contact.
-            if let Some(peer) = peer.as_deref() {
+            // RD-023 + ADR-006 amendment (2026-10-28): offer pairing only
+            // when THIS machine is the controller of the session. The owed
+            // flag was set by our own connect command for this peer; a
+            // host-side establish (we're being controlled) has none — the
+            // host must never mint/offer pairings toward its controller
+            // (spurious offers cross-wired the two sides' secrets and
+            // could strand both at endless prompts).
+            let controller_session = {
+                let services = app.state::<AppServices>();
+                let mut trust = services.trust.lock().expect("trust state");
+                trust
+                    .owed_pair_offer
+                    .take()
+                    .is_some_and(|owed| Some(owed) == peer)
+            };
+            if controller_session && let Some(peer) = peer.as_deref() {
                 crate::chat::offer_pairing_if_new(app, peer);
             }
             emit(
@@ -397,12 +425,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             controller_device_id,
             secret_hex,
         } => {
-            // ADR-006: apply the decision the owner made at the consent
-            // click (the offer arrives after session establishment, so the
-            // decision was recorded then). Remember → persist + ack; not
-            // remembered → drop un-acked (the controller's pending offer
-            // expires client-side; nothing is stored).
-            let remember = {
+            // ADR-006: apply the owner's "Always allow" when the offer
+            // lands — this session's click (trust.decision) or a standing
+            // intent from an earlier click whose offer was lost (2026-10-28
+            // amendment; both are explicit human choices for this device
+            // id). Anything else → drop un-acked (the controller's pending
+            // offer expires client-side; nothing is stored).
+            let click_remembered = {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust
@@ -410,15 +439,19 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     .take_if(|(controller, _)| controller == &controller_device_id)
                     .is_some_and(|(_, remember)| remember)
             };
+            let remember =
+                click_remembered || crate::chat::has_remember_intent(app, &controller_device_id);
             if remember {
-                let live = crate::chat::record_pairing(app, &controller_device_id, &secret_hex);
+                // Human-backed: a stale secret (controller reinstall, lost
+                // ack) is replaced instead of refused, so one Always-click
+                // re-pairs instead of prompting forever.
+                let live =
+                    crate::chat::record_pairing(app, &controller_device_id, &secret_hex, true);
                 if live {
                     let _ = with_engine(app, |handle| handle.send(EngineCmd::SendPairAck));
                 } else {
-                    // Established with a DIFFERENT secret (controller
-                    // reinstalled / store cleared): the old trust stands,
-                    // the fresh offer is NOT acked — the other side keeps
-                    // getting prompts until this side removes the pairing.
+                    // Unreachable under the human-backed path, kept as the
+                    // fail-safe copy for any future non-backed caller.
                     let _ = app.emit(
                         events::INFO,
                         Some(serde_json::json!({ "message": format!(
@@ -787,6 +820,14 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
     // just claim the (claimable) device id.
     let pairing_secret =
         crate::chat::pairing_for(&app, &code).map(|p| crate::chat::PairingSecret(p.secret_hex));
+    // ADR-006 amendment (2026-10-28): this connect owes the session an
+    // outbound pairing offer — consumed at establishment to send it from
+    // the CONTROLLER side only (see SessionEstablished).
+    {
+        let services = app.state::<AppServices>();
+        services.trust.lock().expect("trust state").owed_pair_offer =
+            Some(crate::store::normalize_machine_code(&code));
+    }
     with_engine(&app, |handle| {
         handle.send(EngineCmd::Connect {
             code,
@@ -817,18 +858,24 @@ pub fn consent_accept(app: AppHandle, remember: bool) -> CmdResult<()> {
 pub fn consent_reject(app: AppHandle) -> CmdResult<()> {
     // ADR-006 B3: an explicit reject puts the controller in cooldown —
     // repeat prompts from it are auto-rejected for REJECT_COOLDOWN_MS.
-    {
+    let declined = {
         let services = app.state::<AppServices>();
         let mut trust = services.trust.lock().expect("trust state");
         let controller = trust.prompt.as_ref().map(|(c, _, _)| c.clone());
-        if let Some(controller) = controller {
+        if let Some(controller) = controller.as_deref() {
             if let Some((_, _, rejected)) = trust.prompt.as_mut() {
                 *rejected = true;
             }
             let now = crate::chat::now_ms();
-            trust.block(&controller, now + crate::chat::REJECT_COOLDOWN_MS);
+            trust.block(controller, now + crate::chat::REJECT_COOLDOWN_MS);
         }
         trust.decision = None;
+        controller
+    };
+    // ADR-006 amendment (2026-10-28): Decline is the explicit un-trust —
+    // it also revokes any standing "Always allow" intent for this machine.
+    if let Some(controller) = declined {
+        crate::chat::revoke_intent(&app, &controller);
     }
     with_engine(&app, |handle| handle.send(EngineCmd::ConsentReject))
 }

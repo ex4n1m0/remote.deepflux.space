@@ -4,6 +4,11 @@
 //! - **Pairing store** (`pairings.json`): peer code → 32-byte secret hex,
 //!   established automatically on the first session (controller offers,
 //!   host acks; the session's consent click was the trust ceremony).
+//! - **Standing remember-intent** (ADR-006 amendment, 2026-10-28): the
+//!   "Always allow" click is durable from the moment it happens — if the
+//!   controller's `PairOffer` was lost to a short session, the intent
+//!   completes the pairing in the next accepted session instead of
+//!   silently voiding the click.
 //! - **Chat history** (`chat/<code>.json`): bounded per-peer message log.
 //! - **Out-of-session inbox** (`/api/chat` on the signaling service):
 //!   envelopes sealed with AES-256-GCM under the pairing secret — the
@@ -89,6 +94,13 @@ pub struct TrustState {
     pub prompt: Option<(String, bool, bool)>,
     /// controller code -> blocked-until epoch ms.
     pub block_until: std::collections::HashMap<String, u64>,
+    /// The outbound pairing offer our own `connect` command owes this peer
+    /// (ADR-006 amendment, 2026-10-28). Set when the user presses Control,
+    /// consumed at session establishment: only the CONTROLLER side of a
+    /// session may offer pairing. Without it the establish handler could
+    /// not tell its role apart and the host minted spurious offers toward
+    /// its controller, cross-wiring the two sides' secrets.
+    pub owed_pair_offer: Option<String>,
 }
 
 /// Prompt-flood cooldown after an explicit user reject (ADR-006 B3).
@@ -115,9 +127,22 @@ impl TrustState {
     }
 }
 
+/// Cap on standing remember-intents (ADR-006 amendment, 2026-10-28).
+/// Each intent is one 16-hex device id armed by an explicit "Always
+/// allow" click; the cap is pure paranoia (invariant-3 discipline), the
+/// real bound is how many machines the owner clicks Always for.
+const REMEMBERED_CAP: usize = 32;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct PairingsDoc {
     pairings: Vec<Pairing>,
+    /// Device ids with a standing "Always allow" whose pairing offer has
+    /// not completed yet (ADR-006 amendment, 2026-10-28 — see
+    /// [`remember_intent`]). The click is durable from the moment it
+    /// happens; the secret lands only when the controller's `PairOffer`
+    /// finally arrives in an accepted session.
+    #[serde(default)]
+    remembered: Vec<String>,
 }
 
 /// One stored chat line. `sender`: "user" | "agent" | "peer-user" |
@@ -219,14 +244,20 @@ fn purge_stale_pending_in_doc(doc: &mut PairingsDoc, now: u64) -> bool {
 
 /// Host side: store a pairing offered by a controller — but only on the
 /// owner's explicit "remember" choice (ADR-006). An ESTABLISHED (non-
-/// pending) pairing is never silently overwritten: re-pairing requires
-/// removing it first (Trusted machines), so a squatter holding the id
-/// cannot re-arm trust. Returns whether the OFFERED secret is the live
-/// stored one — the caller acks the offer only when true (acking a secret
-/// we refused to store would desync both sides' "trusted" forever).
-pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str) -> bool {
+/// pending) pairing is never *silently* overwritten: re-pairing is either
+/// an explicit removal (Trusted machines) or — since the 2026-10-28
+/// amendment — a fresh human "Always allow" click for this machine
+/// (`human_backed`), which replaces a stale secret so a controller
+/// reinstall or a lost `PairAck` cannot strand both sides at endless
+/// consent prompts. A squatter holding the id gains nothing: their fresh
+/// secret reaches this path only after a human clicked Allow for this
+/// very device id in that session. Returns whether the OFFERED secret is
+/// the live stored one — the caller acks the offer only when true (acking
+/// a secret we refused to store would desync both sides' "trusted"
+/// forever).
+pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str, human_backed: bool) -> bool {
     let mut doc = read_pairings(app);
-    let recorded = record_pairing_in_doc(&mut doc, code, secret_hex, now_ms());
+    let recorded = record_pairing_in_doc(&mut doc, code, secret_hex, now_ms(), human_backed);
     if recorded {
         write_pairings(app, &doc);
     }
@@ -234,7 +265,14 @@ pub fn record_pairing(app: &AppHandle, code: &str, secret_hex: &str) -> bool {
 }
 
 /// Pure core of [`record_pairing`] (testable without an app handle).
-fn record_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, now: u64) -> bool {
+/// Consumes the standing remember-intent for `code` on every success.
+fn record_pairing_in_doc(
+    doc: &mut PairingsDoc,
+    code: &str,
+    secret_hex: &str,
+    now: u64,
+    human_backed: bool,
+) -> bool {
     let code = code.trim().to_lowercase();
     let valid = secret_hex.len() == 64 && secret_hex.chars().all(|c| c.is_ascii_hexdigit());
     if !valid {
@@ -243,25 +281,37 @@ fn record_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, no
     match doc.pairings.iter_mut().find(|p| p.code == code) {
         Some(existing) => {
             if !existing.pending_ack {
-                // Established pairing: refuse the overwrite — the existing
-                // trust stands, and re-pairing requires an explicit remove
-                // (Trusted machines) first. Report whether the OFFERED
-                // secret matches the live one (a stale re-offer after a
-                // controller reinstall must NOT be acked).
-                return existing.secret_hex == secret_hex;
+                if existing.secret_hex == secret_hex {
+                    // Same secret re-offered: live, nothing to change.
+                } else if human_backed {
+                    // Fresh human "Always allow" backs the new secret —
+                    // replace the stale one (controller reinstall / lost
+                    // ack); refusing here is what stranded pairings at
+                    // endless prompts before the amendment.
+                    existing.secret_hex = secret_hex.to_owned();
+                    existing.role = "host".to_owned();
+                } else {
+                    // Established pairing + unbacked different secret:
+                    // refuse (the existing trust stands; re-pairing needs
+                    // an explicit remove or a fresh Always-allow click).
+                    return false;
+                }
+            } else {
+                existing.secret_hex = secret_hex.to_owned();
+                existing.pending_ack = false;
+                existing.role = "host".to_owned();
+                existing.created_ms = now;
             }
-            existing.secret_hex = secret_hex.to_owned();
-            existing.pending_ack = false;
-            existing.role = "host".to_owned();
         }
         None => doc.pairings.push(Pairing {
-            code,
+            code: code.clone(),
             secret_hex: secret_hex.to_owned(),
             created_ms: now,
             pending_ack: false,
             role: "host".to_owned(),
         }),
     }
+    doc.remembered.retain(|c| c != &code);
     true
 }
 
@@ -276,35 +326,107 @@ pub fn pairing_ack(app: &AppHandle, code: &str) {
 }
 
 /// Controller side: mint + store a pending pairing, return the secret hex.
+/// A re-mint refreshes `created_ms` so the 24 h pending purge measures the
+/// LAST offer, not the first (a controller re-offering daily must not have
+/// its row purged as stale mid-courtship).
 pub fn mint_pairing(app: &AppHandle, code: &str) -> String {
     let mut bytes = [0u8; 32];
     let _ = getrandom::fill(&mut bytes);
     let secret_hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     let mut doc = read_pairings(app);
-    let code = code.trim().to_lowercase();
-    match doc.pairings.iter_mut().find(|p| p.code == code) {
-        Some(existing) => {
-            existing.secret_hex = secret_hex.clone();
-            existing.pending_ack = true;
-            existing.role = "controller".to_owned();
-        }
-        None => doc.pairings.push(Pairing {
-            code,
-            secret_hex: secret_hex.clone(),
-            created_ms: now_ms(),
-            pending_ack: true,
-            role: "controller".to_owned(),
-        }),
-    }
+    mint_pairing_in_doc(&mut doc, code, &secret_hex, now_ms());
     write_pairings(app, &doc);
     secret_hex
 }
 
+/// Pure core of [`mint_pairing`] (testable without an app handle).
+fn mint_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, now: u64) {
+    let code = code.trim().to_lowercase();
+    match doc.pairings.iter_mut().find(|p| p.code == code) {
+        Some(existing) => {
+            existing.secret_hex = secret_hex.to_owned();
+            existing.pending_ack = true;
+            existing.role = "controller".to_owned();
+            existing.created_ms = now;
+        }
+        None => doc.pairings.push(Pairing {
+            code,
+            secret_hex: secret_hex.to_owned(),
+            created_ms: now,
+            pending_ack: true,
+            role: "controller".to_owned(),
+        }),
+    }
+}
+
 pub fn remove_pairing(app: &AppHandle, code: &str) {
     let mut doc = read_pairings(app);
+    if remove_pairing_in_doc(&mut doc, code) {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Pure core of [`remove_pairing`]. Removing a machine also revokes any
+/// standing remember-intent for it — Trusted-machines removal is the
+/// explicit un-trust gesture (ADR-006 amendment: intent is armed only by
+/// a fresh "Always allow" click).
+fn remove_pairing_in_doc(doc: &mut PairingsDoc, code: &str) -> bool {
     let code = code.trim().to_lowercase();
+    let before = doc.pairings.len() + doc.remembered.len();
     doc.pairings.retain(|p| p.code != code);
-    write_pairings(app, &doc);
+    doc.remembered.retain(|c| *c != code);
+    doc.pairings.len() + doc.remembered.len() != before
+}
+
+// ---------------------------------------------------------------------------
+// Standing remember-intent (ADR-006 amendment, 2026-10-28)
+// ---------------------------------------------------------------------------
+
+/// The owner clicked "Always allow this machine" — durably, before any
+/// secret exists. The ADR-006 ceremony applies the click when the
+/// controller's `PairOffer` arrives, but that offer can be lost to a
+/// session that ended first (short session, teardown race), which used to
+/// void the click silently — the "I approved forever and it asked again"
+/// bug. The intent makes the click durable: whenever the offer finally
+/// arrives in ANY later session the owner allowed, the pairing completes.
+/// Revoked by an explicit Decline or by removing the machine in Trusted
+/// machines; consumed when the pairing records.
+pub fn remember_intent(app: &AppHandle, code: &str) {
+    let mut doc = read_pairings(app);
+    if remember_intent_in_doc(&mut doc, code) {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Pure core of [`remember_intent`]. Returns whether the doc changed.
+fn remember_intent_in_doc(doc: &mut PairingsDoc, code: &str) -> bool {
+    let code = crate::store::normalize_machine_code(code);
+    if !crate::store::is_machine_code(&code) || doc.remembered.contains(&code) {
+        return false;
+    }
+    doc.remembered.push(code);
+    if doc.remembered.len() > REMEMBERED_CAP {
+        doc.remembered
+            .drain(..doc.remembered.len() - REMEMBERED_CAP);
+    }
+    true
+}
+
+/// Revoke a standing intent (explicit Decline on the consent prompt).
+pub fn revoke_intent(app: &AppHandle, code: &str) {
+    let mut doc = read_pairings(app);
+    let code = crate::store::normalize_machine_code(code);
+    let before = doc.remembered.len();
+    doc.remembered.retain(|c| *c != code);
+    if doc.remembered.len() != before {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Is there a standing "Always allow" for this controller?
+pub fn has_remember_intent(app: &AppHandle, code: &str) -> bool {
+    let code = crate::store::normalize_machine_code(code);
+    read_pairings(app).remembered.contains(&code)
 }
 
 // ---------------------------------------------------------------------------
@@ -648,7 +770,10 @@ mod tests {
     const SECRET_B: &str = "bb1e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4aa9d6c507d4a3e2f8c7d";
 
     fn doc(pairs: Vec<Pairing>) -> PairingsDoc {
-        PairingsDoc { pairings: pairs }
+        PairingsDoc {
+            pairings: pairs,
+            remembered: Vec::new(),
+        }
     }
 
     #[test]
@@ -710,14 +835,17 @@ mod tests {
             &mut d,
             "abcdef0123456789",
             SECRET_A,
-            20
+            20,
+            false
         ));
-        // Fresh secret from a reinstalled controller: refused, NOT live.
+        // Fresh secret from a reinstalled controller, NOT human-backed:
+        // refused, not live (pre-amendment anti-silent-overwrite rule).
         assert!(!record_pairing_in_doc(
             &mut d,
             "abcdef0123456789",
             SECRET_B,
-            20
+            20,
+            false
         ));
         assert_eq!(d.pairings[0].secret_hex, SECRET_A);
     }
@@ -743,7 +871,8 @@ mod tests {
             &mut d,
             "  ABCDEF0123456789 ",
             SECRET_A,
-            10
+            10,
+            false
         ));
         assert_eq!(d.pairings.len(), 1);
         assert_eq!(d.pairings[0].code, "abcdef0123456789");
@@ -766,7 +895,8 @@ mod tests {
             &mut d,
             "abcdef0123456789",
             SECRET_B,
-            20
+            20,
+            false
         ));
         assert_eq!(d.pairings[0].secret_hex, SECRET_A, "secret unchanged");
         assert_eq!(d.pairings.len(), 1);
@@ -787,7 +917,8 @@ mod tests {
             &mut d,
             "abcdef0123456789",
             SECRET_A,
-            20
+            20,
+            false
         ));
         assert!(!d.pairings[0].pending_ack);
     }
@@ -799,10 +930,119 @@ mod tests {
             &mut d,
             "abcdef0123456789",
             "nothex",
-            1
+            1,
+            false
         ));
-        assert!(!record_pairing_in_doc(&mut d, "abcdef0123456789", "ab", 1));
+        assert!(!record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            "ab",
+            1,
+            false
+        ));
         assert!(d.pairings.is_empty());
+    }
+
+    // ---- ADR-006 amendment (2026-10-28): durable remember-intent ----
+
+    #[test]
+    fn human_backed_record_replaces_a_stale_secret() {
+        // The lost-ack / reinstall deadlock: established pairing with a
+        // secret the controller no longer holds. One fresh human
+        // "Always allow" must re-pair, not prompt forever.
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: false,
+            role: "host".to_owned(),
+        }]);
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_B,
+            20,
+            true
+        ));
+        assert_eq!(d.pairings.len(), 1);
+        assert_eq!(d.pairings[0].secret_hex, SECRET_B, "stale secret replaced");
+        assert!(!d.pairings[0].pending_ack);
+    }
+
+    #[test]
+    fn record_consumes_the_remember_intent() {
+        let mut d = doc(vec![]);
+        d.remembered = vec!["abcdef0123456789".to_owned(), "1111111111111111".to_owned()];
+        assert!(record_pairing_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            SECRET_A,
+            10,
+            false
+        ));
+        assert_eq!(d.remembered, vec!["1111111111111111".to_owned()]);
+        // Malformed refusals consume nothing.
+        assert!(!record_pairing_in_doc(
+            &mut d,
+            "1111111111111111",
+            "nothex",
+            10,
+            false
+        ));
+        assert_eq!(d.remembered.len(), 1);
+    }
+
+    #[test]
+    fn remember_intent_normalizes_dedupes_and_caps() {
+        let mut d = doc(vec![]);
+        assert!(remember_intent_in_doc(&mut d, "  ABCDEF0123456789 "));
+        assert!(!remember_intent_in_doc(&mut d, "abcdef0123456789"), "dedup");
+        assert!(!remember_intent_in_doc(&mut d, "not-a-code"), "invalid id");
+        assert_eq!(d.remembered, vec!["abcdef0123456789".to_owned()]);
+        for i in 0..REMEMBERED_CAP {
+            let code = format!("{i:016x}");
+            remember_intent_in_doc(&mut d, &code);
+        }
+        assert!(d.remembered.len() <= REMEMBERED_CAP, "bounded");
+        assert!(
+            !d.remembered.contains(&"abcdef0123456789".to_owned()),
+            "oldest dropped"
+        );
+    }
+
+    #[test]
+    fn remove_pairing_revokes_the_intent() {
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: false,
+            role: "host".to_owned(),
+        }]);
+        d.remembered = vec!["abcdef0123456789".to_owned()];
+        assert!(remove_pairing_in_doc(&mut d, " ABCDEF0123456789 "));
+        assert!(d.pairings.is_empty());
+        assert!(d.remembered.is_empty(), "un-trust revokes the intent");
+        assert!(
+            !remove_pairing_in_doc(&mut d, "abcdef0123456789"),
+            "idempotent"
+        );
+    }
+
+    #[test]
+    fn re_mint_refreshes_created_ms() {
+        // A controller re-offering daily must not be purged as stale: the
+        // 24 h pending purge measures the LAST offer.
+        let mut d = doc(vec![]);
+        mint_pairing_in_doc(&mut d, "abcdef0123456789", SECRET_A, 100);
+        mint_pairing_in_doc(&mut d, "abcdef0123456789", SECRET_B, 200);
+        assert_eq!(d.pairings.len(), 1);
+        assert_eq!(d.pairings[0].created_ms, 200);
+        assert_eq!(d.pairings[0].secret_hex, SECRET_B);
+        assert!(d.pairings[0].pending_ack);
+        // The refreshed row is not yet purgeable at 100 + MAX_AGE.
+        let now = 100 + PENDING_PAIRING_MAX_AGE_MS + 1;
+        assert!(!purge_stale_pending_in_doc(&mut d, now));
     }
 
     #[test]
