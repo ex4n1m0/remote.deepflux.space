@@ -77,6 +77,9 @@ export interface Settings {
   /** Domains the local user allowed the assistant to download from
    * without asking again ("always allow" on the confirm card). */
   agent_download_domains: string[];
+  /** ADR-008: automatic update checks (download/install stay explicit
+   * presses). Settings toggle, default on. */
+  auto_update: boolean;
 }
 
 export interface Favorite {

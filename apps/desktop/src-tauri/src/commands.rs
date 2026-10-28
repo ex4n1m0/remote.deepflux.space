@@ -42,6 +42,10 @@ pub struct AppServices {
     pub trust: Mutex<crate::chat::TrustState>,
     /// ADR-006 circle-directory cache (single-flight, latest-wins).
     pub directory: Mutex<crate::directory::DirectoryCache>,
+    /// ADR-008 automatic updates: the UI state machine plus the last
+    /// fetched manifest (input for the download step).
+    pub update: crate::updater::UpdateEngine,
+    pub update_manifest: Mutex<Option<crate::updater::UpdateManifest>>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -492,6 +496,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         skipped_onboarding: s.skipped_onboarding,
         launch_at_login: s.launch_at_login,
         agent_download_domains: s.agent_download_domains.clone(),
+        auto_update: s.auto_update,
     })
 }
 
@@ -518,6 +523,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         agent_base_url: store.settings().agent_base_url.clone(),
         agent_model: store.settings().agent_model.clone(),
         agent_download_domains: patch.agent_download_domains,
+        auto_update: patch.auto_update,
     };
     store.update_settings(next)?;
     let s = store.settings().clone();
@@ -530,6 +536,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         skipped_onboarding: s.skipped_onboarding,
         launch_at_login: s.launch_at_login,
         agent_download_domains: s.agent_download_domains.clone(),
+        auto_update: s.auto_update,
     })
 }
 
@@ -739,17 +746,24 @@ pub fn controller_stop(app: AppHandle) -> CmdResult<()> {
     with_engine(&app, |handle| handle.send(EngineCmd::ControllerStop))
 }
 
-/// File → Quit: the same shutdown path as the tray's Quit item (engine
-/// down, then process exit). Keeping the engine shutdown explicit means an
-/// in-flight host session tells the peer before the process dies.
-#[tauri::command]
-pub fn quit_app(app: AppHandle) {
+/// Shut the engine down cleanly (an in-flight host session tells the
+/// peer before the process dies), then exit. The File → Quit command and
+/// the updater's install step share this path.
+pub fn shutdown_and_exit(app: &AppHandle) {
     if let Some(services) = app.try_state::<AppServices>()
         && let Some(engine) = services.engine.lock().expect("engine slot").take()
     {
         engine.shutdown();
     }
     app.exit(0);
+}
+
+/// File → Quit: the same shutdown path as the tray's Quit item (engine
+/// down, then process exit). Keeping the engine shutdown explicit means an
+/// in-flight host session tells the peer before the process dies.
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    shutdown_and_exit(&app);
 }
 
 #[tauri::command]
@@ -1053,6 +1067,47 @@ pub fn circle_set_shared(app: AppHandle, args: CircleShareArgs) -> CmdResult<Cir
 pub fn directory_refresh(app: AppHandle) -> CmdResult<Vec<crate::directory::DirectoryMachineDto>> {
     crate::directory::refresh(&app)?;
     Ok(crate::directory::machines(&app))
+}
+
+// ---------------------------------------------------------------------------
+// Automatic updates (ADR-008)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn update_state(app: AppHandle) -> CmdResult<crate::updater::UpdateUiState> {
+    Ok(app.state::<AppServices>().update.state())
+}
+
+/// Help → Check for updates: force a check now (the automatic-toggle off
+/// only silences the scheduled checks, never an explicit one). No-op
+/// while an update is already downloading/staged/installed — a re-check
+/// must not clobber that.
+#[tauri::command]
+pub fn update_check(app: AppHandle) -> CmdResult<()> {
+    let services = app.state::<AppServices>();
+    services.update.force_check_now(&app);
+    Ok(())
+}
+
+/// Download the offered installer and verify it (ADR-008: the user
+/// pressed Update; installing stays a second, deliberate press).
+#[tauri::command]
+pub fn update_download(app: AppHandle) -> CmdResult<()> {
+    crate::updater::start_download(app)
+}
+
+/// Run the verified installer: silent NSIS, app restarts via the
+/// detached wrapper. Refuses during a live remote session.
+#[tauri::command]
+pub fn update_install(app: AppHandle) -> CmdResult<()> {
+    crate::updater::install(app)
+}
+
+/// "Later": quiet for this version until the app restarts.
+#[tauri::command]
+pub fn update_dismiss(app: AppHandle) -> CmdResult<()> {
+    app.state::<AppServices>().update.dismiss(&app);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

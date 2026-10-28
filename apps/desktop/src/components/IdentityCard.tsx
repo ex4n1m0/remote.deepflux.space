@@ -57,6 +57,7 @@ export function SettingsPanel({
   const [quality, setQuality] = useState("balanced");
   const [scale, setScale] = useState("fit");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(true);
   const [domains, setDomains] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export function SettingsPanel({
     setQuality(settings.default_quality);
     setScale(settings.default_viewer_scale);
     setLaunchAtLogin(settings.launch_at_login);
+    setAutoUpdate(settings.auto_update);
     setDomains((settings.agent_download_domains ?? []).join(", "));
   }
 
@@ -107,6 +109,7 @@ export function SettingsPanel({
               default_quality: quality,
               default_viewer_scale: scale,
               launch_at_login: launchAtLogin,
+              auto_update: autoUpdate,
               agent_download_domains: domains
                 .split(",")
                 .map((d) => d.trim().toLowerCase())
@@ -153,6 +156,15 @@ export function SettingsPanel({
               onChange={(event) => setLaunchAtLogin(event.target.checked)}
             />
             Launch at Windows login (stay reachable in the tray)
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={autoUpdate}
+              onChange={(event) => setAutoUpdate(event.target.checked)}
+            />
+            Check for updates automatically (Help menu works either way;
+            installing is always your press)
           </label>
           <label>
             This machine's display name

@@ -27,6 +27,14 @@ pub struct SettingsPatch {
     /// UI editable; `agent_download_domains` in the store).
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-008: automatic update checks (download/install stay explicit
+    /// user presses). Defaults ON for callers that predate the field.
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -149,6 +157,9 @@ pub struct SettingsDto {
     pub launch_at_login: bool,
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-008: automatic update checks (Settings toggle).
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

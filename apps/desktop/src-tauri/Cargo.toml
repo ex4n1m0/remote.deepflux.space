@@ -74,4 +74,7 @@ base64 = { workspace = true }
 ureq = { workspace = true }
 # Machine-chat sealing (ADR-005, RD-022): AES-256-GCM under pairing keys.
 aes-gcm = { workspace = true }
+# ADR-008 updater: SHA-256 verification of the staged installer against
+# the published manifest.
+sha2 = { workspace = true }
 

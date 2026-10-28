@@ -202,6 +202,18 @@ pub fn start(
     filename_hint: Option<&str>,
     enforce_https: bool,
 ) -> Result<JobInfo, String> {
+    start_in_dir(url, filename_hint, enforce_https, None)
+}
+
+/// [`start`] with an explicit destination directory (the updater stages
+/// its installer under app data instead of Downloads). `None` = the
+/// Downloads folder, as before.
+pub fn start_in_dir(
+    url: &str,
+    filename_hint: Option<&str>,
+    enforce_https: bool,
+    dir: Option<&Path>,
+) -> Result<JobInfo, String> {
     let (url, host) = validate_url(url, enforce_https)?;
     if active_count() >= MAX_ACTIVE {
         return Err(format!(
@@ -212,7 +224,13 @@ pub fn start(
         Some(hint) if !hint.trim().is_empty() => safe_filename(hint),
         _ => filename_from_url(&url).unwrap_or_else(|| "download.bin".to_owned()),
     };
-    let dir = downloads_dir()?;
+    let dir = match dir {
+        Some(dir) => {
+            std::fs::create_dir_all(dir).map_err(|e| format!("create download dir: {e}"))?;
+            dir.to_path_buf()
+        }
+        None => downloads_dir()?,
+    };
     // Never silently overwrite a completed file; DO re-enter an
     // interrupted target that has resume state beside it.
     let mut path = dir.join(&filename);

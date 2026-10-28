@@ -287,6 +287,7 @@ fn command_argument_dtos_carry_metadata_only() {
                 default_viewer_scale: "fit".into(),
                 skipped_onboarding: false,
                 launch_at_login: false,
+                auto_update: true,
             })
             .unwrap(),
         ),
@@ -441,6 +442,24 @@ fn account_result_dtos_carry_metadata_only() {
     // No result DTO ever embeds the token or password fields.
     let raw = serde_json::to_string(&list).unwrap();
     assert!(!raw.contains("token") && !raw.contains("password") && !raw.contains("ciphertext"));
+}
+
+/// Updater state (ADR-008): the only updater payload that crosses IPC —
+/// version strings, a percent, a human size, an error line. Walked here
+/// so a future field name (e.g. a byte count) fails this gate.
+#[test]
+fn update_state_carries_metadata_only() {
+    let state = remote_desktop_app_lib::updater::UpdateUiState {
+        status: "available".into(),
+        stage: "check".into(),
+        current_version: "0.8.1".into(),
+        latest_version: "0.9.0".into(),
+        notes: "what's new".into(),
+        size_text: "7.3 MB".into(),
+        progress_percent: 42,
+        error: String::new(),
+    };
+    assert_result_clean(&serde_json::to_value(&state).unwrap(), "UpdateUiState");
 }
 
 #[test]

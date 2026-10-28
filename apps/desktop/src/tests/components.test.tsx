@@ -169,6 +169,7 @@ describe("SettingsPanel", () => {
     agent_model: "deepseek-flash",
     launch_at_login: false,
     agent_download_domains: [] as string[],
+    auto_update: true,
   } as const;
 
   it("shows the app version label (collapsed and open) when provided", () => {

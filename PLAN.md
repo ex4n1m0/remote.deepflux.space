@@ -228,6 +228,13 @@ v0.5.2 (annotated — new house style; older tags stay lightweight).
 slices 0–9 in the
 ADR-006 execution order, release 0.5.0.
 
+Post-MVP release mechanics (living note): releases 0.6.0+ are recorded in
+git history + `memory/`, not here. 0.9.0 (ADR-008, 2026-10-28) added the
+automatic-update engine — `latest.json` on the landing is the update
+contract, minted by `scripts/publish-landing.sh` together with the page
+patch; never hand-copy an installer or hand-edit landing version strings
+again.
+
 ## 5. Orchestration model
 
 - **Main session (me):** integrator and only merger of cross-module change. Dispatches subagents,

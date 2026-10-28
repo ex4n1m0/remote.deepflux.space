@@ -29,6 +29,8 @@ import { Onboarding, displayNameValid } from "./components/Onboarding";
 import { SessionCard } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
 import { ErrorBanner } from "./components/Common";
+import { UpdateBanner } from "./components/UpdateBanner";
+import { useUpdate } from "./hooks/useUpdate";
 import { api, normalizeCode } from "./ipc";
 import { CONTROL_GATE_MARKER, accountErrorCopy, accountGate } from "./state/account";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
@@ -42,6 +44,9 @@ export default function App() {
   const assistant = useAssistant();
   const directory = useDirectory();
   const [directoryUi] = directory.ui;
+  // ADR-008 update flow: banner states + the user verbs. Declared with
+  // the other hooks (never conditional); jsdom keeps state null.
+  const update = useUpdate();
   // Trusted (paired) codes for the rail's shield badges — pulled at mount,
   // after consent decisions, and whenever a pairing event lands.
   const [trustedCodes, setTrustedCodes] = useState<Set<string>>(new Set());
@@ -121,6 +126,26 @@ export default function App() {
   const controller = controllerView(ui.controllerState);
   const endCopy = ui.lastEnd ? disconnectCopy(ui.lastEnd.code, ui.lastEnd.cause) : null;
   const errCopy = ui.lastError ? engineErrorCopy(ui.lastError) : null;
+  // ADR-008: installing restarts the app — the install button disables
+  // while any session machinery is live (connected, consent prompt, or
+  // handshake), matching the Rust-side refusal set.
+  const quietRoleStates: ReadonlySet<string> = new Set([
+    "Idle",
+    "Registering",
+    "Online",
+    "Disconnected",
+  ]);
+  const updateSessionLive =
+    !quietRoleStates.has(ui.hostState) || !quietRoleStates.has(ui.controllerState);
+  // The up-to-date answer to an explicit check self-dismisses (it rides
+  // on the updater's status, so the timer only arms on the transition —
+  // poll re-renders don't restart it; the CircleNoticeToast lesson).
+  useEffect(() => {
+    if (update.state?.status !== "none") return;
+    const timer = setTimeout(() => update.dismiss(), 8_000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [update.state?.status]);
   const gate =
     engine.settings === null
       ? ("loading" as const)
@@ -356,6 +381,7 @@ export default function App() {
           onOpenConfig={(section) => setConfigSection(section)}
           onAbout={() => setAboutOpen(true)}
           onDiagnostics={() => setShowDiag((v) => !v)}
+          onCheckForUpdates={() => update.check()}
           onQuit={() => void api.quitApp()}
         />
         <div className="brand">
@@ -423,6 +449,23 @@ export default function App() {
        * self-dismisses; visibility is managed in Config → Family circle. */}
       {directoryUi.loaded && directoryUi.joined && !circleNoticeDismissed ? (
         <CircleNoticeToast onDone={() => setCircleNoticeDismissed(true)} />
+      ) : null}
+
+      {/* ADR-008 update flow: available / downloading / ready / installing
+       * / error, plus the quiet "checking" and up-to-date answers to an
+       * explicit Check (Help). Idle renders nothing; the up-to-date line
+       * self-dismissed via the effect below. */}
+      {update.state ? (
+        <UpdateBanner
+          state={update.state}
+          sessionLive={updateSessionLive}
+          onUpdate={update.download}
+          onInstall={update.install}
+          onRetry={() =>
+            update.state?.stage === "check" ? update.check() : update.download()
+          }
+          onDismiss={update.dismiss}
+        />
       ) : null}
 
       <main className="workspace">

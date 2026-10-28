@@ -59,6 +59,11 @@ pub struct AppSettings {
     /// allow" lands here). Empty = ask every time.
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-008 automatic updates: scheduled update checks (download and
+    /// install are always explicit user presses). Existing settings files
+    /// predate the field — defaults ON.
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
 }
 
 /// Default assistant provider (ADR-005): DeepSeek, OpenAI-compatible.
@@ -70,6 +75,10 @@ fn default_agent_base_url() -> String {
 
 fn default_agent_model() -> String {
     "deepseek-flash".to_owned()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Default signaling service (accounts phase): the deployed Vercel
@@ -95,6 +104,7 @@ impl Default for AppSettings {
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
             agent_download_domains: Vec::new(),
+            auto_update: true,
         }
     }
 }

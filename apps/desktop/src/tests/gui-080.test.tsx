@@ -35,7 +35,9 @@ describe("CircleNoticeToast (ADR-006 §5, passive since 0.8.0)", () => {
 describe("MenuBar (File / Config / Help)", () => {
   const noop = () => {};
 
-  function renderBar(picks: { add?: () => void; quit?: () => void; config?: () => void; about?: () => void } = {}) {
+  function renderBar(
+    picks: { add?: () => void; quit?: () => void; config?: () => void; about?: () => void; checkUpdates?: () => void } = {},
+  ) {
     return render(
       <MenuBar
         version="0.8.0"
@@ -43,10 +45,19 @@ describe("MenuBar (File / Config / Help)", () => {
         onOpenConfig={() => picks.config?.()}
         onAbout={picks.about ?? noop}
         onDiagnostics={noop}
+        onCheckForUpdates={picks.checkUpdates ?? noop}
         onQuit={picks.quit ?? noop}
       />,
     );
   }
+
+  it("fires Check for updates from the Help menu (ADR-008)", () => {
+    const checkUpdates = vi.fn();
+    renderBar({ checkUpdates });
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Check for updates…" }));
+    expect(checkUpdates).toHaveBeenCalled();
+  });
 
   it("opens a menu on click and closes on Escape", () => {
     renderBar();

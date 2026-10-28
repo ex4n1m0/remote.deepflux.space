@@ -18,7 +18,14 @@ exist on the control plane only — identity plus an encrypted device roster;
 the anonymous connection-code flow remains as the escape hatch. An optional
 "family circle" (ADR-006, 2026-10-26) publishes a sealed machine directory
 on the control plane for circle members — discovery, owner-approved trust,
-and favorites gating; it never carries machine control itself.
+and favorites gating; it never carries machine control itself. An
+automatic-update engine (ADR-008, 2026-10-28) reads a published
+`latest.json` from the landing (same origin), downloads and SHA-256
+verifies the installer via the existing segmented download engine
+(`apps/desktop` `updater.rs`), and installs silently on two explicit user
+presses; releases stage it with `scripts/publish-landing.sh`, which mints
+the manifest and patches the landing page in lockstep — never hand-copy an
+installer or hand-edit the version strings.
 
 Module map (source-plan layout, verbatim):
 
@@ -46,6 +53,7 @@ reports; the main session integrates.
 Key docs: `docs/adr/ADR-001-architecture.md`,
 `docs/adr/ADR-002-webrtc-rs-behind-transport-trait.md`,
 `docs/adr/ADR-003-accounts-and-roster.md`,
+`docs/adr/ADR-008-automatic-updates.md`,
 `docs/protocol/state-machines.md`, `docs/perf-counter-schema.md`.
 
 ## Non-negotiable invariants

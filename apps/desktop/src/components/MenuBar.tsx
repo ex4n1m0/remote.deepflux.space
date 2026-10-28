@@ -21,6 +21,8 @@ export interface MenuBarProps {
   onOpenConfig: (section: "settings" | "circle" | "trusted" | "assistant") => void;
   onAbout: () => void;
   onDiagnostics: () => void;
+  /** ADR-008: force an update check now (Help menu). */
+  onCheckForUpdates: () => void;
   onQuit: () => void;
 }
 
@@ -32,6 +34,7 @@ export function MenuBar({
   onOpenConfig,
   onAbout,
   onDiagnostics,
+  onCheckForUpdates,
   onQuit,
 }: MenuBarProps) {
   const [open, setOpen] = useState<MenuId | null>(null);
@@ -106,6 +109,11 @@ export function MenuBar({
           label: "About DeepFlux",
           hint: version ? `v${version}` : undefined,
           onPick: onAbout,
+        },
+        {
+          id: "check-updates",
+          label: "Check for updates…",
+          onPick: onCheckForUpdates,
         },
         { id: "diag", label: "Diagnostics", hint: "Ctrl+Shift+D", onPick: onDiagnostics },
         { id: "site", label: "Open website", onPick: () => void openSite() },

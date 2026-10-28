@@ -1285,3 +1285,37 @@ button.link {
   cursor: pointer;
   font: inherit;
 }
+
+/* ADR-008 update banner: stacked content (text + actions + progress) in
+   the standard info-banner shell. */
+.update-banner {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.update-banner .row {
+  flex-wrap: wrap;
+}
+
+/* percent + bar on one line; the percent sits OUTSIDE the live region */
+.update-progress-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-progress {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent, #5b8cff), var(--progress, #818cf8));
+  transition: width 0.3s ease;
+}

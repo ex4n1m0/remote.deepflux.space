@@ -14,6 +14,7 @@ pub mod engine;
 pub mod ipc;
 pub mod mcp;
 pub mod store;
+pub mod updater;
 
 use std::sync::Mutex;
 
@@ -66,6 +67,8 @@ pub fn run() {
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
+                update: updater::UpdateEngine::default(),
+                update_manifest: Mutex::new(None),
             });
             // ADR-006: family build auto-joins from the embedded key; the
             // directory poller keeps the machine list fresh while online.
@@ -88,6 +91,10 @@ pub fn run() {
             // launch, alongside the favorite purge in LocalStore::load.
             chat::purge_dead_data(app.handle());
             chat::spawn_poller(app.handle().clone());
+            // ADR-008 update poller: first check ~20 s after launch (past
+            // the engine's own startup), then daily; Help → Check for
+            // updates forces one anytime.
+            updater::spawn_poller(app.handle().clone());
             // Always-ready, both directions (0.6.3): the engine and the
             // controller role start at launch for everyone — controlling
             // out is one press (Control) with no enable step, and the
@@ -205,6 +212,11 @@ pub fn run() {
             commands::circle_leave,
             commands::circle_set_shared,
             commands::directory_refresh,
+            commands::update_state,
+            commands::update_check,
+            commands::update_download,
+            commands::update_install,
+            commands::update_dismiss,
         ])
         .run(tauri::generate_context!())
         .expect("tauri shell run");

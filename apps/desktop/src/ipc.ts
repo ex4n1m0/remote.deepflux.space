@@ -44,6 +44,22 @@ export const ASSISTANT_EVENT = {
 /** Machine chat (RD-022): the engine://chat event payload + APIs. */
 export const CHAT_EVENT = "engine://chat";
 
+/** Automatic updates (ADR-008): updater → UI event. */
+export const UPDATE_EVENT = "update://state";
+
+export interface UpdateState {
+  status: "idle" | "checking" | "available" | "none" | "downloading" | "ready" | "installing" | "error";
+  /** Which step an error belongs to: check | download | install (empty
+   * outside errors) — words the failure for the banner. */
+  stage: "check" | "download" | "install" | "";
+  current_version: string;
+  latest_version: string;
+  notes: string;
+  size_text: string;
+  progress_percent: number;
+  error: string;
+}
+
 export interface ChatLine {
   id: number;
   ts_ms: number;
@@ -147,6 +163,14 @@ export const api = {
 
   // File → Quit: same shutdown path as the tray's Quit.
   quitApp: (): Promise<void> => invoke("quit_app"),
+
+  // Automatic updates (ADR-008). Check is the Help-menu verb; download
+  // and install are the banner's explicit presses.
+  updateState: (): Promise<UpdateState> => invoke("update_state"),
+  updateCheck: (): Promise<void> => invoke("update_check"),
+  updateDownload: (): Promise<void> => invoke("update_download"),
+  updateInstall: (): Promise<void> => invoke("update_install"),
+  updateDismiss: (): Promise<void> => invoke("update_dismiss"),
 
   // Machine chat + pairing (RD-022/RD-023).
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
