@@ -2060,7 +2060,15 @@ impl Engine {
             body,
         };
         let msg = WireMessage::Chat(message);
-        if let Err(err) = self.node.send_wire(Channel::Chat, &msg) {
+        // Chat rides the CONTROL channel (2026-10-28 crash fix): the
+        // dedicated `chat` data channel was never part of the negotiated
+        // channel set on the wire, and sending on `Channel::Chat` indexed
+        // a nonexistent transport slot — every in-session chat message
+        // PANICKED the engine thread. Control is the same reliability
+        // class (ordered, reliable, tiny traffic), the channel is not
+        // part of the wire payload (no WIRE_VERSION change), and older
+        // peers that expect chat on the `chat` channel simply ignore it.
+        if let Err(err) = self.node.send_wire(Channel::Control, &msg) {
             eprintln!("[engine] chat send: {err}");
         }
     }
@@ -2129,6 +2137,7 @@ impl Engine {
                 diagnostics::QueueKind::ChannelInputFast,
                 diagnostics::QueueKind::ChannelInputReliable,
                 diagnostics::QueueKind::ChannelCursor,
+                diagnostics::QueueKind::ChannelChat,
             ]
             .into_iter()
             .enumerate()

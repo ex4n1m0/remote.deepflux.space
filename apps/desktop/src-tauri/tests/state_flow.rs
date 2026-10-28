@@ -403,3 +403,73 @@ fn engine_handle_reports_liveness_across_shutdown() {
     assert!(!other.is_alive(), "shutdown must clear liveness");
     host.shutdown();
 }
+
+/// Chat over the wire (2026-10-28 crash fix regression pin): the very
+/// first in-session chat message used to PANIC the engine thread — the
+/// `chat` data channel was never part of the negotiated channel set, so
+/// sending on `Channel::Chat` indexed a nonexistent transport slot
+/// (index 4 into 4). Chat now rides the control channel; this test is
+/// the two-engine proof it flows.
+#[test]
+fn chat_message_flows_over_the_wire_without_killing_the_engine() {
+    let hub = SignalingHub::new();
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut host_log = Vec::new();
+    let mut ctrl_log = Vec::new();
+
+    host.send(EngineCmd::HostStart).expect("host start");
+    ctrl.send(EngineCmd::ControllerStart).expect("ctrl start");
+    wait_for("both Online", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Online" && ctrl.status().controller_state == "Online"
+    });
+
+    ctrl.send(EngineCmd::Connect {
+        code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
+        requester_name: None,
+    })
+    .expect("connect");
+    wait_for("consent prompt", deadline, || {
+        collect(&host_events, &mut host_log);
+        host.status().host_state == "ConsentPrompted"
+    });
+    host.send(EngineCmd::ConsentAccept { remember: false })
+        .expect("accept");
+    wait_for("both Connected", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Connected" && ctrl.status().controller_state == "Connected"
+    });
+
+    // THE regression: this exact command killed the engine pre-fix.
+    ctrl.send(EngineCmd::ChatSend {
+        body: "hello over the wire".to_owned(),
+        agent: false,
+    })
+    .expect("chat send");
+    wait_for("host received chat", deadline, || {
+        collect(&host_events, &mut host_log);
+        host_log.iter().any(|event| {
+            matches!(
+                event,
+                EngineEvent::ChatReceived { body, .. } if body == "hello over the wire"
+            )
+        })
+    });
+    // The controller engine must still be alive and responsive — the
+    // pre-fix panic killed the thread right here.
+    assert!(ctrl.is_alive(), "chat send must not kill the engine");
+    ctrl.send(EngineCmd::Disconnect).expect("disconnect");
+    wait_for("both Disconnected", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Disconnected"
+            && ctrl.status().controller_state == "Disconnected"
+    });
+    host.shutdown();
+    ctrl.shutdown();
+}

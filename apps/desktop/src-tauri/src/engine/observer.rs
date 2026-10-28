@@ -260,6 +260,17 @@ impl NodeObserver for EngineObserver {
                     .chat_in
                     .push(chat.clone());
             }
+            (Channel::Control, WireMessage::Chat(chat)) => {
+                // Same message on the control channel — the 2026-10-28 fix
+                // routes chat there (the dedicated `chat` data channel was
+                // never negotiated on the wire). Accept both so any peer,
+                // old or new, is heard.
+                self.flags
+                    .lock()
+                    .expect("observer flags")
+                    .chat_in
+                    .push(chat.clone());
+            }
             (Channel::Control, WireMessage::PairOffer { secret_hex }) => {
                 // RD-023: host side — record + auto-ack (loop sends the ack;
                 // the app layer persists the pairing from the event below).

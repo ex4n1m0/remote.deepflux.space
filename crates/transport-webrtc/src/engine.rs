@@ -292,7 +292,15 @@ impl Shared {
     fn mark_channel_opened(&self, channel: Channel) -> bool {
         let bit = 1u8 << (channel as u8);
         let mask = self.opened_mask.fetch_or(bit, Ordering::AcqRel) | bit;
-        mask == 0b1111 && !self.channels_open_emitted.swap(true, Ordering::AcqRel)
+        // Establishment gates on the ORIGINAL four channels only: `chat`
+        // (bit 4) is best-effort — a pre-chat peer never opens it, and
+        // mixed-version pairs must still establish. Chat messages buffer
+        // in the slot's send queue until the channel opens. The chat bit
+        // is masked OUT of the comparison because channel-open order is
+        // nondeterministic: chat opening before the fourth original
+        // would otherwise wedge the equality forever (state_flow race,
+        // caught 2026-10-28).
+        (mask & 0b1111) == 0b1111 && !self.channels_open_emitted.swap(true, Ordering::AcqRel)
     }
 }
 
@@ -432,10 +440,14 @@ impl ChannelSlot {
     }
 }
 
-/// The four channel slots, shared between engine and event handler.
+/// The five channel slots, shared between engine and event handler.
+/// `chat` (RD-022/ADR-005) is best-effort: it is created and attached
+/// like the others, but session establishment never waits on it — a
+/// pre-chat peer simply never opens one and chat degrades to buffering
+/// (mixed-version pairs must keep connecting).
 #[derive(Clone)]
 struct Channels {
-    slots: Arc<[Arc<ChannelSlot>; 4]>,
+    slots: Arc<[Arc<ChannelSlot>; 5]>,
 }
 
 impl Channels {
@@ -446,6 +458,7 @@ impl Channels {
                 Arc::new(ChannelSlot::new(Channel::InputFast)),
                 Arc::new(ChannelSlot::new(Channel::InputReliable)),
                 Arc::new(ChannelSlot::new(Channel::Cursor)),
+                Arc::new(ChannelSlot::new(Channel::Chat)),
             ]),
         }
     }
@@ -992,7 +1005,7 @@ impl WebrtcTransport {
             "role setup",
             async move {
                 if matches!(setup_role, WebrtcTransportRole::Controller) {
-                    // Offerer: announce the four data channels in fixed
+                    // Offerer: announce the five data channels in fixed
                     // creation order (→ fixed SCTP ids → deterministic
                     // open order) and a recvonly video transceiver.
                     for slot in setup_channels.slots.iter() {
@@ -1271,9 +1284,11 @@ impl PeerConnectionEventHandler for TransportHandler {
             return;
         };
         let Some(slot) = self.channels.for_label(&label) else {
-            self.shared.push_event(TransportEvent::Failed {
-                reason: format!("unexpected data channel label {label:?}"),
-            });
+            // Unknown label: a NEWER peer's extra channel (e.g. a
+            // 0.9.3+ offerer creating `chat` against a pre-chat build)
+            // or a future channel we don't know. Ignoring it keeps
+            // mixed-version sessions alive; failing here would kill
+            // every connect between version-skewed pairs.
             return;
         };
         attach_data_channel(Arc::clone(&self.shared), Arc::clone(slot), dc).await;

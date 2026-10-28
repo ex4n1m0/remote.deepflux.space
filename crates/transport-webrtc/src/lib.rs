@@ -220,26 +220,26 @@ pub struct NetemQueueStats {
 pub struct ChannelQueues {
     /// (depth, capacity) per channel, in the order of [`Channel`] variants
     /// documented in [`CHANNEL_LABELS`].
-    pub depth: [u32; 4],
-    pub capacity: [u32; 4],
-    pub high_water: [u32; 4],
+    pub depth: [u32; 5],
+    pub capacity: [u32; 5],
+    pub high_water: [u32; 5],
     /// Messages dropped because the bounded queue was full.
-    pub dropped: [u64; 4],
+    pub dropped: [u64; 5],
     /// Newest-wins overwrites (`input-fast`, `cursor`).
-    pub replaced: [u64; 4],
+    pub replaced: [u64; 5],
     /// Cumulative enqueues per channel since transport creation (M2 QA
     /// F32): a poller comparing consecutive snapshots detects activity
     /// between polls and can sample on change per the perf schema's
     /// channel-queue cadence rule.
-    pub enqueued: [u64; 4],
+    pub enqueued: [u64; 5],
     /// Cumulative dequeues (handed to SCTP) per channel.
-    pub dequeued: [u64; 4],
+    pub dequeued: [u64; 5],
     /// M6 soak F74b: depth-trail overflows per channel (F63): entries the
     /// bounded per-slot trail dropped oldest-first because more depth
     /// changes accumulated between drains than the trail holds. Zero in
     /// healthy runs; growth means the consumer drains the trail slower
     /// than the queues change depth.
-    pub trail_overflow: [u64; 4],
+    pub trail_overflow: [u64; 5],
 }
 
 /// One depth-change entry from a channel queue's bounded trail (M6 QA
