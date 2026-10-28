@@ -71,6 +71,10 @@ echo "==> staged: $PUBLIC_NAME ($MB MB, sha256 ${SHA:0:12}…)"
 # line below is only a placeholder so an unattended run never ships an
 # empty banner — replace it per release.
 NOTES="${2:-${DEEPFLUX_RELEASE_NOTES:-Release notes not set — see the website.}}"
+# JSON-escape the notes before interpolation: a raw double quote in the
+# argument minted invalid JSON and broke every installed updater's check
+# (caught live in the 0.9.1 release, 2026-10-28).
+NOTES_JSON="$(python -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$NOTES")"
 cat > "$LANDING/latest.json" <<EOF
 {
   "product": "remote-desktop",
@@ -78,10 +82,12 @@ cat > "$LANDING/latest.json" <<EOF
   "url": "https://remote.deepflux.space/download/$PUBLIC_NAME",
   "sha256_hex": "$SHA",
   "size_bytes": $SIZE,
-  "notes": "$NOTES",
+  "notes": $NOTES_JSON,
   "published_at": "$(date -u +%F)"
 }
 EOF
+python -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$LANDING/latest.json" \
+  || { echo "error: minted latest.json is not valid JSON — refusing" >&2; exit 1; }
 echo "==> latest.json written (v$VERSION, notes: $NOTES)"
 
 # -- patch the landing page (version + size strings) --------------------------

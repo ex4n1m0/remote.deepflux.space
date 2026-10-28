@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.9.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.0-x64-setup.exe",
-  "sha256_hex": "d6bb2f90435277bf856bc19f8f8c6a25ab04d4fde2c4864d71e241cd93d97d1c",
-  "size_bytes": 7697405,
-  "notes": "The in-app updater — DeepFlux now updates itself with your OK; plus stability fixes.",
+  "version": "0.9.1",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.1-x64-setup.exe",
+  "sha256_hex": "c0ba863b37807bca98d0a92eeefe1752addde192c784d2f627d51372d4db725a",
+  "size_bytes": 7696172,
+  "notes": "0.9.1: \"Always allow\" now sticks \u2014 a remembered machine connects without asking again even if its first pairing message raced a short session, and a reinstalled machine re-pairs with one click instead of prompting forever.",
   "published_at": "2026-10-28"
 }
