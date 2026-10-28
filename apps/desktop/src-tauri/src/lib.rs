@@ -44,6 +44,51 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            // Persisted panic log (2026-10-28 "engine stopped" incident):
+            // a GUI-subsystem process has no stderr, so a thread panic —
+            // e.g. the engine thread dying mid-session — vanished without
+            // a trace. Every panic now lands in the log dir with a
+            // timestamp, thread name and backtrace; write failures are
+            // swallowed (the hook must never panic itself).
+            {
+                let panic_dir = app
+                    .path()
+                    .app_log_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir());
+                let _ = std::fs::create_dir_all(&panic_dir);
+                let default_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |info| {
+                    let thread = std::thread::current();
+                    let thread_name = thread.name().unwrap_or("<unnamed>").to_owned();
+                    let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+                    let mut entry = format!(
+                        "[{} ms] thread {thread_name} panicked at {info}\n",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0)
+                    );
+                    // Backtraces in release builds are long address walls;
+                    // keep the file bounded (8 KiB per entry).
+                    if backtrace.len() > 8192 {
+                        entry.push_str(&backtrace[..8192]);
+                        entry.push_str("…\n");
+                    } else {
+                        entry.push_str(&backtrace);
+                    }
+                    entry.push('\n');
+                    let path = panic_dir.join("panics.log");
+                    use std::io::Write;
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&path)
+                    {
+                        let _ = file.write_all(entry.as_bytes());
+                    }
+                    default_hook(info);
+                }));
+            }
             let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let mut store = store::LocalStore::load(&dir).map_err(|e| e.to_string())?;
             // Durable identity anchor: mirror/restore this machine's
@@ -153,7 +198,7 @@ pub fn run() {
                 // Clean engine shutdown when the shell window closes
                 // (pipelines, transports, input safety).
                 if let Some(services) = window.app_handle().try_state::<AppServices>()
-                    && let Some(engine) = services.engine.lock().expect("engine slot").take()
+                    && let Some(mut engine) = services.engine.lock().expect("engine slot").take()
                 {
                     engine.shutdown();
                 }
@@ -244,7 +289,7 @@ fn setup_tray(app: tauri::AppHandle) -> tauri::Result<()> {
             }
             "quit" => {
                 if let Some(services) = app.try_state::<AppServices>()
-                    && let Some(engine) = services.engine.lock().expect("engine slot").take()
+                    && let Some(mut engine) = services.engine.lock().expect("engine slot").take()
                 {
                     engine.shutdown();
                 }

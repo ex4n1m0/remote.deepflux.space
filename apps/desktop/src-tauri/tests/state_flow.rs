@@ -63,8 +63,8 @@ fn has_state(events: &[EngineEvent], machine: &str, state: &str) -> bool {
 #[test]
 fn full_session_state_flow_through_the_command_layer() {
     let hub = SignalingHub::new();
-    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
-    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut host_log = Vec::new();
     let mut ctrl_log = Vec::new();
@@ -203,8 +203,8 @@ fn full_session_state_flow_through_the_command_layer() {
 #[test]
 fn reject_leaves_host_online_and_controller_disconnected() {
     let hub = SignalingHub::new();
-    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
-    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut host_log = Vec::new();
     let mut ctrl_log = Vec::new();
@@ -250,8 +250,8 @@ fn reject_leaves_host_online_and_controller_disconnected() {
 #[test]
 fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
     let hub = SignalingHub::new();
-    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
-    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut host_log = Vec::new();
     let mut ctrl_log = Vec::new();
@@ -314,8 +314,8 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
 #[test]
 fn connect_from_idle_is_one_press() {
     let hub = SignalingHub::new();
-    let (host, host_events) = spawn_engine(&hub, HOST_DEVICE);
-    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut host_log = Vec::new();
     let mut ctrl_log = Vec::new();
@@ -356,7 +356,7 @@ fn connect_from_idle_is_one_press() {
 #[test]
 fn controller_start_while_online_is_a_noop() {
     let hub = SignalingHub::new();
-    let (ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut log = Vec::new();
 
@@ -378,4 +378,28 @@ fn controller_start_while_online_is_a_noop() {
     );
     assert_eq!(ctrl.status().controller_state, "Online");
     ctrl.shutdown();
+}
+
+/// Liveness flag (2026-10-28 "engine stopped" incident): the handle
+/// reports alive while the engine thread runs and dead after a clean
+/// shutdown — the app layer respawns on this instead of erroring forever.
+#[test]
+fn engine_handle_reports_liveness_across_shutdown() {
+    let hub = SignalingHub::new();
+    let (mut host, _events) = spawn_engine(&hub, HOST_DEVICE);
+    assert!(host.is_alive(), "fresh engine must report alive");
+    host.send(EngineCmd::HostStart).expect("host start");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    wait_for("host Online", deadline, || {
+        host.status().host_state == "Online"
+    });
+    assert!(host.is_alive(), "running engine must report alive");
+    // Shutdown consumes the handle; drive it through the send-failure
+    // path the app layer sees afterwards: spawn a second engine, shut it
+    // down, and confirm the flag flips within the join window.
+    let (mut other, _other_events) = spawn_engine(&hub, CTRL_DEVICE);
+    assert!(other.is_alive());
+    other.shutdown();
+    assert!(!other.is_alive(), "shutdown must clear liveness");
+    host.shutdown();
 }

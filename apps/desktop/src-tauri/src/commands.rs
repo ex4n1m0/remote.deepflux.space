@@ -89,13 +89,30 @@ pub fn engine_start(app: AppHandle) -> CmdResult<EngineStatusDto> {
 /// Shared engine-start path: the typed command above and the MCP bridge's
 /// auto-start (ADR-004, RD-018) both call this.
 pub(crate) fn start_engine(app: &AppHandle) -> CmdResult<EngineStatusDto> {
-    {
+    // A dead engine thread (panic) must not zombie the app: the old code
+    // reused the slot forever, so every later command failed "engine
+    // stopped" until a manual restart (2026-10-28 incident). The slot is
+    // now checked for LIVENESS; a dead handle is replaced and the
+    // always-ready roles are replayed on the fresh engine.
+    let replay = {
         let services = app.state::<AppServices>();
-        let guard = services.engine.lock().expect("engine slot");
-        if let Some(handle) = guard.as_ref() {
-            return Ok(handle.status().into());
+        let mut guard = services.engine.lock().expect("engine slot");
+        match guard.as_ref() {
+            Some(handle) if handle.is_alive() => {
+                return Ok(handle.status().into());
+            }
+            Some(dead) => {
+                let status = dead.status();
+                let replay = (
+                    status.controller_state != "Idle",
+                    status.host_state != "Idle",
+                );
+                *guard = None; // drop the zombie handle
+                Some(replay)
+            }
+            None => None,
         }
-    }
+    };
     let (settings, metrics_dir) = {
         let services = app.state::<AppServices>();
         let store = services.store.lock().expect("store");
@@ -138,7 +155,7 @@ pub(crate) fn start_engine(app: &AppHandle) -> CmdResult<EngineStatusDto> {
         // Test-only chaos is never set by the product shell (E2E only).
         blackhole_remote_candidates: false,
     };
-    let (handle, events) = engine::spawn(cfg);
+    let (mut handle, events) = engine::spawn(cfg);
     // Forwarder: engine events → webview events (metadata only).
     let forward_app = app.clone();
     std::thread::Builder::new()
@@ -151,11 +168,44 @@ pub(crate) fn start_engine(app: &AppHandle) -> CmdResult<EngineStatusDto> {
             }
         })
         .map_err(|e| format!("event forwarder spawn: {e}"))?;
-    let status = handle.status().into();
-    *app.state::<AppServices>()
-        .engine
-        .lock()
-        .expect("engine slot") = Some(handle);
+    // Two callers can race a respawn (UI poll + assistant); the loser's
+    // fresh engine is shut down and the winner's status returned.
+    let status = {
+        let services = app.state::<AppServices>();
+        let mut slot = services.engine.lock().expect("engine slot");
+        if let Some(existing) = slot.as_ref()
+            && existing.is_alive()
+        {
+            let status = existing.status().into();
+            drop(slot);
+            handle.shutdown();
+            return Ok(status);
+        }
+        *slot = Some(handle);
+        let Some(live) = slot.as_ref() else {
+            unreachable!("just stored");
+        };
+        live.status().into()
+    };
+    // Replay the always-ready roles the dead engine had (0.6.3): the
+    // controller role for everyone, host presence when it was sharing.
+    if let Some((controller, host)) = replay {
+        let _ = with_engine(app, |handle| {
+            if controller {
+                let _ = handle.send(EngineCmd::ControllerStart);
+            }
+            if host {
+                let _ = handle.send(EngineCmd::HostStart);
+            }
+            Ok(())
+        });
+        let _ = app.emit(
+            events::INFO,
+            Some(serde_json::json!({ "message":
+                "The connection engine stopped unexpectedly and was restarted. If a session was live, it has ended — connect again."
+            })),
+        );
+    }
     Ok(status)
 }
 
@@ -756,6 +806,21 @@ pub fn computers_presence(app: AppHandle) -> CmdResult<PresenceDto> {
 
 #[tauri::command]
 pub fn engine_status(app: AppHandle) -> CmdResult<EngineStatusDto> {
+    // Self-heal (2026-10-28): the UI polls status every few seconds — a
+    // dead engine (panic) is respawned here instead of erroring "engine
+    // stopped" at the user forever.
+    {
+        let dead = app
+            .state::<AppServices>()
+            .engine
+            .lock()
+            .expect("engine slot")
+            .as_ref()
+            .is_some_and(|h| !h.is_alive());
+        if dead {
+            let _ = start_engine(&app);
+        }
+    }
     with_engine(&app, |handle| Ok(handle.status().into()))
 }
 
@@ -784,7 +849,7 @@ pub fn controller_stop(app: AppHandle) -> CmdResult<()> {
 /// the updater's install step share this path.
 pub fn shutdown_and_exit(app: &AppHandle) {
     if let Some(services) = app.try_state::<AppServices>()
-        && let Some(engine) = services.engine.lock().expect("engine slot").take()
+        && let Some(mut engine) = services.engine.lock().expect("engine slot").take()
     {
         engine.shutdown();
     }

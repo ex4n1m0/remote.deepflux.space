@@ -801,9 +801,31 @@ pub struct EngineHandle {
     viewer: Arc<Mutex<ViewerFacts>>,
     input: Arc<Mutex<diag::InputStat>>,
     shot: Arc<ShotSlot>,
+    /// Cleared by a Drop guard inside the engine thread on ANY exit —
+    /// clean shutdown or panic (2026-10-28 "engine stopped" incident:
+    /// a panicked engine left a zombie handle whose slot was reused
+    /// forever; callers now check liveness and respawn).
+    alive: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Sets `alive` false when dropped — runs on both the clean `return` and
+/// a panic unwind inside `run`.
+struct AliveGuard(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for AliveGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
 }
 
 impl EngineHandle {
+    /// Is the engine thread still running? False after a clean shutdown
+    /// OR a panic — callers use this to respawn instead of erroring
+    /// "engine stopped" at the user forever.
+    pub fn is_alive(&self) -> bool {
+        self.alive.load(std::sync::atomic::Ordering::Acquire)
+    }
+
     /// Send one command (bounded; never blocks the caller).
     pub fn send(&self, cmd: EngineCmd) -> Result<(), String> {
         self.tx.try_send(cmd).map_err(|err| match err {
@@ -827,8 +849,10 @@ impl EngineHandle {
         self.shared.status(counters, input, viewer)
     }
 
-    /// Stop the engine and wait for its thread.
-    pub fn shutdown(mut self) {
+    /// Stop the engine and wait for its thread. `&mut self` (not
+    /// consuming) so callers can keep the handle around — e.g. to assert
+    /// the liveness flag afterwards.
+    pub fn shutdown(&mut self) {
         let _ = self.tx.try_send(EngineCmd::Shutdown);
         if let Some(join) = self.join.take() {
             let _ = join.join();
@@ -850,6 +874,7 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
     let viewer = Arc::new(Mutex::new(ViewerFacts::default()));
     let input = Arc::new(Mutex::new(diag::InputStat::default()));
     let shot = Arc::new(ShotSlot::new());
+    let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let join = std::thread::Builder::new()
         .name("engine".into())
         .spawn({
@@ -858,7 +883,12 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
             let viewer = Arc::clone(&viewer);
             let input = Arc::clone(&input);
             let shot = Arc::clone(&shot);
-            move || run(cfg, cmd_rx, event_tx, shared, counters, viewer, input, shot)
+            let alive = Arc::clone(&alive);
+            move || {
+                run(
+                    cfg, cmd_rx, event_tx, shared, counters, viewer, input, shot, alive,
+                )
+            }
         })
         .expect("spawn engine thread");
     (
@@ -870,6 +900,7 @@ pub fn spawn(cfg: EngineConfig) -> (EngineHandle, Receiver<EngineEvent>) {
             viewer,
             input,
             shot,
+            alive,
         },
         event_rx,
     )
@@ -977,14 +1008,30 @@ fn run(
     viewer_arc: Arc<Mutex<ViewerFacts>>,
     input_arc: Arc<Mutex<diag::InputStat>>,
     shot: Arc<ShotSlot>,
+    alive: Arc<std::sync::atomic::AtomicBool>,
 ) {
+    // Clears the handle's liveness flag on ANY exit from this function,
+    // including a panic unwind — the app layer respawns on the next poll.
+    let _alive_guard = AliveGuard(Arc::clone(&alive));
     let device_id = cfg.device_id.clone();
     let clock = Arc::new(MonotonicClock::new());
     let agg = Arc::new(diag::DiagAgg::new());
     let session_slot = Arc::new(SessionSlot::new(&format!("{device_id}-pre-session")));
-    let report = cfg.metrics_dir.as_ref().map(|dir| {
-        node_runtime::metrics::JsonlReport::create(dir, &format!("m4-app-{device_id}"))
-            .expect("metrics report")
+    // Metrics are diagnostics, never load-bearing: an unwritable log dir
+    // must not kill the engine thread at startup (the old `.expect` was
+    // an instant "engine stopped" for every later command).
+    let report = cfg.metrics_dir.as_ref().and_then(|dir| {
+        match node_runtime::metrics::JsonlReport::create(dir, &format!("m4-app-{device_id}")) {
+            Ok(report) => Some(report),
+            Err(err) => {
+                let _ = event_tx.try_send(EngineEvent::Error {
+                    code: "metrics_unavailable".into(),
+                    message: format!("Perf counters disabled (log dir unwritable): {err}"),
+                    hint: None,
+                });
+                None
+            }
+        }
     });
 
     let EngineConfig {

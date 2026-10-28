@@ -200,7 +200,7 @@ fn main() {
         initial_scale: render_windows::ScaleMode::Fit,
         blackhole_remote_candidates: args.blackhole_candidates,
     };
-    let (handle, events) = engine::spawn(cfg);
+    let (mut handle, events) = engine::spawn(cfg);
     let mut verdict = Verdict::default();
     let deadline = Instant::now() + Duration::from_secs(150);
     let code = if is_host {
