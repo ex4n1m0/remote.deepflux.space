@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.9.1",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.1-x64-setup.exe",
-  "sha256_hex": "c0ba863b37807bca98d0a92eeefe1752addde192c784d2f627d51372d4db725a",
-  "size_bytes": 7696172,
-  "notes": "0.9.1: \"Always allow\" now sticks \u2014 a remembered machine connects without asking again even if its first pairing message raced a short session, and a reinstalled machine re-pairs with one click instead of prompting forever.",
+  "version": "0.9.2",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.2-x64-setup.exe",
+  "sha256_hex": "bd392aa6317c88932d28c18b4984a789f620cfdcf7c319986a4939b648828a93",
+  "size_bytes": 7693192,
+  "notes": "0.9.2: stability \u2014 if the connection engine ever stops unexpectedly, the app now recovers by itself within seconds instead of needing a restart, and any crash leaves a diagnostics trail we can read.",
   "published_at": "2026-10-28"
 }
