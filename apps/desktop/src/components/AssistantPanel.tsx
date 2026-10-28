@@ -8,6 +8,7 @@ import type { AssistantBinding } from "../hooks/useAssistant";
 const STARTERS = [
   "Save a machine for me",
   "Share this screen",
+  "Tell another machine's assistant what to do",
   "What can you do here?",
 ];
 

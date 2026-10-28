@@ -49,9 +49,23 @@ describe("engineReducer", () => {
       event: { controller_device_id: "ctrl-1", session_id: "s1", ai_session: false, paired: false, pairing_proof_ok: false, requester_name: null },
     });
     expect(state.consent?.controller_device_id).toBe("ctrl-1");
-    state = engineReducer(state, { type: "session-established", session_id: "s1" });
+    state = engineReducer(state, { type: "session-established", session_id: "s1", peer: null });
     expect(state.consent).toBeNull();
     expect(state.sessionId).toBe("s1");
+  });
+
+  it("tracks the session peer — set on establish, kept across polls, cleared on end", () => {
+    let state = initialUiState();
+    state = engineReducer(state, { type: "session-established", session_id: "s1", peer: "ctrl-1" });
+    expect(state.sessionPeer).toBe("ctrl-1");
+    // The poll doesn't carry the peer — it must not clobber it.
+    state = engineReducer(state, { type: "poll", status: poll({ session_id: "s1" }) });
+    expect(state.sessionPeer).toBe("ctrl-1");
+    state = engineReducer(state, {
+      type: "session-ended",
+      event: { cause: "User", code: "user_disconnect", message: "x", hint: null },
+    });
+    expect(state.sessionPeer).toBeNull();
   });
 
   it("marks the peer online on consent and offline on session end", () => {

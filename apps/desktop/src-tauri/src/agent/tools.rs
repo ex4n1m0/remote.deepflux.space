@@ -609,6 +609,16 @@ pub fn execute(
                             .map_err(|e| e.to_string());
                     }
                 }
+                // The inbox envelope carries no agent bit (v1): an
+                // instruction sent offline would land as a plain message
+                // and never wake the peer's assistant. Tell the model the
+                // actionable fix instead of pretending it was delivered.
+                if to_agent {
+                    return Err(format!(
+                        "instructions to {code}'s assistant need a live session with it — \
+                         call connect(\"{code}\") and wait_connected first"
+                    ));
+                }
                 crate::chat::inbox_send(app, &base_url, &token, &me, &code, text)
             })();
             match result {

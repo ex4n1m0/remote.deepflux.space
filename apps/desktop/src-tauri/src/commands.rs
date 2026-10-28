@@ -866,7 +866,11 @@ pub fn list_monitors(app: AppHandle) -> CmdResult<serde_json::Value> {
 pub struct ChatSendArgs {
     pub code: String,
     pub text: String,
-    /// True when the local assistant authors the message (agent-to-agent).
+    /// True when the message addresses the peer machine's assistant (the
+    /// Conversation pane's "their assistant" toggle). Sets the wire's
+    /// agent bit so the peer wakes its assistant as an instruction turn.
+    /// The local assistant has its own path (`agent::tools`) and never
+    /// calls this command.
     #[serde(default)]
     pub agent: bool,
 }
@@ -880,7 +884,10 @@ pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
     if text.is_empty() {
         return Err("empty message".to_owned());
     }
-    let sender = if args.agent { "agent" } else { "user" };
+    // Local perspective: the human typed it, addressed to the peer's
+    // assistant ("to-agent" renders as "you → their assistant"). The
+    // local assistant authoring a message records "agent" on its own path.
+    let sender = if args.agent { "to-agent" } else { "user" };
     crate::chat::record_outgoing(&app, &code, sender, text);
     let (in_session, base_url, token, me) = {
         let services = app.state::<AppServices>();
@@ -912,6 +919,15 @@ pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
                 })
                 .map_err(|e| e.to_string())
         });
+    }
+    // The inbox envelope carries no agent bit (v1): an agent-addressed
+    // send would silently land as a plain message and never wake the
+    // peer's assistant. Refuse rather than mislead.
+    if args.agent {
+        return Err(
+            "their assistant only answers during a session — connect to that machine first"
+                .to_owned(),
+        );
     }
     crate::chat::inbox_send(&app, &base_url, &token, &me, &code, text)
 }

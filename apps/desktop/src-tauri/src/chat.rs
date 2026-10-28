@@ -121,7 +121,10 @@ struct PairingsDoc {
 }
 
 /// One stored chat line. `sender`: "user" | "agent" | "peer-user" |
-/// "peer-agent" (perspective: this machine's store).
+/// "peer-agent" (perspective: this machine's store) — plus "to-agent":
+/// this machine's human addressed the peer's assistant via the
+/// Conversation toggle (the wire still carries the agent bit, so the
+/// peer labels the same line "peer-agent" on its side).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatLine {
     pub id: u64,

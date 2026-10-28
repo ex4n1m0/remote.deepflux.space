@@ -47,7 +47,8 @@ export const CHAT_EVENT = "engine://chat";
 export interface ChatLine {
   id: number;
   ts_ms: number;
-  /** user | agent | peer-user | peer-agent (this machine's perspective). */
+  /** user | agent | peer-user | peer-agent | to-agent (this machine's
+   * perspective; "to-agent" = your line addressed to their assistant). */
   sender: string;
   body: string;
 }

@@ -21,6 +21,10 @@ export interface EngineUiState {
   hostState: HostStateName;
   controllerState: ControllerStateName;
   sessionId: string | null;
+  /** Device id (= connection code) of the live session's peer, when the
+   * engine reported it — drives "is this machine's assistant reachable"
+   * for the Conversation toggle (host-side sessions especially). */
+  sessionPeer: string | null;
   consent: ConsentEvent | null;
   lastEnd: SessionEndedEvent | null;
   /** device id → last known online flag (favorites indicator). */
@@ -41,6 +45,7 @@ export function initialUiState(): EngineUiState {
     hostState: "Idle",
     controllerState: "Idle",
     sessionId: null,
+    sessionPeer: null,
     consent: null,
     lastEnd: null,
     peerOnline: {},
@@ -60,7 +65,7 @@ export type UiAction =
   | { type: "engine-started" }
   | { type: "state"; machine: "host" | "controller"; state: string; session_id: string | null }
   | { type: "consent"; event: ConsentEvent }
-  | { type: "session-established"; session_id: string }
+  | { type: "session-established"; session_id: string; peer: string | null }
   | { type: "session-ended"; event: SessionEndedEvent }
   | { type: "peer"; event: PeerEvent }
   | { type: "caps"; event: CapsEvent }
@@ -81,9 +86,15 @@ export function engineReducer(state: EngineUiState, action: UiAction): EngineUiS
     case "consent":
       return { ...state, consent: action.event };
     case "session-established":
-      return { ...state, sessionId: action.session_id, consent: null };
+      return { ...state, sessionId: action.session_id, sessionPeer: action.peer, consent: null };
     case "session-ended":
-      return { ...state, lastEnd: action.event, consent: null, sessionId: null };
+      return {
+        ...state,
+        lastEnd: action.event,
+        consent: null,
+        sessionId: null,
+        sessionPeer: null,
+      };
     case "peer": {
       const peerOnline = { ...state.peerOnline, [action.event.device_id]: action.event.online };
       return { ...state, peerOnline };

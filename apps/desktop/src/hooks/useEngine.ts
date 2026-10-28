@@ -115,7 +115,11 @@ export function useEngine(): EngineBinding {
     );
     on(EVENT.consent, (p) => d({ type: "consent", event: p as never }));
     on(EVENT.sessionEstablished, (p) =>
-      d({ type: "session-established", session_id: (p as { session_id: string }).session_id }),
+      d({
+        type: "session-established",
+        session_id: (p as { session_id: string }).session_id,
+        peer: (p as { peer: string | null }).peer ?? null,
+      }),
     );
     on(EVENT.sessionEnded, (p) => d({ type: "session-ended", event: p as never }));
     on(EVENT.peer, (p) => d({ type: "peer", event: p as never }));

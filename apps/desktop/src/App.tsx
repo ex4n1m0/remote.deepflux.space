@@ -554,7 +554,21 @@ export default function App() {
             />
           ) : null}
 
-          <Conversation name={selected?.name ?? null} chat={chat} />
+          {/* Agent-addressable (2026-10-28): the Conversation's "their
+           * assistant" destination is offered only while a live session
+           * with THIS machine exists — controller side (we connected to
+           * it) or host side (it connected to us; the session peer comes
+           * from the SessionEstablished event). Out of session the inbox
+           * carries no agent bit, so the backend would refuse anyway. */}
+          <Conversation
+            name={selected?.name ?? null}
+            chat={chat}
+            agentReachable={
+              !!selected &&
+              ((ui.controllerState === "Connected" && sessionCode === selected.code) ||
+                (ui.hostState === "Connected" && ui.sessionPeer === selected.code))
+            }
+          />
 
           {endCopy && ui.controllerState === "Disconnected" ? (
             <div className="banner banner-info" role="status">

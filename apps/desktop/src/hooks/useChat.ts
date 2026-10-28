@@ -11,7 +11,10 @@ import { listen } from "@tauri-apps/api/event";
 export interface ChatBinding {
   lines: ChatLine[];
   sending: boolean;
-  send: (text: string) => Promise<void>;
+  /** Send a line to this machine. `toAgent` addresses the peer's
+   * assistant (the Conversation toggle) — allowed only while a session
+   * with that machine is live (the backend refuses otherwise). */
+  send: (text: string, toAgent?: boolean) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -59,18 +62,19 @@ export function useChat(code: string | null): ChatBinding {
   }, [refresh]);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, toAgent = false) => {
       const trimmed = text.trim();
       if (!trimmed || !code || sending) return;
       setSending(true);
+      const sender = toAgent ? "to-agent" : "user";
       try {
-        await api.chatSend(code, trimmed, false);
+        await api.chatSend(code, trimmed, toAgent);
         setLines((prev) =>
-          prev.some((l) => l.body === trimmed && l.sender === "user")
+          prev.some((l) => l.body === trimmed && l.sender === sender)
             ? prev
             : [
                 ...prev,
-                { id: Date.now(), ts_ms: Date.now(), sender: "user", body: trimmed },
+                { id: Date.now(), ts_ms: Date.now(), sender, body: trimmed },
               ],
         );
       } finally {

@@ -10,6 +10,7 @@ import {
   unifiedMachines,
 } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
+import { Conversation } from "../components/Conversation";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import type { MachineRow } from "../components/MachinesRail";
 
@@ -389,5 +390,71 @@ describe("RemoveMachineButton (machine-page removal)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onRemove).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+/** Destination toggle (2026-10-28): the Conversation pane is the chat box
+ * for the remote agent — "Them" vs "{name}'s assistant", gated on a live
+ * session with that machine. */
+describe("Conversation destination toggle", () => {
+  const chatBinding = (
+    lines: Array<{ id: number; ts_ms: number; sender: string; body: string }> = [],
+  ) => ({
+    lines,
+    sending: false,
+    send: vi.fn(async () => {}),
+    refresh: vi.fn(async () => {}),
+  });
+
+  const type = (text: string) => {
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter" });
+  };
+
+  it("assistant destination is disabled without a live session with the machine", () => {
+    const chat = chatBinding();
+    render(<Conversation name="Office" chat={chat} agentReachable={false} />);
+    const agentBtn = screen.getByRole("button", { name: /Office's assistant/ });
+    expect((agentBtn as HTMLButtonElement).disabled).toBe(true);
+    expect(agentBtn.getAttribute("title")).toContain("connect to this machine first");
+    // The human destination still works.
+    type("hello");
+    expect(chat.send).toHaveBeenCalledWith("hello", false);
+  });
+
+  it("defaults to Them; assistant mode routes sends with the agent flag", () => {
+    const chat = chatBinding();
+    render(<Conversation name="Office" chat={chat} agentReachable />);
+    type("hi there");
+    expect(chat.send).toHaveBeenCalledWith("hi there", false);
+    fireEvent.click(screen.getByRole("button", { name: /Office's assistant/ }));
+    expect(screen.getByRole("textbox").getAttribute("placeholder")).toContain(
+      "tell Office's assistant",
+    );
+    type("clean temp files");
+    expect(chat.send).toHaveBeenLastCalledWith("clean temp files", true);
+  });
+
+  it("a dropped session downgrades an armed assistant mode back to Them", () => {
+    const chat = chatBinding();
+    const view = render(<Conversation name="Office" chat={chat} agentReachable />);
+    fireEvent.click(view.getByRole("button", { name: /Office's assistant/ }));
+    view.rerender(<Conversation name="Office" chat={chat} agentReachable={false} />);
+    expect(view.getByRole("textbox").getAttribute("placeholder")).toContain("message Office");
+    type("still there?");
+    expect(chat.send).toHaveBeenLastCalledWith("still there?", false);
+  });
+
+  it("labels to-agent lines distinctly in the log", () => {
+    render(
+      <Conversation
+        name="Office"
+        chat={chatBinding([{ id: 1, ts_ms: 0, sender: "to-agent", body: "clean temp files" }])}
+        agentReachable
+      />,
+    );
+    expect(screen.getByText("you → their assistant")).toBeTruthy();
+    expect(screen.getByText("clean temp files")).toBeTruthy();
   });
 });

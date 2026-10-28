@@ -1013,6 +1013,41 @@ legend {
   border-style: dashed;
 }
 
+/* Destination toggle (2026-10-28): who the composer addresses — the
+ * machine's human or its assistant (the remote-agent chat box). */
+.conversation-dest {
+  border-top: 1px solid var(--line);
+  padding: 8px 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dest-option {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dest-option.active {
+  border-color: #1d4ed8;
+  background: #1d4ed833;
+  font-weight: 600;
+}
+
+.dest-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dest-hint {
+  margin-left: 4px;
+}
+
 .conversation-compose {
   border-top: 1px solid var(--line);
   padding: 10px 12px;
