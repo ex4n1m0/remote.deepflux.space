@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.12.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.12.0-x64-setup.exe",
-  "sha256_hex": "da88ac570af6e197fe41fd8cd992525931bc762e203a710a81d24ee55a68b1df",
-  "size_bytes": 7670019,
-  "notes": "0.12.0 \u2014 the agent gets real power: it can now run shell commands, read and write any file, and manage programs on this machine, and the app runs with administrator rights by default (Windows asks once at startup; logon stays prompt-free). Ask it to install software, clean up, fix settings \u2014 it acts instead of just watching. You can dial it back in Settings.",
+  "version": "0.13.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.13.0-x64-setup.exe",
+  "sha256_hex": "2544207f0852c48fd8c9f238963a6f4d02995e127d67f6791e5b1eae8df8c4c8",
+  "size_bytes": 7663067,
+  "notes": "0.13.0 \u2014 the claw manages your software and your files: it can now list, install, uninstall, and update applications (winget), restart or shut down the machine (with a cancel window), and search files by name or content across any folder. Reviewed by two independent agents before release.",
   "published_at": "2026-10-29"
 }
