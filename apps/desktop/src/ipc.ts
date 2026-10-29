@@ -117,9 +117,12 @@ export const api = {
     invoke("circle_set_shared", { args: { share } }),
   directoryRefresh: (): Promise<DirectoryMachine[]> => invoke("directory_refresh"),
 
-  // Trusted machines (ADR-005 §5 revocation, wired by ADR-006).
+  // Trusted machines (ADR-005 §5 revocation, wired by ADR-006; names +
+  // rename per ADR-009 — this list IS the machine list).
   pairingsList: (): Promise<PairingInfo[]> => invoke("pairings_list"),
   pairingRemove: (code: string): Promise<void> => invoke("pairing_remove", { code }),
+  pairingRename: (code: string, name: string): Promise<void> =>
+    invoke("pairing_rename", { code, name }),
 
   setQuality: (preset: string): Promise<void> =>
     invoke("set_quality", { args: { preset } }),

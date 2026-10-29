@@ -214,20 +214,72 @@ function TrustedRow({
   setPairings: (p: PairingInfo[]) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const revoke = async () => {
-    await api.pairingRemove(pairing.code);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(pairing.name ?? "");
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
     try {
       setPairings(await api.pairingsList());
     } catch {
       setPairings([]);
     }
+  };
+  const revoke = async () => {
+    await api.pairingRemove(pairing.code);
+    await refresh();
     onRevoked?.();
+  };
+  const saveName = async () => {
+    const name = draft.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      await api.pairingRename(pairing.code, name);
+      setRenaming(false);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <li>
-      <span>
-        <code className="code">{pairing.code}</code>
-      </span>
+      {renaming ? (
+        <form
+          className="trusted-rename"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveName();
+          }}
+        >
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label={`Name for ${pairing.name ?? pairing.code}`}
+            autoFocus
+            disabled={busy}
+          />
+          <button type="submit" className="primary small" disabled={busy || !draft.trim()}>
+            Save
+          </button>
+          <button
+            type="button"
+            className="ghost small"
+            onClick={() => {
+              setRenaming(false);
+              setDraft(pairing.name ?? "");
+            }}
+          >
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <span>
+          <strong>{pairing.name ?? <code className="code">{pairing.code}</code>}</strong>{" "}
+          <span className="muted">
+            {pairing.name ? <code className="code">{pairing.code}</code> : null}
+          </span>
+        </span>
+      )}
       {confirming ? (
         <>
           <button type="button" className="danger small" onClick={() => void revoke()}>
@@ -237,10 +289,15 @@ function TrustedRow({
             Cancel
           </button>
         </>
-      ) : (
-        <button type="button" className="ghost small" onClick={() => setConfirming(true)}>
-          Remove…
-        </button>
+      ) : renaming ? null : (
+        <>
+          <button type="button" className="ghost small" onClick={() => setRenaming(true)}>
+            Rename…
+          </button>
+          <button type="button" className="ghost small" onClick={() => setConfirming(true)}>
+            Remove…
+          </button>
+        </>
       )}
     </li>
   );

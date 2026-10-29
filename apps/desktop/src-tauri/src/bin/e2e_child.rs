@@ -199,6 +199,7 @@ fn main() {
         initial_quality: QualityPreset::Balanced,
         initial_scale: render_windows::ScaleMode::Fit,
         blackhole_remote_candidates: args.blackhole_candidates,
+        host_display_name: format!("e2e-{device}", device = args.device_id),
     };
     let (mut handle, events) = engine::spawn(cfg);
     let mut verdict = Verdict::default();

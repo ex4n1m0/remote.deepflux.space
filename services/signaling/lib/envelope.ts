@@ -100,7 +100,15 @@ export const signalingBodySchema = z.discriminatedUnion('type', [
     // field; hosts render it, so the shape is pinned here too).
     requester_name: displayNameSchema.optional(),
   }),
-  z.object({ type: z.literal('accept'), session_secret: z.string().min(1) }),
+  z.object({
+    type: z.literal('accept'),
+    session_secret: z.string().min(1),
+    // ADR-009 additive-optional: the host's machine display name, cached
+    // by the controller into its trusted-host list. Same
+    // stripped-if-unknown rule as requester_name — MUST be a known key or
+    // the relay drops it before delivery.
+    host_name: displayNameSchema.optional(),
+  }),
   z.object({ type: z.literal('reject'), reason: z.enum(['busy', 'declined', 'timeout', 'unavailable']) }),
   z.object({ type: z.literal('offer'), sdp: z.string().min(1) }),
   z.object({ type: z.literal('answer'), sdp: z.string().min(1) }),

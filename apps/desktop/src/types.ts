@@ -265,4 +265,7 @@ export interface PairingInfo {
   pending_ack: boolean;
   /** host | controller | legacy (ADR-006). */
   role: string;
+  /** ADR-009: cached display name of the peer machine (from the wire;
+   * null on pre-0.10 rows and until the first session supplies it). */
+  name: string | null;
 }

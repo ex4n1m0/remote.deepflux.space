@@ -56,6 +56,12 @@ pub struct Pairing {
     /// from before the field existed load as "legacy".
     #[serde(default = "legacy_role")]
     pub role: String,
+    /// ADR-009: cached display name of the peer machine (learned from the
+    /// wire — `accept.host_name` controller-side, `connect_request.
+    /// requester_name` host-side; editable in Trusted machines). Absent on
+    /// pre-0.10 rows and until the first session supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl core::fmt::Debug for Pairing {
@@ -66,6 +72,7 @@ impl core::fmt::Debug for Pairing {
             .field("created_ms", &self.created_ms)
             .field("pending_ack", &self.pending_ack)
             .field("role", &self.role)
+            .field("name", &self.name)
             .finish()
     }
 }
@@ -86,8 +93,10 @@ fn legacy_role() -> String {
 #[derive(Default)]
 pub struct TrustState {
     /// The recorded consent decision for the current session:
-    /// (controller code, remember?).
-    pub decision: Option<(String, bool)>,
+    /// (controller code, remember?, wire requester name). The name
+    /// (ADR-009) is cached onto the host-role pairing row when the
+    /// controller's PairOffer lands.
+    pub decision: Option<(String, bool, Option<String>)>,
     /// The consent prompt currently (or last) shown: (controller, accepted,
     /// rejected) — resolved by the accept command, the reject command, or
     /// host-state inference for the timeout.
@@ -309,10 +318,39 @@ fn record_pairing_in_doc(
             created_ms: now,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         }),
     }
     doc.remembered.retain(|c| c != &code);
     true
+}
+
+/// ADR-009: cache a display name onto the pairing row for `code` (any
+/// role, pending or established). Empty names and missing rows are no-ops
+/// — the name is a convenience label, never load-bearing. Overwrites only
+/// when the new name is non-empty; first name wins over later empties.
+pub fn set_pairing_name(app: &AppHandle, code: &str, name: &str) {
+    let mut doc = read_pairings(app);
+    if set_pairing_name_in_doc(&mut doc, code, name) {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Pure core of [`set_pairing_name`]: false = nothing changed (no row,
+/// empty name, or the same name already cached).
+fn set_pairing_name_in_doc(doc: &mut PairingsDoc, code: &str, name: &str) -> bool {
+    let name = name.trim();
+    if name.is_empty() {
+        return false;
+    }
+    let code = code.trim().to_lowercase();
+    match doc.pairings.iter_mut().find(|p| p.code == code) {
+        Some(p) if p.name.as_deref() != Some(name) => {
+            p.name = Some(name.to_owned());
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Controller side: our offer was acknowledged — clear the pending flag.
@@ -355,6 +393,7 @@ fn mint_pairing_in_doc(doc: &mut PairingsDoc, code: &str, secret_hex: &str, now:
             created_ms: now,
             pending_ack: true,
             role: "controller".to_owned(),
+            name: None,
         }),
     }
 }
@@ -777,6 +816,45 @@ mod tests {
     }
 
     #[test]
+    fn pairing_names_cache_and_survive_round_trips() {
+        // ADR-009: the trusted-host label is learned from the wire (any
+        // role, pending or established), empty never overwrites, and the
+        // field survives a JSON round trip (absent when None).
+        let mut d = doc(vec![Pairing {
+            code: "abcdef0123456789".to_owned(),
+            secret_hex: SECRET_A.to_owned(),
+            created_ms: 1,
+            pending_ack: true,
+            role: "controller".to_owned(),
+            name: None,
+        }]);
+        assert!(set_pairing_name_in_doc(
+            &mut d,
+            "ABCDEF0123456789",
+            "  MOMS-PC  "
+        ));
+        assert_eq!(d.pairings[0].name.as_deref(), Some("MOMS-PC"));
+        // Same name again → no change reported.
+        assert!(!set_pairing_name_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            "MOMS-PC"
+        ));
+        // Empty never overwrites a learned name.
+        assert!(!set_pairing_name_in_doc(&mut d, "abcdef0123456789", "   "));
+        assert_eq!(d.pairings[0].name.as_deref(), Some("MOMS-PC"));
+        // Unknown code → no-op.
+        assert!(!set_pairing_name_in_doc(&mut d, "1111111111111111", "Lab"));
+        // Round trip: None stays absent, Some serializes.
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(json.contains("MOMS-PC"));
+        let back: PairingsDoc = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.pairings[0].name.as_deref(), Some("MOMS-PC"));
+        let unnamed = serde_json::to_string(&doc(vec![])).unwrap();
+        assert!(!unnamed.contains("name"));
+    }
+
+    #[test]
     fn dead_code_pairings_are_purged() {
         // 2026-10-27 duplicate-list fix: a pairing keyed by anything but a
         // device id can never match a live machine — dropped on startup.
@@ -787,6 +865,7 @@ mod tests {
                 created_ms: 1,
                 pending_ack: false,
                 role: "controller".to_owned(),
+                name: None,
             },
             Pairing {
                 code: "abcdef0123456789".to_owned(),
@@ -794,6 +873,7 @@ mod tests {
                 created_ms: 2,
                 pending_ack: false,
                 role: "host".to_owned(),
+                name: None,
             },
         ]);
         assert!(purge_dead_pairings_in_doc(&mut d));
@@ -812,6 +892,7 @@ mod tests {
             created_ms: 1,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         };
         let dbg = format!("{p:?}");
         assert!(
@@ -829,6 +910,7 @@ mod tests {
             created_ms: 1,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         }]);
         // Same secret re-offered: live, ack it.
         assert!(record_pairing_in_doc(
@@ -888,6 +970,7 @@ mod tests {
             created_ms: 1,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         }]);
         // A squatter's re-offer: same id, fresh secret — refused AND
         // reported not-live (the caller must not ack it).
@@ -912,6 +995,7 @@ mod tests {
             created_ms: 1,
             pending_ack: true,
             role: "controller".to_owned(),
+            name: None,
         }]);
         assert!(record_pairing_in_doc(
             &mut d,
@@ -956,6 +1040,7 @@ mod tests {
             created_ms: 1,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         }]);
         assert!(record_pairing_in_doc(
             &mut d,
@@ -1018,6 +1103,7 @@ mod tests {
             created_ms: 1,
             pending_ack: false,
             role: "host".to_owned(),
+            name: None,
         }]);
         d.remembered = vec!["abcdef0123456789".to_owned()];
         assert!(remove_pairing_in_doc(&mut d, " ABCDEF0123456789 "));
@@ -1055,6 +1141,7 @@ mod tests {
                 created_ms: now - PENDING_PAIRING_MAX_AGE_MS - 1,
                 pending_ack: true,
                 role: "controller".to_owned(),
+                name: None,
             },
             Pairing {
                 code: "0000000000000002".to_owned(),
@@ -1062,6 +1149,7 @@ mod tests {
                 created_ms: now - PENDING_PAIRING_MAX_AGE_MS + 1,
                 pending_ack: true,
                 role: "controller".to_owned(),
+                name: None,
             },
             Pairing {
                 code: "0000000000000003".to_owned(),
@@ -1069,6 +1157,7 @@ mod tests {
                 created_ms: 1,
                 pending_ack: false,
                 role: "host".to_owned(),
+                name: None,
             },
         ]);
         assert!(purge_stale_pending_in_doc(&mut d, now));

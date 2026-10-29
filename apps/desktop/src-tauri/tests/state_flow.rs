@@ -31,6 +31,7 @@ fn spawn_engine(
         initial_quality: protocol::wire::QualityPreset::Low,
         initial_scale: render_windows::ScaleMode::Fit,
         blackhole_remote_candidates: false,
+        host_display_name: format!("{device}-name"),
     };
     engine::spawn(cfg)
 }
@@ -130,6 +131,22 @@ fn full_session_state_flow_through_the_command_layer() {
     assert!(ctrl_log.iter().any(|event| matches!(
         event,
         EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
+    )));
+    // ADR-009: the accept carried the host's display name — the
+    // controller's SessionEstablished reports it as peer_name (the app
+    // layer caches it into the trusted-host row); the host side learned
+    // no name this way (the controller's name rides connect_request).
+    assert!(ctrl_log.iter().any(|event| matches!(
+        event,
+        EngineEvent::SessionEstablished { peer_name: Some(name), .. }
+            if name == &format!("{HOST_DEVICE}-name")
+    )));
+    assert!(host_log.iter().any(|event| matches!(
+        event,
+        EngineEvent::SessionEstablished {
+            peer_name: None,
+            ..
+        }
     )));
 
     // 4b. Visual connect: no video suppression anywhere (the Hello

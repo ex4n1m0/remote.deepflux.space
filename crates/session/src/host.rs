@@ -320,6 +320,9 @@ impl HostSession {
                         Some(&info.session_id),
                         SignalingBody::Accept {
                             session_secret: secret,
+                            // ADR-009: stamped by the composition layer
+                            // (the pure machine has no name knowledge).
+                            host_name: None,
                         },
                         now_ms,
                     );

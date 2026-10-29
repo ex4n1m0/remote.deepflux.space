@@ -130,6 +130,9 @@ pub(crate) fn start_engine(app: &AppHandle) -> CmdResult<EngineStatusDto> {
         initial_scale: scale,
         // Test-only chaos is never set by the product shell (E2E only).
         blackhole_remote_candidates: false,
+        // ADR-009: rides the outgoing accept so the controller can label
+        // its trusted-host entry.
+        host_display_name: display_name(&settings),
     };
     let (mut handle, events) = engine::spawn(cfg);
     // Forwarder: engine events → webview events (metadata only).
@@ -310,6 +313,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         EngineEvent::ConsentAccepted {
             controller_device_id,
             remember,
+            requester_name,
         } => {
             // ADR-006: the owner's click IS the pairing ceremony — but the
             // controller's PairOffer arrives only after the session
@@ -321,7 +325,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 if let Some((_, accepted, _)) = trust.prompt.as_mut() {
                     *accepted = true;
                 }
-                trust.decision = Some((controller_device_id.clone(), remember));
+                trust.decision = Some((controller_device_id.clone(), remember, requester_name));
             }
             // ADR-006 amendment (2026-10-28): "Always allow" is durable at
             // click time. The in-memory decision above dies with the
@@ -336,7 +340,11 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 crate::chat::remember_intent(app, &controller_device_id);
             }
         }
-        EngineEvent::SessionEstablished { session_id, peer } => {
+        EngineEvent::SessionEstablished {
+            session_id,
+            peer,
+            peer_name,
+        } => {
             // RD-023 + ADR-006 amendment (2026-10-28): offer pairing only
             // when THIS machine is the controller of the session. The owed
             // flag was set by our own connect command for this peer; a
@@ -354,6 +362,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             };
             if controller_session && let Some(peer) = peer.as_deref() {
                 crate::chat::offer_pairing_if_new(app, peer);
+            }
+            // ADR-009: the controller caches the host's display name
+            // (accept.host_name) onto its pairing row — the trusted-host
+            // list's label. Absent for pre-0.10 hosts; set_pairing_name
+            // no-ops without a row.
+            if let (Some(peer), Some(name)) = (peer.as_deref(), peer_name.as_deref()) {
+                crate::chat::set_pairing_name(app, peer, name);
             }
             emit(
                 events::SESSION_ESTABLISHED,
@@ -457,13 +472,16 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // amendment; both are explicit human choices for this device
             // id). Anything else → drop un-acked (the controller's pending
             // offer expires client-side; nothing is stored).
-            let click_remembered = {
+            let (click_remembered, peer_name) = {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
-                trust
+                match trust
                     .decision
-                    .take_if(|(controller, _)| controller == &controller_device_id)
-                    .is_some_and(|(_, remember)| remember)
+                    .take_if(|(controller, _, _)| controller == &controller_device_id)
+                {
+                    Some((_, remember, name)) => (remember, name),
+                    None => (false, None),
+                }
             };
             let remember =
                 click_remembered || crate::chat::has_remember_intent(app, &controller_device_id);
@@ -473,6 +491,11 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 // re-pairs instead of prompting forever.
                 let live =
                     crate::chat::record_pairing(app, &controller_device_id, &secret_hex, true);
+                // ADR-009: label the host-role row with the controller's
+                // machine display name from the consent prompt.
+                if live && let Some(name) = peer_name.as_deref() {
+                    crate::chat::set_pairing_name(app, &controller_device_id, name);
+                }
                 if live {
                     let _ = with_engine(app, |handle| handle.send(EngineCmd::SendPairAck));
                 } else {
@@ -947,6 +970,8 @@ pub struct PairingDto {
     pub created_ms: u64,
     pub pending_ack: bool,
     pub role: String,
+    /// ADR-009: cached display name of the peer machine.
+    pub name: Option<String>,
 }
 
 impl From<crate::chat::Pairing> for PairingDto {
@@ -956,6 +981,7 @@ impl From<crate::chat::Pairing> for PairingDto {
             created_ms: p.created_ms,
             pending_ack: p.pending_ack,
             role: p.role,
+            name: p.name,
         }
     }
 }
@@ -964,6 +990,17 @@ impl From<crate::chat::Pairing> for PairingDto {
 #[tauri::command]
 pub fn pairing_remove(app: AppHandle, code: String) -> CmdResult<()> {
     crate::chat::remove_pairing(&app, &code);
+    Ok(())
+}
+
+/// ADR-009: rename a trusted-host row (the label is local-only).
+#[tauri::command]
+pub fn pairing_rename(app: AppHandle, code: String, name: String) -> CmdResult<()> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Enter a name for this machine.".into());
+    }
+    crate::chat::set_pairing_name(&app, &code, name);
     Ok(())
 }
 

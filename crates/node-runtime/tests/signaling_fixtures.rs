@@ -213,6 +213,7 @@ fn service_to_client() -> Vec<(&'static str, SignalingEnvelope)> {
                 "rig-ctrl",
                 SignalingBody::Accept {
                     session_secret: SessionSecret("fixture-one-time-secret".to_owned()),
+                    host_name: Some("MOMS-PC".to_owned()),
                 },
             ),
         ),

@@ -159,7 +159,7 @@ impl NodeObserver for Recorder {
             .push(format!("PromptConsent({controller})"));
     }
 
-    fn session_established(&mut self, _session: &str) {
+    fn session_established(&mut self, _session: &str, _peer_name: Option<&str>) {
         self.established.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -286,7 +286,7 @@ fn two_nodes_connect_through_the_real_service() {
     //    only ever sees state names).
     eprintln!("[t] +{:?} prompted", t0.elapsed());
     let secret = SessionSecret(format!("live-secret-{run}"));
-    host.node.user_accept_consent(secret, &mut NoObserver);
+    host.node.user_accept_consent(secret, None, &mut NoObserver);
     wait_for("controller Connecting after answer", deadline, || {
         host.pump();
         ctrl.pump();
@@ -368,6 +368,7 @@ fn two_nodes_connect_through_the_real_service() {
         timestamp_ms: 0,
         body: protocol::signaling::SignalingBody::Accept {
             session_secret: SessionSecret("duplicate-probe".to_owned()),
+            host_name: None,
         },
     };
     let url = format!("{base}/api/signal?device_id={host_device}");

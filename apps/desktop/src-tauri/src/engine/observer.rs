@@ -73,6 +73,11 @@ impl EngineObserver {
         self.shared.pending_consent()
     }
 
+    /// ADR-009: the pending prompt's wire requester name.
+    pub fn pending_consent_name(&self) -> Option<String> {
+        self.shared.pending_consent_name()
+    }
+
     pub fn current_peer(&self) -> Option<String> {
         self.shared.current_peer()
     }
@@ -163,6 +168,8 @@ impl NodeObserver for EngineObserver {
         self.shared
             .set_pending_consent(Some(controller_device_id.to_owned()));
         self.shared
+            .set_pending_consent_name(requester_name.map(str::to_owned));
+        self.shared
             .set_current_peer(Some(controller_device_id.to_owned()));
         self.emit(EngineEvent::ConsentRequested {
             controller_device_id: controller_device_id.to_owned(),
@@ -177,11 +184,12 @@ impl NodeObserver for EngineObserver {
         });
     }
 
-    fn session_established(&mut self, session_id: &str) {
+    fn session_established(&mut self, session_id: &str, peer_name: Option<&str>) {
         self.shared.clear_pending_consent();
         self.emit(EngineEvent::SessionEstablished {
             session_id: session_id.to_owned(),
             peer: self.shared.current_peer(),
+            peer_name: peer_name.map(str::to_owned),
         });
     }
 

@@ -273,7 +273,10 @@ impl World {
                     );
                 }
             }
-            SignalingBody::Accept { session_secret } => {
+            SignalingBody::Accept {
+                session_secret,
+                host_name: _,
+            } => {
                 self.step_controller(
                     target,
                     ControllerEvent::AcceptReceived {

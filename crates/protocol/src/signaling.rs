@@ -167,7 +167,18 @@ pub enum SignalingBody {
         requester_name: Option<String>,
     },
     /// Host grants the session and hands over the one-time secret.
-    Accept { session_secret: SessionSecret },
+    ///
+    /// `host_name` (ADR-009, additive-optional within version 1) is the
+    /// host's machine display name, cached by the controller into its
+    /// trusted-host list (`pairings.json`). Advisory only —
+    /// `from_device_id` stays the identity. Absent on pre-0.10 hosts;
+    /// the controller falls back to the bare code until a later session
+    /// supplies it.
+    Accept {
+        session_secret: SessionSecret,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host_name: Option<String>,
+    },
     /// Host refuses. `reason` is machine-readable for UX mapping.
     Reject { reason: RejectReason },
     /// SDP offer (controller to host), via the mailbox.
@@ -256,6 +267,7 @@ mod tests {
             },
             SignalingBody::Accept {
                 session_secret: SessionSecret("one-time-secret".to_owned()),
+                host_name: None,
             },
             SignalingBody::Reject {
                 reason: RejectReason::Busy,
@@ -341,12 +353,42 @@ mod tests {
     }
 
     #[test]
+    fn accept_host_name_is_additive_optional() {
+        // ADR-009: the name serializes under snake_case `host_name`, is
+        // absent (not null) when None, and a pre-0.10 accept (no key)
+        // decodes to None — additive-optional within version 1.
+        let value = serde_json::to_value(envelope(SignalingBody::Accept {
+            session_secret: SessionSecret("s".to_owned()),
+            host_name: Some("MOMS-PC".to_owned()),
+        }))
+        .expect("serialize");
+        assert_eq!(value["host_name"], "MOMS-PC");
+        assert!(value.get("session_secret").is_some());
+
+        let none_value = serde_json::to_value(envelope(SignalingBody::Accept {
+            session_secret: SessionSecret("s".to_owned()),
+            host_name: None,
+        }))
+        .expect("serialize");
+        assert!(none_value.get("host_name").is_none());
+
+        let mut legacy = value;
+        legacy.as_object_mut().unwrap().remove("host_name");
+        let back: SignalingEnvelope = serde_json::from_value(legacy).expect("deserialize");
+        match back.body {
+            SignalingBody::Accept { host_name, .. } => assert_eq!(host_name, None),
+            other => panic!("expected Accept, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn body_type_tags_are_stable_snake_case() {
         let cases: Vec<(SignalingBody, &str)> = vec![
             (SignalingBody::Heartbeat, "heartbeat"),
             (
                 SignalingBody::Accept {
                     session_secret: SessionSecret("x".to_owned()),
+                    host_name: None,
                 },
                 "accept",
             ),
@@ -480,6 +522,7 @@ mod tests {
         // Debug of a whole envelope must not leak it either.
         let env = envelope(SignalingBody::Accept {
             session_secret: secret,
+            host_name: None,
         });
         let formatted = format!("{env:?}");
         assert!(!formatted.contains("hunter2"));

@@ -156,7 +156,7 @@ impl NodeObserver for Recorder {
         ));
     }
 
-    fn session_established(&mut self, session_id: &str) {
+    fn session_established(&mut self, session_id: &str, _peer_name: Option<&str>) {
         self.log
             .lock()
             .expect("recorder")
@@ -254,7 +254,7 @@ impl TestNode {
     fn accept_consent(&mut self, secret: &str) {
         let mut observer = self.recorder.clone();
         self.node
-            .user_accept_consent(SessionSecret(secret.to_owned()), &mut observer);
+            .user_accept_consent(SessionSecret(secret.to_owned()), None, &mut observer);
     }
 
     fn controller_connect(&mut self, host: &str) {

@@ -1,15 +1,29 @@
 /** Component tests (jsdom + testing-library). No Tauri imports here —
- * components receive data via props and report via callbacks. The
+ * components receive data via props and report via callbacks (the one
+ * exception, TrustedMachinesSection, mocks the ipc module). The
  * simplify pass (2026-10-26) replaced ConnectPanel/SessionControls with
  * the pinned SessionCard; HostPanel/Computers/Favorites were dead code
  * and are gone (host status lives in the rail's This-machine card). */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SessionCard } from "../components/ControllerPanel";
 import { DiagnosticsOverlay } from "../components/DiagnosticsOverlay";
 import { ErrorBanner } from "../components/Common";
 import { SettingsPanel } from "../components/IdentityCard";
-import type { DiagSnapshot } from "../types";
+import { TrustedMachinesSection } from "../components/CircleSettings";
+import { api } from "../ipc";
+import type { DiagSnapshot, PairingInfo } from "../types";
+
+vi.mock("../ipc", () => ({
+  api: {
+    pairingsList: vi.fn(),
+    pairingRemove: vi.fn(async () => {}),
+    pairingRename: vi.fn(async () => {}),
+  },
+  EVENT: {},
+  ASSISTANT_EVENT: "assistant://log",
+  CHAT_EVENT: "engine://chat",
+}));
 
 const monitor = (id: string, primary = false) => ({
   monitor_id: id,
@@ -234,7 +248,6 @@ describe("SettingsPanel", () => {
     default_quality: "balanced",
     default_viewer_scale: "fit",
     device_token: "t",
-    skipped_onboarding: true,
     agent_base_url: "https://api.deepseek.com/v1",
     agent_model: "deepseek-flash",
     launch_at_login: false,
@@ -257,5 +270,43 @@ describe("SettingsPanel", () => {
   it("hides the version label when the version is unavailable (tests/jsdom)", () => {
     render(<SettingsPanel settings={settings} onSave={vi.fn(async () => null)} version={null} />);
     expect(screen.queryByText(/App version:/)).toBeNull();
+  });
+});
+
+describe("TrustedMachinesSection (ADR-009: the machine list)", () => {
+  const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
+    code: "abcdef0123456789",
+    secret_hex: "s",
+    created_ms: 1,
+    pending_ack: false,
+    role: "host",
+    name: null,
+    ...over,
+  });
+
+  afterEach(() => vi.mocked(api.pairingsList).mockReset());
+
+  it("shows the cached machine name beside the code; bare code when unnamed", async () => {
+    vi.mocked(api.pairingsList).mockResolvedValue([
+      pairing({ name: "MOMS-PC", code: "aaaaaaaaaaaaaaaa" }),
+      pairing({ code: "bbbbbbbbbbbbbbbb" }),
+    ]);
+    render(<TrustedMachinesSection />);
+    await waitFor(() => expect(screen.getByText("MOMS-PC")).toBeTruthy());
+    expect(screen.getByText("aaaaaaaaaaaaaaaa")).toBeTruthy();
+    // Unnamed rows show only the code.
+    expect(screen.getByText("bbbbbbbbbbbbbbbb")).toBeTruthy();
+  });
+
+  it("renames a row through the rename verb", async () => {
+    vi.mocked(api.pairingsList).mockResolvedValue([pairing({ code: "cccccccccccccccc" })]);
+    render(<TrustedMachinesSection />);
+    await waitFor(() => expect(screen.getByText("cccccccccccccccc")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Rename…" }));
+    fireEvent.change(screen.getByLabelText(/Name for/), { target: { value: "Lab PC" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.pairingRename).toHaveBeenCalledWith("cccccccccccccccc", "Lab PC"),
+    );
   });
 });

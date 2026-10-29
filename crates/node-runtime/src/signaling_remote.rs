@@ -1107,6 +1107,7 @@ mod tests {
             "b-3",
             SignalingBody::Accept {
                 session_secret: protocol::signaling::SessionSecret("s".to_owned()),
+                host_name: None,
             },
             Some("s2"),
         );

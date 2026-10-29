@@ -1745,7 +1745,7 @@ impl NodeObserver for RigObserver {
         self.accept_due = Some(Instant::now() + Duration::from_millis(300));
     }
 
-    fn session_established(&mut self, session_id: &str) {
+    fn session_established(&mut self, session_id: &str, _peer_name: Option<&str>) {
         self.last_activity = Instant::now();
         self.session_slot.set(session_id);
         self.sessions_established.push(session_id.to_owned());
@@ -2267,7 +2267,7 @@ fn run(args: Args) -> i32 {
                 "rig-{}",
                 node.current_session_id().unwrap_or_default()
             ));
-            node.user_accept_consent(secret, &mut observer);
+            node.user_accept_consent(secret, None, &mut observer);
         }
         if let Some(due) = observer.restart_host_due
             && now >= due

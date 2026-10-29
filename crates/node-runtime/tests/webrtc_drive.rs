@@ -63,7 +63,7 @@ struct Rec {
 }
 
 impl NodeObserver for Rec {
-    fn session_established(&mut self, session_id: &str) {
+    fn session_established(&mut self, session_id: &str, _peer_name: Option<&str>) {
         self.log
             .lock()
             .expect("rec")
@@ -207,7 +207,7 @@ fn nodes_drive_real_webrtc_transports_to_connected_and_back() {
         accepted_flag.store(true, Ordering::Release);
         let mut obs = host.rec.clone();
         host.node
-            .user_accept_consent(SessionSecret("integration-secret".into()), &mut obs);
+            .user_accept_consent(SessionSecret("integration-secret".into()), None, &mut obs);
     }
     let _ = accepted;
 

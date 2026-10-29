@@ -231,6 +231,7 @@ pub fn run() {
             commands::chat_history,
             commands::pairings_list,
             commands::pairing_remove,
+            commands::pairing_rename,
             commands::circle_status,
             commands::circle_join,
             commands::circle_create,

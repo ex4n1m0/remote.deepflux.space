@@ -135,10 +135,12 @@ fn all_events() -> Vec<EngineEvent> {
         EngineEvent::ConsentAccepted {
             controller_device_id: "ctrl-1".into(),
             remember: true,
+            requester_name: Some("MOMS-PC".into()),
         },
         EngineEvent::SessionEstablished {
             session_id: "s1".into(),
             peer: Some("ctrl-1".into()),
+            peer_name: Some("MOMS-PC".into()),
         },
         EngineEvent::SessionEnded {
             cause: "TransportError".into(),

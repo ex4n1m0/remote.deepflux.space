@@ -388,14 +388,20 @@ pub enum EngineEvent {
     },
     /// Host user accepted the consent prompt; `remember` is the ADR-006
     /// "remember this machine" choice — the app layer persists + acks the
-    /// pending pairing offer only when it is true.
+    /// pending pairing offer only when it is true. `requester_name`
+    /// (ADR-009) replays the prompt's wire name so the app can cache it
+    /// into the host-role pairing row.
     ConsentAccepted {
         controller_device_id: String,
         remember: bool,
+        requester_name: Option<String>,
     },
     SessionEstablished {
         session_id: String,
         peer: Option<String>,
+        /// ADR-009: the peer's display name learned from the wire
+        /// (controller side: `accept.host_name`; host side: `None`).
+        peer_name: Option<String>,
     },
     SessionEnded {
         cause: String,
@@ -625,6 +631,10 @@ struct SharedInner {
     session_id: Option<String>,
     current_peer: Option<String>,
     pending_consent: Option<String>,
+    /// ADR-009: the requester_name shown on the pending consent prompt —
+    /// replayed on ConsentAccepted so the app can cache it into the
+    /// host-role pairing row.
+    pending_consent_name: Option<String>,
     host_monitors: Vec<crate::ipc::MonitorDto>,
     peer_monitors: Vec<crate::ipc::MonitorDto>,
     active_monitor: Option<String>,
@@ -737,8 +747,19 @@ impl EngineShared {
         self.inner.lock().expect("engine shared").pending_consent = controller;
     }
 
+    /// ADR-009: the pending prompt's requester name (set with the consent,
+    /// cleared with it, replayed on the accept).
+    fn set_pending_consent_name(&self, name: Option<String>) {
+        self.inner
+            .lock()
+            .expect("engine shared")
+            .pending_consent_name = name;
+    }
+
     fn clear_pending_consent(&self) {
-        self.inner.lock().expect("engine shared").pending_consent = None;
+        let mut inner = self.inner.lock().expect("engine shared");
+        inner.pending_consent = None;
+        inner.pending_consent_name = None;
     }
 
     fn pending_consent(&self) -> Option<String> {
@@ -746,6 +767,14 @@ impl EngineShared {
             .lock()
             .expect("engine shared")
             .pending_consent
+            .clone()
+    }
+
+    fn pending_consent_name(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .expect("engine shared")
+            .pending_consent_name
             .clone()
     }
 
@@ -840,6 +869,10 @@ pub struct EngineConfig {
     /// blocked toward the peer" — signaling works, ICE cannot. Never set
     /// by the product shell.
     pub blackhole_remote_candidates: bool,
+    /// ADR-009: this machine's display name, stamped onto the outgoing
+    /// `accept` so the controlling machine can label its trusted-host
+    /// entry (empty = leave the field absent).
+    pub host_display_name: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -998,6 +1031,9 @@ struct Engine {
     auto_reonline: bool,
     status_file: Option<PathBuf>,
     viewer_title: String,
+    /// ADR-009: this machine's display name, stamped onto the outgoing
+    /// `accept` (empty = leave the wire field absent).
+    host_display_name: String,
     initial_quality: QualityPreset,
     blackhole_remote_candidates: bool,
     node: Node,
@@ -1115,6 +1151,7 @@ fn run(
         initial_quality,
         initial_scale: _,
         blackhole_remote_candidates,
+        host_display_name,
     } = cfg;
     let node = Node::new(
         &device_id,
@@ -1184,6 +1221,7 @@ fn run(
         auto_reonline,
         status_file,
         viewer_title,
+        host_display_name,
         initial_quality,
         blackhole_remote_candidates,
         node,
@@ -1385,15 +1423,24 @@ impl Engine {
                     return;
                 }
                 let controller = self.observer.pending_consent().unwrap_or_default();
+                let requester_name = self.observer.pending_consent_name();
                 self.ensure_transport(MachineKind::Host);
                 let secret = ids::new_session_secret();
-                self.node.user_accept_consent(secret, &mut self.observer);
+                // ADR-009: the accept carries this machine's display name
+                // (empty config = leave the field absent, e.g. rigs/tests).
+                let host_name = {
+                    let name = self.host_display_name.trim();
+                    (!name.is_empty()).then_some(name)
+                };
+                self.node
+                    .user_accept_consent(secret, host_name, &mut self.observer);
                 // ADR-006: the pairing decision rides the accept event so
                 // the app layer (which holds the in-memory pairing offer)
                 // can persist + ack exactly when "remember" was checked.
                 let _ = self.events.try_send(EngineEvent::ConsentAccepted {
                     controller_device_id: controller,
                     remember,
+                    requester_name,
                 });
             }
             EngineCmd::ConsentReject => {

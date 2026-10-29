@@ -136,6 +136,24 @@ fn stamp_requester_name(actions: &mut [Action], requester_name: &str) {
     }
 }
 
+/// Stamp the ADR-009 host display name onto a machine-built `accept` `Send`
+/// action (the mirror of `stamp_requester_name`: the pure session machine
+/// cannot know the name, so the composition layer patches it in place).
+fn stamp_host_name(actions: &mut [Action], host_name: &str) {
+    for action in actions.iter_mut() {
+        let Action::Send(env) = action else {
+            continue;
+        };
+        let SignalingBody::Accept {
+            host_name: field, ..
+        } = &mut env.body
+        else {
+            continue;
+        };
+        *field = Some(host_name.to_owned());
+    }
+}
+
 /// Callbacks the embedding binary (rig, tests, future Tauri shell) uses to
 /// react to node-level effects. Every method has a no-op default; input
 /// payloads and SDP bodies never appear here (invariant 6).
@@ -159,7 +177,10 @@ pub trait NodeObserver {
         _message_id: &str,
     ) {
     }
-    fn session_established(&mut self, _session_id: &str) {}
+    /// ADR-009: `peer_name` is the display name learned from the wire for
+    /// this session's peer (controller side: the host's `accept.host_name`;
+    /// host side: `None` — the controller's name rides `connect_request`).
+    fn session_established(&mut self, _session_id: &str, _peer_name: Option<&str>) {}
     fn session_ended(&mut self, _cause: &DisconnectCause) {}
     /// Pipeline control (the runtime starts/stops real stage threads).
     fn start_streaming(&mut self) {}
@@ -232,6 +253,10 @@ pub struct Node {
     ice_counter: u64,
     counters: NodeCounters,
     channel_open_order: Vec<&'static str>,
+    /// ADR-009: the `accept.host_name` received for the in-flight
+    /// controller session — set when the accept envelope lands, consumed
+    /// (one-shot) by the `SessionEstablished` observer callback.
+    accepted_host_name: Option<String>,
 }
 
 impl Node {
@@ -262,6 +287,7 @@ impl Node {
             ice_counter: 0,
             counters: NodeCounters::default(),
             channel_open_order: Vec::new(),
+            accepted_host_name: None,
         }
     }
 
@@ -450,9 +476,23 @@ impl Node {
     }
 
     /// Host user accepted the consent prompt (one-time secret handed over;
-    /// never logged).
-    pub fn user_accept_consent(&mut self, secret: SessionSecret, observer: &mut dyn NodeObserver) {
-        self.step_host(HostEvent::ConsentAccepted { secret }, observer);
+    /// never logged). `host_name` (ADR-009) is this machine's display name,
+    /// stamped onto the outgoing `accept` so the controller can label its
+    /// trusted-host entry.
+    pub fn user_accept_consent(
+        &mut self,
+        secret: SessionSecret,
+        host_name: Option<&str>,
+        observer: &mut dyn NodeObserver,
+    ) {
+        if let Some(mut actions) =
+            self.step_host_raw(HostEvent::ConsentAccepted { secret }, observer)
+        {
+            if let Some(name) = host_name {
+                stamp_host_name(&mut actions, name);
+            }
+            self.apply(MachineKind::Host, actions, observer);
+        }
     }
 
     /// Host user declined the consent prompt.
@@ -597,7 +637,13 @@ impl Node {
                     );
                 }
             }
-            SignalingBody::Accept { session_secret } => {
+            SignalingBody::Accept {
+                session_secret,
+                host_name,
+            } => {
+                // ADR-009: remember the host's display name for the
+                // SessionEstablished callback (one-shot take there).
+                self.accepted_host_name = host_name;
                 self.step_controller(
                     ControllerEvent::AcceptReceived {
                         message_id,
@@ -847,19 +893,35 @@ impl Node {
     // ------------------------------------------------------------------
 
     fn step_host(&mut self, event: HostEvent, observer: &mut dyn NodeObserver) {
+        if let Some(actions) = self.step_host_raw(event, observer) {
+            self.apply(MachineKind::Host, actions, observer);
+        }
+    }
+
+    /// Step the host machine and return its actions **unapplied** (the
+    /// `step_controller_raw` mirror — see [`Self::user_accept_consent`]'s
+    /// host-name stamp). `None` = illegal transition (already reported to
+    /// the observer). Emits the state-change notification.
+    fn step_host_raw(
+        &mut self,
+        event: HostEvent,
+        observer: &mut dyn NodeObserver,
+    ) -> Option<Vec<Action>> {
         let before = self.host.state().name().to_owned();
         let now = self.clock.now_ms();
-        match self.host.step(event, now) {
-            Ok(actions) => self.apply(MachineKind::Host, actions, observer),
+        let result = match self.host.step(event, now) {
+            Ok(actions) => Some(actions),
             Err(err) => {
                 self.counters.illegal_transitions += 1;
                 observer.illegal_transition(MachineKind::Host, err.state, err.event);
+                None
             }
-        }
+        };
         let after = self.host.state().name().to_owned();
         if before != after {
             observer.state_changed(MachineKind::Host, &after);
         }
+        result
     }
 
     fn step_controller(&mut self, event: ControllerEvent, observer: &mut dyn NodeObserver) {
@@ -1026,7 +1088,8 @@ impl Node {
                         );
                         self.counters.hello_sent += 1;
                     }
-                    observer.session_established(&session_id);
+                    let peer_name = self.accepted_host_name.take();
+                    observer.session_established(&session_id, peer_name.as_deref());
                 }
                 Action::SessionEnded { cause } => observer.session_ended(&cause),
             }

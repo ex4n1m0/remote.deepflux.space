@@ -6,5 +6,6 @@
   "to_device_id": "rig-ctrl",
   "timestamp_ms": 1760000000000,
   "type": "accept",
-  "session_secret": "fixture-one-time-secret"
+  "session_secret": "fixture-one-time-secret",
+  "host_name": "MOMS-PC"
 }
