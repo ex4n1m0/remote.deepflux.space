@@ -143,6 +143,9 @@ pub fn run() {
             app.state::<AppServices>()
                 .assistant
                 .spawn(app.handle().clone());
+            // ADR-012 release B: the scheduled-task scheduler (fires due
+            // tasks as assistant turns; reports to paired machines).
+            agent::spawn_scheduler(app.handle().clone());
             // Machine-chat inbox poller (RD-022): out-of-session chat is
             // always available while the app runs. The purge first drops
             // pairing rows / chat threads keyed by a non-device-id code
