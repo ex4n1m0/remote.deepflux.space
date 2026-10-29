@@ -39,6 +39,7 @@
 
 pub mod clock;
 pub mod congestion;
+pub mod directory_remote;
 pub mod http;
 pub mod input;
 pub mod metrics;

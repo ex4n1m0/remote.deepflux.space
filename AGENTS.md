@@ -15,11 +15,13 @@ over a direct WebRTC peer connection (STUN, TURN disabled in MVP). H.264 GPU
 pipeline, native rendering, `SendInput` injection. No relay, one controlled
 machine per session. Identity is the machine's display name
 (`device_name` setting, hostname fallback) — no accounts, no login
-(ADR-009, 2026-10-29, retired ADR-003's accounts/roster, ADR-006's
-circle directory, and ADR-007's control gate). The machine list is the
-trusted-host list (`pairings.json` — "Always allow" entries with cached
-display names); discovery is the one-time connection code (a machine's
-device id). An
+(ADR-009, 2026-10-29, retired ADR-003's accounts/roster and ADR-007's
+control gate). The machine list merges the trusted-host list
+(`pairings.json` — "Always allow" entries with cached display names)
+with the restored discovery list (ADR-010, 2026-10-29: the sealed
+circle directory, one row per machine, no new trust — discovered
+machines connect through the ordinary consent prompt); the one-time
+connection code (a machine's device id) still reaches any machine. An
 automatic-update engine (ADR-008, 2026-10-28) reads a published
 `latest.json` from the landing (same origin), downloads and SHA-256
 verifies the installer via the existing segmented download engine
@@ -54,6 +56,7 @@ reports; the main session integrates.
 Key docs: `docs/adr/ADR-001-architecture.md`,
 `docs/adr/ADR-002-webrtc-rs-behind-transport-trait.md`,
 `docs/adr/ADR-009-machine-name-identity-trusted-host-list.md`,
+`docs/adr/ADR-010-directory-discovery-restored.md`,
 `docs/adr/ADR-008-automatic-updates.md`,
 `docs/protocol/state-machines.md`, `docs/perf-counter-schema.md`.
 
@@ -67,13 +70,16 @@ Key docs: `docs/adr/ADR-001-architecture.md`,
    stdio MCP client, at agent rates (≤ 2 fps), opt-in per session — never
    through Tauri IPC, never on the real-time video path. ADR-004 §4 is the
    gate; code claiming this exception must cite it.
-2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes, and
+2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes,
    sealed chat envelopes (ADR-005, AES-256-GCM under the pairing
-   secret). Never frame, input, or cursor bytes; never plaintext user
-   data. (ADR-009 retired the ADR-003 account and ADR-006 directory
-   surfaces; their `/api/account` and `/api/directory` endpoints remain
+   secret), and sealed circle-directory entries (ADR-010: AES-256-GCM
+   under the circle key — the server stores ciphertext only). Never
+   frame, input, or cursor bytes; never plaintext user data. (ADR-009
+   retired the ADR-003 account surface; `/api/account` remains
    deployed, untouched, only until the 0.10.0 client has soaked — old
-   0.9.x clients hard-depend on them. Do not extend them.)
+   0.9.x clients hard-depend on it. Do not extend it. `/api/directory`
+   is a LIVE surface again per ADR-010 — same contract, do not extend
+   without a version bump.)
 3. Every queue is bounded; under pressure drop obsolete frames, never queue latency.
 4. TURN/relay forbidden in MVP.
 5. No undocumented wire-format changes; `protocolVersion` bumps are explicit.
@@ -149,11 +155,15 @@ schemas/fixtures — do not extend them):
    client-side under the pairing secret; the server stores ciphertext
    only. `CHAT_PROTOCOL_VERSION` is currently **1**; the contract lives in
    `crates/protocol::chat` (folded in from `apps/desktop` by ADR-006).
-5. **Circle directory API — RETIRED client-side by ADR-009 (2026-10-29)**:
-   the Rust contract, `directory_remote`, app composition, and embedded
-   circle-key build machinery are deleted; `POST /api/directory` plus its
-   TS mirror/fixtures stay deployed untouched until the 0.10.0 client
-   soaks, then are deleted server-side in a follow-up deploy.
+5. **Circle directory API — RESTORED by ADR-010 (2026-10-29, 0.11.0)**
+   after the ADR-009 retirement: the sealed-entry surface
+   (`POST /api/directory`, put/list/remove, `DIRECTORY_PROTOCOL_VERSION`
+   currently **1**), contract-identical to what stayed deployed for
+   0.9.x clients. Contract lives in `crates/protocol::directory` +
+   `node-runtime::directory_remote`; entries are AES-256-GCM sealed
+   under the embedded circle key (nicknames never reach the server in
+   plaintext). ADR-009's delete-after-soak plan for this endpoint is
+   CANCELLED.
 
 Capability flags (`protocol::capabilities::FeatureFlags`, a JSON u32
 bitmask re-negotiated in binary on the direct path) are additive: a peer

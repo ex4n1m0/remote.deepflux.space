@@ -37,6 +37,9 @@ pub struct AppServices {
     /// ADR-006 pairing-ceremony state: the in-memory pairing offer, the
     /// live prompt mark, and prompt-flood cooldowns.
     pub trust: Mutex<crate::chat::TrustState>,
+    /// ADR-010 discovery list cache (sealed circle directory, decrypted
+    /// rows only — latest-wins, never queue-shaped).
+    pub directory: Mutex<crate::directory::DirectoryCache>,
     /// ADR-008 automatic updates: the UI state machine plus the last
     /// fetched manifest (input for the download step).
     pub update: crate::updater::UpdateEngine,
@@ -606,7 +609,8 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         device_token: store.settings().device_token.clone(),
         launch_at_login: patch.launch_at_login,
         // ADR-009: host presence follows this at the next engine start
-        // (the always-ready role replay reads it at launch).
+        // (the always-ready role replay reads it at launch). ADR-010: it
+        // also gates the directory entry — republish/remove on the flip.
         host_sharing: patch.host_sharing,
         autostart_default_applied: store.settings().autostart_default_applied,
         // Assistant provider fields are managed via `agent_configure`,
@@ -616,8 +620,22 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         agent_download_domains: patch.agent_download_domains,
         auto_update: patch.auto_update,
     };
+    let sharing_flipped = store.settings().host_sharing != patch.host_sharing;
     store.update_settings(next)?;
-    let s = store.settings().clone();
+    drop(store);
+    if sharing_flipped {
+        // Off the store lock before directory work (it re-locks inside);
+        // network best-effort off-thread — the poller retries puts.
+        let handle = app.clone();
+        std::thread::spawn(move || crate::directory::sync_visibility(&handle));
+    }
+    let s = app
+        .state::<AppServices>()
+        .store
+        .lock()
+        .expect("store")
+        .settings()
+        .clone();
     Ok(SettingsDto {
         device_id: s.device_id,
         device_name: s.device_name,
@@ -924,6 +942,19 @@ pub fn pairings_list(app: AppHandle) -> CmdResult<Vec<PairingDto>> {
         .into_iter()
         .map(PairingDto::from)
         .collect())
+}
+
+/// ADR-010 discovery list (pull): the decrypted circle directory. Rows
+/// carry metadata only — device id, nickname, presence, is_self.
+#[tauri::command]
+pub fn directory_machines(app: AppHandle) -> CmdResult<Vec<crate::directory::DirectoryMachineDto>> {
+    Ok(crate::directory::machines(&app))
+}
+
+/// Force a directory refresh (the poller also refreshes every 30 s).
+#[tauri::command]
+pub fn directory_refresh(app: AppHandle) -> CmdResult<()> {
+    crate::directory::refresh(&app)
 }
 
 /// Redacted pairing row for the webview (ADR-006): the shared secret never

@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
-# THE installer build (ADR-009, 2026-10-29: one build, one embedded secret —
-# the assistant provider key). The circle key and its embedding machinery
-# were retired with the circle directory; there is no family/public split
-# anymore, just this script.
+# THE installer build (ADR-010, 2026-10-29: one build, two embedded
+# secrets — the assistant provider key and the circle key). The circle
+# key was retired with ADR-009 and restored the same day by ADR-010
+# (the discovery list returns); the single-installer rule is unchanged.
 #
 #   scripts/build-family.sh
 #
 # What it does:
-#   1. DEEPFLUX_AGENT_KEY — the assistant's provider key, read from
+#   1. DEEPFLUX_CIRCLE_KEY — read from ~/.deepflux/circle-key.txt (minted
+#      32 random bytes, hex, on first run and saved there — restored
+#      verbatim from the ADR-006 era; the SAME key the 0.9.x clients
+#      used, so 0.11.0 joins the same circle). That file IS the circle:
+#      whoever holds it can read the directory — never commit it to git,
+#      never paste it into logs or chat. Rotation = delete the file and
+#      everyone mints a fresh circle namespace; old entries TTL out
+#      server-side after 30 days. Pairings survive rotation.
+#   2. DEEPFLUX_AGENT_KEY — the assistant's provider key, read from
 #      ~/.deepflux/agent-key.txt (chmod 600; the env var of the same name
 #      OVERRIDES the file for one-off builds). File-backed on purpose: the
 #      pre-0.8.0 script read only the env var, and every installer from
@@ -58,7 +66,7 @@ echo "    This is the public download: copy it to"
 echo "    apps/landing/download/Remote-Desktop-<version>-x64-setup.exe and"
 echo "    deploy. Still NEVER commit the exe or the key file to git."
 cd "$ROOT/apps/desktop"
-pnpm tauri build
+DEEPFLUX_FAMILY_BUILD=1 pnpm tauri build
 
 # Post-build assertion (0.8.0): the 0.5.0–0.7.2 regression was a silently
 # EMPTY embedded key. Assert the artifact actually holds one — by checking
@@ -85,4 +93,23 @@ if [ -n "${DEEPFLUX_AGENT_KEY:-}" ]; then
     exit 1
   fi
   echo "==> embedded agent key verified (length ${BYTES}, value never echoed)"
+fi
+
+# Same assertion for the circle key (the 0.5.0-0.7.2 empty-agent-key
+# class of bug, applied to the restored discovery list): an installer
+# with an empty embedded circle key ships an empty discovery list to
+# every machine — fail the build instead.
+if [ -n "${DEEPFLUX_CIRCLE_KEY:-}" ]; then
+  CTXT="$(
+    find "$ROOT/target/release" -path '*build/*/out/circle_key.txt' 2>/dev/null |
+      while read -r f; do echo "$(stat -c %Y "$f") $f"; done |
+      sort -rn | head -n 1 | cut -d ' ' -f2-
+  )"
+  CBITS="$(wc -c < "${CTXT:-/dev/null}" | tr -d '[:space:]')"
+  if [ -z "$CTXT" ] || [ "$CBITS" != "64" ]; then
+    echo "error: embedded circle key missing or wrong shape (${CBITS:-0} bytes, want 64)" >&2
+    echo "  Do not ship this artifact — inspect build.rs rerun behavior and rebuild." >&2
+    exit 1
+  fi
+  echo "==> embedded circle key verified (64 hex chars, value never echoed)"
 fi

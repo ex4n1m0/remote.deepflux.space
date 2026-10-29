@@ -1,14 +1,16 @@
-/** Machines rail (ADR-005, simplified by ADR-009): the IM-style left
- * column and THE machine list — the trusted-host list (pairings), nothing
- * else. Every row is both a chat and a remote-control target; machines
- * enter the list through the one-time connection code + the host's
- * "Always allow". The connect box under the header is the only discovery
- * mechanism: enter a code, press Control (visual) or Agent (chat-only).
- * Also home to the pinned "This machine" card (host role). */
+/** Machines rail (ADR-005, simplified by ADR-009, discovery restored by
+ * ADR-010): the IM-style left column and THE machine list — the
+ * trusted-host list (pairings) plus the discovery list (the sealed circle
+ * directory), merged one-row-per-machine. Every row is both a chat and a
+ * remote-control target; paired machines connect silently, discovered
+ * machines connect through the ordinary consent prompt (asked once —
+ * "Always allow" makes it permanent). The connect box under the header
+ * still reaches any machine by code. Also home to the pinned "This
+ * machine" card (host role). */
 import { useState } from "react";
 import { hostView } from "../state/mapping";
 import { CopyButton } from "./Common";
-import type { HostStateName, PairingInfo } from "../types";
+import type { DirectoryMachine, HostStateName, PairingInfo } from "../types";
 
 /** A connection code is exactly 16 hex characters (the peer's device id). */
 export function looksLikeCode(value: string): boolean {
@@ -28,6 +30,8 @@ export interface MachineRow {
   trusted: boolean;
   /** Controller-side offer sent, host has not acked yet. */
   pending: boolean;
+  /** ADR-010: surfaced by the discovery list (not paired yet). */
+  fromDirectory: boolean;
 }
 
 /** The trusted-host list as rail rows: name cached from the wire (or the
@@ -46,7 +50,60 @@ export function machinesFromPairings(
     active: selectedCode === p.code,
     trusted: !p.pending_ack,
     pending: p.pending_ack,
+    fromDirectory: false,
   }));
+}
+
+/** ADR-010: trusted list + discovery list, ONE row per machine — the
+ * merge is keyed by device code, so a machine can never appear twice.
+ * Pairings win: a paired row keeps its cached name (a placeholder name
+ * that is just the bare code adopts the discovered name instead) and
+ * upgrades its presence from session-only to the directory's live flag
+ * when no session is running. */
+export function unifiedMachines(
+  pairings: PairingInfo[],
+  peerOnline: Record<string, boolean>,
+  selectedCode: string | null,
+  directory: DirectoryMachine[] | null,
+): MachineRow[] {
+  const rows = machinesFromPairings(pairings, peerOnline, selectedCode);
+  if (!directory) return rows;
+  const byCode = new Map(rows.map((r) => [r.code, r]));
+  for (const d of directory) {
+    const existing = byCode.get(d.device);
+    if (existing) {
+      if (existing.name === existing.code && d.name) {
+        existing.name = d.name; // placeholder name — the discovered one is real
+      }
+      if (existing.online == null) {
+        existing.online = d.online;
+      }
+      continue;
+    }
+    const row: MachineRow = {
+      id: `dir:${d.device}`,
+      name: d.name || d.device,
+      code: d.device,
+      online: d.online,
+      active: selectedCode === d.device,
+      trusted: false,
+      pending: false,
+      fromDirectory: true,
+    };
+    byCode.set(d.device, row);
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Self is not a contact: directory rows for THIS machine never reach the
+ * merged list (the pinned "This machine" card represents self). Matches by
+ * the backend's `is_self` flag and, belt-and-braces, by device id. */
+export function excludeSelf(
+  machines: DirectoryMachine[],
+  thisDevice: string | null,
+): DirectoryMachine[] {
+  return machines.filter((m) => !m.is_self && m.device !== thisDevice);
 }
 
 /** Machine-page removal (ADR-009): two-step confirm — forgetting a
@@ -145,7 +202,8 @@ export function MachinesRail({
   const visible = filterMachines(machines, query);
   const filtering = query.trim().length > 0;
   const trusted = visible.filter((m) => m.trusted);
-  const pending = visible.filter((m) => !m.trusted);
+  const pending = visible.filter((m) => !m.trusted && m.pending);
+  const discovered = visible.filter((m) => !m.trusted && !m.pending);
 
   return (
     <nav className="rail" aria-label="Machines">
@@ -224,12 +282,18 @@ export function MachinesRail({
         {pending.map((m) => (
           <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
         ))}
+        {discovered.length > 0 ? (
+          <li className="rail-group-hint">Found for you — not paired yet</li>
+        ) : null}
+        {discovered.map((m) => (
+          <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
+        ))}
       </ul>
       {machines.length === 0 ? (
         <p className="rail-empty muted">
-          No machines yet — one list is for messaging and remote control.
-          Enter a connection code above; its user answers{" "}
-          {"\""}Always allow{"\""} once and it stays in this list.
+          No machines yet. Other machines running this app appear here on
+          their own; you can also enter a connection code above. Their user
+          answers {"\""}Always allow{"\""} once and it stays in this list.
         </p>
       ) : null}
 
@@ -275,7 +339,13 @@ function MachineRowView({
         type="button"
         className={`rail-row${row.active ? " active" : ""}`}
         onClick={() => onPick(row.code)}
-        title={row.pending ? "Waiting for their approval" : "Open this machine"}
+        title={
+          row.pending
+            ? "Waiting for their approval"
+            : row.fromDirectory
+              ? "Found via the discovery list — Control asks their user once"
+              : "Open this machine"
+        }
       >
         <span
           className={`dot ${row.online === true ? "on" : row.online === false ? "off" : "unknown"}`}
@@ -286,13 +356,23 @@ function MachineRowView({
           <span className="trusted-shield" title="Trusted — connects without asking again">
             ✓
           </span>
+        ) : row.fromDirectory ? (
+          <span className="dir-tag" title="Discovered — pair it once and it stays" aria-hidden="true">
+            ◦
+          </span>
         ) : null}
       </button>
       <button
         type="button"
         className="ghost small rail-connect"
         onClick={() => onConnect(row.code, false)}
-        title={row.trusted ? "Trusted machine — connects without asking again" : "They'll be asked to allow it"}
+        title={
+          row.trusted
+            ? "Trusted machine — connects without asking again"
+            : row.fromDirectory
+              ? "They'll be asked to allow it — once, then it's saved"
+              : "They'll be asked to allow it"
+        }
         aria-label={`Control ${row.name}${row.online === false ? " (offline)" : ""}`}
       >
         Control

@@ -234,19 +234,14 @@ impl LocalStore {
         if fresh_identity || !had_settings || healed_url {
             write_json_atomic(&settings_path, &settings)?;
         }
-        // ADR-009 cleanup: `account.json` / `roster.json` (accounts
-        // phase) and `favorites.json` / `circle.json` (favorites + circle
-        // phase) belong to retired systems — delete them instead of
-        // orphaning them (the machine list is pairings.json, untouched).
         // ADR-009 cleanup: `account.json` / `roster.json` belong to the
-        // retired accounts phase — delete them instead of orphaning them
-        // (the trusted-host list is pairings.json, which is untouched).
-        for legacy in [
-            "account.json",
-            "roster.json",
-            "favorites.json",
-            "circle.json",
-        ] {
+        // retired accounts phase, `favorites.json` to the retired
+        // favorites phase — delete them instead of orphaning them. Note
+        // `circle.json` is deliberately ABSENT from this list: ADR-010
+        // (0.11.0) restored the discovery list, and a surviving
+        // circle.json is read back by the directory client (auto-join
+        // re-mints it from the embedded key when missing).
+        for legacy in ["account.json", "roster.json", "favorites.json"] {
             let _ = std::fs::remove_file(dir.join(legacy));
         }
         Ok(Self {
@@ -580,8 +575,9 @@ mod tests {
     #[test]
     fn retired_files_are_cleaned_up_on_load() {
         // ADR-009: account.json/roster.json (accounts era) and
-        // favorites.json/circle.json (favorites + circle era) must not
-        // linger as dead data on upgraded machines.
+        // favorites.json (favorites era) must not linger as dead data on
+        // upgraded machines. circle.json is NOT retired anymore (ADR-010
+        // restored the discovery list) — it must survive the load.
         let dir = temp_dir("legacy-files");
         std::fs::write(dir.join("account.json"), "{\"v\":1}").unwrap();
         std::fs::write(dir.join("roster.json"), "{\"v\":1}").unwrap();
@@ -591,7 +587,7 @@ mod tests {
         assert!(!dir.join("account.json").exists());
         assert!(!dir.join("roster.json").exists());
         assert!(!dir.join("favorites.json").exists());
-        assert!(!dir.join("circle.json").exists());
+        assert!(dir.join("circle.json").exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

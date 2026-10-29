@@ -7,6 +7,7 @@ pub mod agent;
 pub mod chat;
 pub mod commands;
 pub mod credstore;
+pub mod directory;
 pub mod dl;
 pub mod engine;
 pub mod ipc;
@@ -101,12 +102,18 @@ pub fn run() {
                 engine: Mutex::new(None),
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
+                directory: Mutex::new(directory::DirectoryCache::default()),
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
             // Always-ready first-run default: login autostart on once
             // (idempotent — the flag persists; reversible in Settings).
             commands::enable_autostart_default(app.handle());
+            // ADR-010: the family build auto-joins the circle from its
+            // embedded key; the directory poller keeps the discovery list
+            // fresh while online.
+            directory::auto_join_embedded(app.handle());
+            directory::spawn_poller(app.handle().clone());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -226,6 +233,8 @@ pub fn run() {
             commands::pairings_list,
             commands::pairing_remove,
             commands::pairing_rename,
+            commands::directory_machines,
+            commands::directory_refresh,
             commands::update_state,
             commands::update_check,
             commands::update_download,

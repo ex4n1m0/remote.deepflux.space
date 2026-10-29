@@ -26,6 +26,11 @@
 //!   ADR-005), folded in from `apps/desktop` by ADR-006 so every surface is
 //!   owned here.
 //!
+//! * [`directory`] — the sealed circle-directory surface
+//!   (`POST /api/directory`, ADR-006; retired by ADR-009 in 0.10.0,
+//!   restored unchanged by ADR-010 in 0.11.0 — the deployed contract was
+//!   never touched server-side).
+//!
 //! ## Versioning policy (AGENTS.md invariant 5)
 //!
 //! * Signaling `protocol_version` is currently `1` ([`signaling::SIGNALING_PROTOCOL_VERSION`];
@@ -41,5 +46,6 @@
 
 pub mod capabilities;
 pub mod chat;
+pub mod directory;
 pub mod signaling;
 pub mod wire;

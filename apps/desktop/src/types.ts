@@ -240,6 +240,16 @@ export interface InfoEvent {
 
 
 
+/** ADR-010: one discovered machine from the sealed circle directory
+ * (decrypted app-side; `is_self` keeps self out of the rail's list). */
+export interface DirectoryMachine {
+  device: string;
+  name: string;
+  online: boolean;
+  refreshed_ms: number;
+  is_self: boolean;
+}
+
 export interface PairingInfo {
   code: string;
   created_ms: number;

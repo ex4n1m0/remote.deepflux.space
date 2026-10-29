@@ -5,6 +5,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DirectoryMachine,
   EngineStatus,
   Identity,
   MonitorInfo,
@@ -102,6 +103,10 @@ export const api = {
   pairingRemove: (code: string): Promise<void> => invoke("pairing_remove", { code }),
   pairingRename: (code: string, name: string): Promise<void> =>
     invoke("pairing_rename", { code, name }),
+
+  // ADR-010 discovery list: the sealed circle directory, decrypted.
+  directoryMachines: (): Promise<DirectoryMachine[]> => invoke("directory_machines"),
+  directoryRefresh: (): Promise<void> => invoke("directory_refresh"),
 
   setQuality: (preset: string): Promise<void> =>
     invoke("set_quality", { args: { preset } }),

@@ -47,6 +47,9 @@ hex = { workspace = true }
 # (node-runtime::{pairing_proof, directory_remote}).
 sha2 = { workspace = true }
 hmac = { workspace = true }
+# ADR-010: sealed directory entries (directory_remote) — AES-256-GCM under
+# the circle key, back with the restored discovery list.
+aes-gcm = { workspace = true }
 
 # Agent frame tap (ADR-004, RD-016): JPEG screenshot encoding, pure Rust.
 image = { workspace = true }

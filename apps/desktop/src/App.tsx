@@ -9,13 +9,24 @@
  * 0.10.0 (ADR-009): no accounts, no onboarding gate — the machine's
  * display name is the only identity and it travels on the connect
  * request; the host's prompt shows it beside the device id. Everything
- * configurable lives in the top menu bar (File / Config / Help). */
+ * configurable lives in the top menu bar (File / Config / Help).
+ *
+ * 0.11.0 (ADR-010): the discovery list is back — machines running the
+ * app appear in the rail on their own (sealed circle directory), merged
+ * one-row-per-machine with the trusted list; pairing ("Always allow"
+ * once) stays the only trust. */
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
-import { MachinesRail, RemoveMachineButton, machinesFromPairings } from "./components/MachinesRail";
+import { useDirectory } from "./hooks/useDirectory";
+import {
+  MachinesRail,
+  RemoveMachineButton,
+  excludeSelf,
+  unifiedMachines,
+} from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
@@ -35,12 +46,16 @@ export default function App() {
   const engine = useEngine();
   const [ui] = engine.ui;
   const assistant = useAssistant();
+  // ADR-010: the discovery list (decrypted circle directory) — pulled at
+  // mount, pushed by the 30 s poller.
+  const directory = useDirectory();
+  const [directoryUi] = directory.ui;
   // ADR-008 update flow: banner states + the user verbs. Declared with
   // the other hooks (never conditional); jsdom keeps state null.
   const update = useUpdate();
-  // ADR-009: the trusted-host list (pairings) IS the machine list —
-  // pulled at mount, after consent decisions, and whenever a pairing
-  // event lands (offer minted / acked / removed / renamed).
+  // ADR-009: the trusted-host list (pairings) is the trust leg of the
+  // machine list — pulled at mount, after consent decisions, and
+  // whenever a pairing event lands (offer minted / acked / removed).
   const [pairings, setPairings] = useState<import("./types").PairingInfo[] | null>(null);
   const refreshMachines = async () => {
     try {
@@ -125,8 +140,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
 
-  // Machine list + selection: the trusted-host list (pairings) only.
-  const machines = machinesFromPairings(pairings ?? [], ui.peerOnline, selectedCode);
+  // Machine list + selection. This machine's own directory row never
+  // becomes a connectable contact — the pinned "This machine" card
+  // already represents self. One row per machine: the merge is keyed by
+  // device code (a paired machine never duplicates its discovered row).
+  const directoryRows = directoryUi.loaded
+    ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
+    : null;
+  const machines = unifiedMachines(
+    pairings ?? [],
+    ui.peerOnline,
+    selectedCode,
+    directoryRows,
+  );
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
   // Landing with machines but no selection: open the first one — the
   // center column should never be an empty "pick something" screen when
@@ -372,10 +398,14 @@ export default function App() {
                 >
                   Agent
                 </button>
-                <RemoveMachineButton
-                  name={selected.name}
-                  onRemove={() => void removeMachine(selected.code)}
-                />
+                {/* Only paired machines have a stored row to forget — a
+                 * discovered row just reappears on the next refresh. */}
+                {!selected.fromDirectory ? (
+                  <RemoveMachineButton
+                    name={selected.name}
+                    onRemove={() => void removeMachine(selected.code)}
+                  />
+                ) : null}
               </div>
             </div>
           ) : (

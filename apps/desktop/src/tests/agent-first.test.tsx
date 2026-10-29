@@ -5,8 +5,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   MachinesRail,
   RemoveMachineButton,
+  excludeSelf,
   filterMachines,
   machinesFromPairings,
+  unifiedMachines,
 } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
 import { AgentChat } from "../components/AgentChat";
@@ -54,6 +56,117 @@ describe("machinesFromPairings (the trusted-host list, ADR-009)", () => {
   });
 });
 
+describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)", () => {
+  const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
+    code: "abcdef0123456789",
+    created_ms: 1,
+    pending_ack: false,
+    role: "host",
+    name: null,
+    ...over,
+  });
+  const dir = (
+    device: string,
+    over: Partial<import("../types").DirectoryMachine> = {},
+  ): import("../types").DirectoryMachine => ({
+    device,
+    name: device,
+    online: true,
+    refreshed_ms: 1,
+    is_self: false,
+    ...over,
+  });
+
+  it("a machine in BOTH lists is ONE row — never a duplicate", () => {
+    const rows = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa", name: "MOMS-PC" })],
+      {},
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].code).toBe("aaaaaaaaaaaaaaaa");
+    expect(rows[0].trusted).toBe(true);
+    // The paired (wire-cached) name wins over the directory nickname.
+    expect(rows[0].name).toBe("MOMS-PC");
+  });
+
+  it("a placeholder pairing name (the bare code) adopts the discovered name", () => {
+    const rows = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa", name: null })],
+      {},
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("Mom's PC");
+  });
+
+  it("a paired row's presence upgrades from the directory when no session is live", () => {
+    const rows = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa" })],
+      {},
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+    );
+    expect(rows[0].online).toBe(false); // directory presence, honest
+    // A live session still wins over the directory flag.
+    const live = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa" })],
+      { aaaaaaaaaaaaaaaa: true },
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+    );
+    expect(live[0].online).toBe(true);
+  });
+
+  it("directory-only machines appear as untrusted discovered rows", () => {
+    const rows = unifiedMachines([], {}, null, [
+      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" }),
+      dir("bbbbbbbbbbbbbbbb", { name: "Office", online: false }),
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.fromDirectory && !r.trusted && !r.pending)).toBe(true);
+    expect(rows.find((r) => r.name === "Mom's PC")?.online).toBe(true);
+    expect(rows.find((r) => r.name === "Office")?.online).toBe(false);
+  });
+
+  it("duplicate directory rows (same device) collapse into one row", () => {
+    const rows = unifiedMachines([], {}, null, [
+      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" }),
+      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC (stale)" }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("Mom's PC");
+  });
+});
+
+describe("excludeSelf (ADR-010)", () => {
+  const dir = (
+    device: string,
+    over: Partial<import("../types").DirectoryMachine> = {},
+  ): import("../types").DirectoryMachine => ({
+    device,
+    name: device,
+    online: true,
+    refreshed_ms: 1,
+    is_self: false,
+    ...over,
+  });
+
+  it("drops this machine's own row by flag and by device id", () => {
+    const rows = excludeSelf(
+      [
+        dir("aaaaaaaaaaaaaaaa"),
+        dir("bbbbbbbbbbbbbbbb", { is_self: true }),
+        dir("cccccccccccccccc"),
+      ],
+      "cccccccccccccccc",
+    );
+    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa"]);
+  });
+});
+
 describe("MachinesRail", () => {
   const base = {
     thisCode: "abcd1234efgh5678",
@@ -66,8 +179,8 @@ describe("MachinesRail", () => {
     onStopShare: vi.fn(),
   };
   const machines: MachineRow[] = [
-    { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: true, pending: false },
-    { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, pending: true },
+    { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: true, pending: false, fromDirectory: false },
+    { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, pending: true, fromDirectory: false },
   ];
 
   it("lists machines, marks selection, exposes one-step per-row control", () => {
@@ -85,7 +198,7 @@ describe("MachinesRail", () => {
     expect(screen.getByText(/message or control — same list/i)).toBeTruthy();
     expect(screen.getByText(/No machines yet/i)).toBeTruthy();
     expect(
-      screen.getByText(/one list is for messaging and remote control/i),
+      screen.getByText(/appear here on their own/i),
     ).toBeTruthy();
   });
 
@@ -240,8 +353,8 @@ describe("AssistantPanel", () => {
 
 describe("filterMachines (search)", () => {
   const rows: MachineRow[] = [
-    { id: "1", name: "Mom's PC", code: "aaaaaaaaaaaaaaaa", online: true, active: false, trusted: true, pending: false },
-    { id: "2", name: "Lab", code: "bbbbbbbbbbbbbbbb", online: null, active: false, trusted: false, pending: true },
+    { id: "1", name: "Mom's PC", code: "aaaaaaaaaaaaaaaa", online: true, active: false, trusted: true, pending: false, fromDirectory: false },
+    { id: "2", name: "Lab", code: "bbbbbbbbbbbbbbbb", online: null, active: false, trusted: false, pending: true, fromDirectory: false },
   ];
   it("matches name case-insensitively, code substrings, and clears on empty", () => {
     expect(filterMachines(rows, "mom")).toHaveLength(1);

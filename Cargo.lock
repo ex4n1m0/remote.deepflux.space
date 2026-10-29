@@ -2607,6 +2607,7 @@ dependencies = [
 name = "node-runtime"
 version = "0.10.2"
 dependencies = [
+ "aes-gcm",
  "capture-windows",
  "codec-windows",
  "diagnostics",

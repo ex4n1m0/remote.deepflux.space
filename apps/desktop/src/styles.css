@@ -1217,6 +1217,13 @@ button.link {
   flex: none;
 }
 
+/* ADR-010 discovery tag: found via the circle directory, not paired yet. */
+.dir-tag {
+  color: var(--muted, #8a8f98);
+  font-size: 12px;
+  flex: none;
+}
+
 .rail-row-wrap {
   display: flex;
   align-items: center;

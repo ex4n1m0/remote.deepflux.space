@@ -20,13 +20,20 @@ numbers from the source plan are kept for traceability.
 > (consent-free connect) explicitly deferred.
 >
 > **SUPERSEDED (2026-10-29, ADR-009 `docs/adr/ADR-009-machine-name-identity-trusted-host-list.md`):**
-> the accounts/roster phase, the ADR-006 circle directory, and ADR-007's
-> control gate are RETIRED — user simplification mandate. Machine display
-> name is the only identity; `pairings.json` ("Always allow" + proofs,
-> ADR-006 §§3–4 as amended 2026-10-28) is THE machine list; discovery is
-> the one-time connection code. `/api/account` + `/api/directory` stay
-> deployed untouched until the 0.10.0 client soaks (old clients depend on
-> them), then are deleted server-side.
+> the accounts/roster phase and ADR-007's control gate are RETIRED —
+> user simplification mandate. Machine display name is the only
+> identity; `pairings.json` ("Always allow" + proofs, ADR-006 §§3–4 as
+> amended 2026-10-28) is THE trusted list. `/api/account` stays deployed
+> untouched until the 0.10.0 client soaks (old clients depend on it),
+> then is deleted server-side.
+>
+> **AMENDED (2026-10-29, ADR-010 `docs/adr/ADR-010-directory-discovery-restored.md`):**
+> the circle directory is RESTORED as the discovery list (0.11.0) —
+> contract-identical client re-adoption of the deployed `/api/directory`,
+> same circle key as 0.9.x. It is a view, not a trust path: one row per
+> machine merged with pairings, discovered machines connect through the
+> ordinary once-only consent + pairing flow. The `/api/directory`
+> delete-after-soak plan is cancelled.
 
 ---
 
