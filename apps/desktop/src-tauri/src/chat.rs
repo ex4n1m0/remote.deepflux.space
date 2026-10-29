@@ -642,11 +642,37 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
     append_history(app, peer, line);
     // Agent-to-agent (ADR-005 §4): agent-authored messages wake the local
     // assistant as an instruction turn; user-authored ones only display.
-    if sender == "agent" {
+    // 0.11.1: an agent-bit arrival that is the REPLY to this machine's
+    // human ask (an unanswered "to-agent" below) must NOT wake — that is
+    // the answer coming home, not an instruction (the same wire bit
+    // carries both meanings).
+    if sender == "agent" && should_wake_for_agent_line(&existing) {
         app.state::<crate::commands::AppServices>()
             .assistant
             .deliver_peer_agent(peer, body);
     }
+}
+
+/// Wake gate for an agent-bit arrival, judged on the lines already stored
+/// for this peer (the new line is appended by the caller): wake unless
+/// the last agent-box line from THIS machine is an unanswered human ask
+/// ("to-agent") — that arrival is its reply. Once a peer-agent line
+/// follows the ask, later arrivals are fresh instructions (or
+/// agent-to-agent traffic) and wake again.
+fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
+    for line in prior.iter().rev() {
+        match line.sender.as_str() {
+            // The human asked the peer's assistant and nothing
+            // agent-authored has arrived since → the next agent-bit
+            // message is the reply to display, not an instruction.
+            "to-agent" => return false,
+            "peer-agent" | "agent" => return true,
+            // Plain traffic (user / peer-user) keeps looking further
+            // back for the last agent-box line.
+            _ => continue,
+        }
+    }
+    true
 }
 
 /// Outgoing line (this machine's user or agent) → store.
@@ -893,6 +919,53 @@ mod tests {
             pairings: pairs,
             remembered: Vec::new(),
         }
+    }
+
+    fn line(sender: &str, id: u64) -> ChatLine {
+        ChatLine {
+            id,
+            ts_ms: id,
+            sender: sender.to_owned(),
+            body: "x".to_owned(),
+        }
+    }
+
+    #[test]
+    fn agent_reply_to_our_ask_displays_without_waking() {
+        // 0.11.1: the wire's agent bit means BOTH "addressed to the peer's
+        // assistant" (our ask) and "authored by an assistant" (the reply).
+        // A reply directly following our unanswered human ask must not
+        // wake our own assistant as if it were an instruction.
+        let prior = [
+            line("user", 1),      // plain chat earlier
+            line("peer-user", 2), // their reply
+            line("to-agent", 3),  // our human asks their assistant
+        ];
+        assert!(
+            !should_wake_for_agent_line(&prior),
+            "reply must display only"
+        );
+
+        // After the reply lands, a NEW agent-bit arrival is a fresh
+        // instruction (their side asked OUR assistant) and wakes again.
+        let answered = [
+            line("to-agent", 3),
+            line("peer-agent", 4), // the reply
+        ];
+        assert!(should_wake_for_agent_line(&answered));
+
+        // Agent-to-agent: our assistant instructed theirs ("agent" out) —
+        // their assistant's answer is conversational and wakes us.
+        let instructed = [line("agent", 5), line("peer-user", 6)];
+        assert!(should_wake_for_agent_line(&instructed));
+
+        // No history at all: a first-ever agent arrival wakes (their
+        // human used their agent box against us).
+        assert!(should_wake_for_agent_line(&[]));
+
+        // Plain-only history changes nothing.
+        let plain = [line("user", 7), line("peer-user", 8)];
+        assert!(should_wake_for_agent_line(&plain));
     }
 
     #[test]

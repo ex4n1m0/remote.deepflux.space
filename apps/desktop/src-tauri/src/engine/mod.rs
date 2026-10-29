@@ -595,6 +595,10 @@ pub struct EngineStatus {
     pub host_state: String,
     pub controller_state: String,
     pub session_id: Option<String>,
+    /// Device id of the live session's peer (either role), if any — the
+    /// app layer checks it so a reply can never ride a channel that
+    /// belongs to a different machine.
+    pub session_peer: Option<String>,
     pub viewer_created: bool,
     pub viewer_hwnd: u64,
     pub viewer_fullscreen: bool,
@@ -679,6 +683,7 @@ impl EngineShared {
             host_state: inner.host_state.clone(),
             controller_state: inner.controller_state.clone(),
             session_id: inner.session_id.clone(),
+            session_peer: inner.current_peer.clone(),
             viewer_created: viewer.created,
             viewer_hwnd: viewer.hwnd,
             viewer_fullscreen: viewer.fullscreen,

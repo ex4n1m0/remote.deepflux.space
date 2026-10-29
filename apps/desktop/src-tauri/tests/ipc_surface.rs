@@ -228,6 +228,7 @@ fn sample_status() -> EngineStatus {
         host_state: "Connected".into(),
         controller_state: "Idle".into(),
         session_id: Some("s1".into()),
+        session_peer: Some("0123456789abcdef".into()),
         viewer_created: false,
         viewer_hwnd: 0,
         viewer_fullscreen: false,
