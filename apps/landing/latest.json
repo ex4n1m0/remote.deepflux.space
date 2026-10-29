@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.11.1",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.1-x64-setup.exe",
-  "sha256_hex": "1b08d12e3368cc5cee37d885bcc367d7cdb63b9088502eee949e50d679274c4d",
-  "size_bytes": 7647140,
-  "notes": "0.11.1 \u2014 agent replies now come back to the machine that asked. The reply used to rely on the assistant choosing to send it; now the app delivers it automatically \u2014 in the agent chat box during a session, or as a chat message if the session ended. Also stops your own assistant from waking on the reply it just received.",
+  "version": "0.11.2",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.2-x64-setup.exe",
+  "sha256_hex": "5be27284104fae06794788a27abce9c9b435d48b28a4f1b0f66e84d8c47f2bec",
+  "size_bytes": 7648115,
+  "notes": "0.11.2 \u2014 showing the screen now means full control: the screen window takes mouse and keyboard focus the moment it opens, on both agent sessions and normal remote control. The button now says what it does. If the host machine ever blocks input (an elevated window or locked session), the app tells you on screen.",
   "published_at": "2026-10-29"
 }
