@@ -1,6 +1,10 @@
 # ADR-006: Family circle — shared machine directory and owner-approved trust
 
-- Status: Accepted (post-MVP, 2026-10-26)
+- Status: Partially superseded by ADR-009 (2026-10-29) — §§1–2 (circle
+  key, sealed directory, `/api/directory`) and the distribution addendum
+  are retired along with the client; §§3–4 (pairing ceremony, pairing
+  proofs) and the 2026-10-28 "Always allow is durable" addendum survive
+  and become the core of ADR-009's trusted-host list
 - Deciders: main session (integrator), on the user's 2026-10-26 request
   (family/friends machine directory with owner-gated connection and
   favorites), reviewed by the architecture, security, signaling, and UI

@@ -1,6 +1,8 @@
 # ADR-003: Accounts and the encrypted device roster
 
-- Status: Accepted (post-MVP, 2026-10-01)
+- Status: Superseded by ADR-009 (2026-10-29) — accounts, the roster, and
+  the `/api/account` client surface are retired; the endpoint stays
+  deployed only until the 0.10.0 client soaks
 - Deciders: main session (integrator), on the user's 2026-09-25 post-MVP
   commitment and 2026-10-01 activation directive
 - Sources: `PLAN.md` §"Post-MVP feature commitment",

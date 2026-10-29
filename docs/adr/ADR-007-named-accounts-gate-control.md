@@ -1,6 +1,8 @@
 # ADR-007: Named accounts gate control — the invite carries a person name
 
-- Status: Accepted (0.8.0, 2026-10-27)
+- Status: Superseded by ADR-009 (2026-10-29) — the account gate is
+  deleted; `requester_name` survives with new value semantics (the
+  controller's machine display name)
 - Deciders: main session (integrator), on the user's 2026-10-27 request
   ("only people with an account can invite; those that go in without an
   account will not be able to control other machines; force people to add

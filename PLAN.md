@@ -18,6 +18,15 @@ numbers from the source plan are kept for traceability.
 > in flight. User-directed scope: login-first onboarding (anonymous flow kept as escape
 > hatch), local + server-synced encrypted roster, per-user random key. Pairing-key trust
 > (consent-free connect) explicitly deferred.
+>
+> **SUPERSEDED (2026-10-29, ADR-009 `docs/adr/ADR-009-machine-name-identity-trusted-host-list.md`):**
+> the accounts/roster phase, the ADR-006 circle directory, and ADR-007's
+> control gate are RETIRED — user simplification mandate. Machine display
+> name is the only identity; `pairings.json` ("Always allow" + proofs,
+> ADR-006 §§3–4 as amended 2026-10-28) is THE machine list; discovery is
+> the one-time connection code. `/api/account` + `/api/directory` stay
+> deployed untouched until the 0.10.0 client soaks (old clients depend on
+> them), then are deleted server-side.
 
 ---
 

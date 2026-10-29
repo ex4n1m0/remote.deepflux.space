@@ -13,12 +13,13 @@ Tauri 2 + React/TypeScript shell (M4) around a Rust native engine. Vercel is
 the signaling/control plane only; after SDP/ICE exchange everything flows
 over a direct WebRTC peer connection (STUN, TURN disabled in MVP). H.264 GPU
 pipeline, native rendering, `SendInput` injection. No relay, one controlled
-machine per session. Optional user accounts (post-MVP, ADR-003, 2026-10-01)
-exist on the control plane only — identity plus an encrypted device roster;
-the anonymous connection-code flow remains as the escape hatch. An optional
-"family circle" (ADR-006, 2026-10-26) publishes a sealed machine directory
-on the control plane for circle members — discovery, owner-approved trust,
-and favorites gating; it never carries machine control itself. An
+machine per session. Identity is the machine's display name
+(`device_name` setting, hostname fallback) — no accounts, no login
+(ADR-009, 2026-10-29, retired ADR-003's accounts/roster, ADR-006's
+circle directory, and ADR-007's control gate). The machine list is the
+trusted-host list (`pairings.json` — "Always allow" entries with cached
+display names); discovery is the one-time connection code (a machine's
+device id). An
 automatic-update engine (ADR-008, 2026-10-28) reads a published
 `latest.json` from the landing (same origin), downloads and SHA-256
 verifies the installer via the existing segmented download engine
@@ -52,7 +53,7 @@ reports; the main session integrates.
 
 Key docs: `docs/adr/ADR-001-architecture.md`,
 `docs/adr/ADR-002-webrtc-rs-behind-transport-trait.md`,
-`docs/adr/ADR-003-accounts-and-roster.md`,
+`docs/adr/ADR-009-machine-name-identity-trusted-host-list.md`,
 `docs/adr/ADR-008-automatic-updates.md`,
 `docs/protocol/state-machines.md`, `docs/perf-counter-schema.md`.
 
@@ -66,13 +67,13 @@ Key docs: `docs/adr/ADR-001-architecture.md`,
    stdio MCP client, at agent rates (≤ 2 fps), opt-in per session — never
    through Tauri IPC, never on the real-time video path. ADR-004 §4 is the
    gate; code claiming this exception must cite it.
-2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes and —
-   since ADR-003 (2026-10-01) — account verifiers plus encrypted-roster
-   ciphertext, since ADR-005 (2026-10-24) sealed chat envelopes, and since
-   ADR-006 (2026-10-26) sealed circle-directory entries plus circle-id
-   hashes. Never frame, input, or cursor bytes; never plaintext user data
-   (roster, chat, and directory payloads are all AES-256-GCM under
-   client-held keys).
+2. Vercel is control plane only: IDs, presence, SDP/ICE envelopes, and
+   sealed chat envelopes (ADR-005, AES-256-GCM under the pairing
+   secret). Never frame, input, or cursor bytes; never plaintext user
+   data. (ADR-009 retired the ADR-003 account and ADR-006 directory
+   surfaces; their `/api/account` and `/api/directory` endpoints remain
+   deployed, untouched, only until the 0.10.0 client has soaked — old
+   0.9.x clients hard-depend on them. Do not extend them.)
 3. Every queue is bounded; under pressure drop obsolete frames, never queue latency.
 4. TURN/relay forbidden in MVP.
 5. No undocumented wire-format changes; `protocolVersion` bumps are explicit.
@@ -116,9 +117,10 @@ it executes in the cloud only after a remote exists (delta D6).
 
 ## Wire-format & versioning policy
 
-Five surfaces, all owned by `crates/protocol` (delta D7; ADR-006
-reconciled the chat surface in — the count had drifted to three while
-`/api/chat` shipped TS-only):
+Three live surfaces, all owned by `crates/protocol` (ADR-009 retired the
+account and directory surfaces below; both endpoints stay deployed
+unchanged until the 0.10.0 client soaks, then get deleted with their
+schemas/fixtures — do not extend them):
 
 1. **Signaling envelopes = JSON**, stable **snake_case** field names,
    flattened `type` discriminant. The TypeScript signaling service (M3) is
@@ -137,29 +139,21 @@ reconciled the chat surface in — the count had drifted to three while
    channel plus `Chat`/`PairOffer`/`PairAck` messages). Bincode is **not**
    self-describing: any layout change — field reorder, type change,
    variant insertion — requires a version bump.
-3. **Account & roster API = JSON request/response** (`POST /api/account`,
-   ADR-003): flattened `action` discriminant, same snake_case/additive rules
-   as signaling. `ACCOUNT_PROTOCOL_VERSION` is currently **1**; TS mirror +
-   golden fixtures live in `services/signaling` (`fixtures/account/`,
-   `validate-wires.mjs`), exported from `crates/node-runtime`'s
-   `account_fixtures` test. Binary fields are lowercase `*_hex`. The
-   `RosterDoc` plaintext (also in `crates/protocol`) is a durable
-   client-side format: it only ever travels inside AES-256-GCM ciphertext.
+3. **Account & roster API — RETIRED client-side by ADR-009 (2026-10-29)**:
+   the Rust contract (`protocol::account`), client crypto, UI, and the
+   `account_fixtures` export are deleted; `POST /api/account` plus its TS
+   mirror/fixtures stay deployed untouched until the 0.10.0 client soaks,
+   then are deleted server-side in a follow-up deploy.
 4. **Chat inbox envelopes = sealed JSON** (`PUT/GET /api/chat`, ADR-005):
    `ChatEnvelope {v, from, nonce_hex, ct_hex, ts_ms}`, AES-256-GCM sealed
    client-side under the pairing secret; the server stores ciphertext
    only. `CHAT_PROTOCOL_VERSION` is currently **1**; the contract lives in
    `crates/protocol::chat` (folded in from `apps/desktop` by ADR-006).
-5. **Circle directory API = JSON request/response** (`POST /api/directory`,
-   ADR-006): flattened `action` discriminant, same snake_case/additive
-   rules as signaling/account. Entries are AES-256-GCM sealed under the
-   client-held circle key (`DirectoryEntryDoc {v, name, joined_ms}` — the
-   machine id is the server-attested key, never inside the ciphertext);
-   the server sees only device ids, ciphertext, server-minted timestamps,
-   and online flags. `DIRECTORY_PROTOCOL_VERSION` is currently **1**; TS
-   mirror + golden fixtures live in `services/signaling`
-   (`fixtures/directory/`), exported from `crates/node-runtime`'s
-   `directory_fixtures` test.
+5. **Circle directory API — RETIRED client-side by ADR-009 (2026-10-29)**:
+   the Rust contract, `directory_remote`, app composition, and embedded
+   circle-key build machinery are deleted; `POST /api/directory` plus its
+   TS mirror/fixtures stay deployed untouched until the 0.10.0 client
+   soaks, then are deleted server-side in a follow-up deploy.
 
 Capability flags (`protocol::capabilities::FeatureFlags`, a JSON u32
 bitmask re-negotiated in binary on the direct path) are additive: a peer
@@ -181,12 +175,10 @@ Rules:
   typed `DecodeError::UnsupportedVersion` / `SignalingVersionError`, never
   garbage).
 - Never log SDP bodies, the one-time session secret (`SessionSecret`'s
-  Debug is redacted — keep it that way), or input event contents —
+  Debug is redacted — keep it that way), pairing secrets
+  (`pairings.json` stays unlogged), or input event contents —
   `InputEvent`'s `Debug` is redacted too (QA F3), and new input-carrying
-  types must follow that pattern. The same redaction/no-log rule applies to
-  account credentials: passwords, `auth_key`, salts, verifiers, session
-  tokens (`SessionToken`'s Debug is redacted), and DEK material
-  (`Zeroizing` buffers in `node-runtime::account_crypto`).
+  types must follow that pattern.
 - Cursor shape pixels travel on the direct `cursor` data channel (bounded
   binary). They never appear in signaling, Tauri IPC, or logs. Video frames
   are an RTP track, not messages (invariant 1).
