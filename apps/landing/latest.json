@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.9.3",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.3-x64-setup.exe",
-  "sha256_hex": "a73ca1b75ab3e6cdbcdfa5bf56ef792fe6bd12753931d48953f4352fd0e20087",
-  "size_bytes": 7691691,
-  "notes": "0.9.3: fixes the crash that killed connections during chat \u2014 sending a chat message could stop the connection engine (and take the session down with it). Chat now works reliably between updated machines.",
-  "published_at": "2026-10-28"
+  "version": "0.9.4",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.4-x64-setup.exe",
+  "sha256_hex": "b7c0470fcc3e3737626f7fcd2b6c327127e54141134021bf7197483600aac9f6",
+  "size_bytes": 7706334,
+  "notes": "Remote Desktop 0.9.4 \u2014 Agent sessions: a new Agent button connects chat-only (no screen window), the machine's assistant gets its own chat box during the session, and Show/Hide the screen lets you watch what it's doing without ending the session. Chat-only sessions no longer stream video from the host at all \u2014 huge bandwidth saving.",
+  "published_at": "2026-10-29"
 }
