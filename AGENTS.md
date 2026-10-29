@@ -242,8 +242,9 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
   moved into `render-windows::PresenterWindow::toggle_borderless_fullscreen`.
   Scope note (M6 QA F66): `engine/viewer.rs` itself is unsafe-free, but
   `apps/desktop` is **not** a blanket unsafe-free zone —
-  `engine/displays.rs` (monitor enumeration; CR-3, still open) and the
-  `bin/e2e_child.rs` test binary still contain reviewed Win32 unsafe.
+  `engine/displays.rs` (monitor enumeration; CR-3, still open), the
+  `bin/e2e_child.rs` test binary, and (ADR-012) `agent/apps.rs`
+  (Uninstall-hive registry reads) still contain reviewed Win32 unsafe.
   The placement split is documented in `input-windows/src/capture.rs`'s
   module docs.
 

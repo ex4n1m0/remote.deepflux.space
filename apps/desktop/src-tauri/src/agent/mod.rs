@@ -389,7 +389,22 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
             .expect("assistant busy") = true;
         emit(&app, AssistantEvent::Busy { on: true });
         log.push(ChatTurn::user(&user_text));
-        let reply = run_turn(&app, &mut log, &mut last_shot);
+        // A panicking tool must cost ONE turn, not the whole assistant
+        // (the worker thread is the only consumer of this channel —
+        // review blocking finding 1's blast radius, closed generally).
+        let reply = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_turn(&app, &mut log, &mut last_shot)
+        }))
+        .unwrap_or_else(|panic| {
+            let reason = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_owned());
+            Err(format!(
+                "internal error: assistant turn panicked ({reason})"
+            ))
+        });
         *app.state::<crate::commands::AppServices>()
             .assistant
             .busy

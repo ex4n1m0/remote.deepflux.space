@@ -716,6 +716,8 @@ pub fn execute(
                 .to_lowercase();
             let apps = crate::agent::apps::installed_apps();
             let mut rows: Vec<String> = Vec::new();
+            let mut matched = 0usize;
+            let mut capped = false;
             for a in &apps {
                 if !filter.is_empty()
                     && !a.name.to_lowercase().contains(&filter)
@@ -723,8 +725,16 @@ pub fn execute(
                 {
                     continue;
                 }
+                matched += 1;
+                if rows.len() >= FS_LIST_CAP {
+                    capped = true;
+                    break;
+                }
+                // The uninstall string is surfaced (review non-blocking 9):
+                // exactly what a non-winget uninstall needs.
+                let uninstall: String = a.uninstall_string.trim().chars().take(120).collect();
                 rows.push(format!(
-                    "{}\t{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}",
                     a.name,
                     if a.version.is_empty() {
                         "-"
@@ -736,32 +746,32 @@ pub fn execute(
                     } else {
                         &a.publisher
                     },
-                    a.source
+                    a.source,
+                    if uninstall.is_empty() {
+                        "-"
+                    } else {
+                        &uninstall
+                    }
                 ));
-                if rows.len() >= FS_LIST_CAP {
-                    rows.push(format!("[... capped at {FS_LIST_CAP} entries]"));
-                    break;
-                }
             }
+            let cap_note = if capped {
+                format!("\n[... capped at {FS_LIST_CAP} entries — narrow the filter]")
+            } else {
+                String::new()
+            };
             ToolOutput::text(format!(
-                "{} of {} installed programs match {:?}\n{}",
-                rows.len(),
+                "{matched} of {} installed programs match {:?}\n{}{}",
                 apps.len(),
                 filter,
-                rows.join("\n")
+                rows.join("\n"),
+                cap_note
             ))
         }
         "app_search" => {
             let Some(query) = args.get("query").and_then(|v| v.as_str()) else {
                 return ToolOutput::text("app_search requires query");
             };
-            ToolOutput::text(winget(
-                &format!(
-                    "search \"{}\" --accept-source-agreements --disable-interactivity",
-                    query.replace('"', "")
-                ),
-                Duration::from_secs(120),
-            ))
+            ToolOutput::text(winget(&winget_search_args(query), Duration::from_secs(120)))
         }
         "app_install" => {
             let Some(query) = args.get("query").and_then(|v| v.as_str()) else {
@@ -771,15 +781,8 @@ pub fn execute(
                 .get("exact_id")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let selector = if exact {
-                format!("--id \"{}\" --exact", query.replace('"', ""))
-            } else {
-                format!("\"{}\"", query.replace('"', ""))
-            };
             ToolOutput::text(winget(
-                &format!(
-                    "install {selector} --silent --accept-package-agreements --accept-source-agreements --disable-interactivity"
-                ),
+                &winget_install_args(query, exact),
                 Duration::from_secs(600),
             ))
         }
@@ -787,13 +790,7 @@ pub fn execute(
             let Some(id) = args.get("id").and_then(|v| v.as_str()) else {
                 return ToolOutput::text("app_uninstall requires id");
             };
-            ToolOutput::text(winget(
-                &format!(
-                    "uninstall --id \"{}\" --exact --silent --disable-interactivity",
-                    id.replace('"', "")
-                ),
-                Duration::from_secs(300),
-            ))
+            ToolOutput::text(winget(&winget_uninstall_args(id), Duration::from_secs(300)))
         }
         "app_upgrade" => {
             let id = args.get("id").and_then(|v| v.as_str());
@@ -801,17 +798,14 @@ pub fn execute(
                 .get("upgrade_all")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let target = if all {
-                "--all".to_owned()
-            } else if let Some(id) = id {
-                format!("--id \"{}\" --exact", id.replace('"', ""))
-            } else {
+            if all && id.is_some() {
+                return ToolOutput::text("app_upgrade takes EITHER id OR upgrade_all — not both");
+            }
+            if !all && id.is_none() {
                 return ToolOutput::text("app_upgrade requires id or upgrade_all: true");
-            };
+            }
             ToolOutput::text(winget(
-                &format!(
-                    "upgrade {target} --silent --accept-package-agreements --accept-source-agreements --disable-interactivity"
-                ),
+                &winget_upgrade_args(id, all),
                 Duration::from_secs(900),
             ))
         }
@@ -1424,75 +1418,95 @@ fn truncate_marker(data: &[u8], cap: usize) -> Vec<u8> {
     }
 }
 
-/// Run one cmd.exe command, wait up to `timeout`, kill on overrun.
-/// Returns exit code + capped stdout/stderr (lossy UTF-8).
+/// Run one cmd.exe command, wait up to `timeout`, kill the whole tree on
+/// overrun. Returns exit code + capped stdout/stderr (lossy UTF-8).
 fn run_shell(command: &str, cwd: &str, timeout: Duration) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    use std::sync::mpsc;
     let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_owned());
     let mut cmd = std::process::Command::new(&shell);
-    cmd.args(["/C", command])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .stdin(std::process::Stdio::null());
+    cmd.args(["/C", command]);
     if !cwd.trim().is_empty() {
         cmd.current_dir(expand_home(cwd));
     }
-    let mut child = cmd.spawn().map_err(|e| format!("spawn {shell}: {e}"))?;
+    run_command(&mut cmd, timeout)
+}
+
+/// Upper bound on what ONE pipe pump ever stores (the report itself is
+/// capped to `SHELL_OUT_CAP` later; this bounds memory while a chatty
+/// child keeps writing — review finding: read_to_end was unbounded).
+const PUMP_STORE_CAP: usize = 1024 * 1024;
+
+/// One pump thread: keep DRAINING so the child can never block on a full
+/// pipe, but stop STORING past `PUMP_STORE_CAP`.
+fn pump_capped<R: std::io::Read + Send + 'static>(
+    mut reader: R,
+    tx: std::sync::mpsc::Sender<Vec<u8>>,
+) {
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 64 * 1024];
+        let mut stored: Vec<u8> = Vec::new();
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if stored.len() < PUMP_STORE_CAP {
+                        let room = PUMP_STORE_CAP - stored.len();
+                        stored.extend_from_slice(&chunk[..n.min(room)]);
+                    }
+                    // else: drain only — memory stays capped.
+                }
+            }
+        }
+        let _ = tx.send(stored);
+    });
+}
+
+/// Kill a timed-out child AND its whole process tree (review finding:
+/// `Child::kill` hits only the direct child — a winget under cmd.exe
+/// survived and kept installing). `taskkill /T /F` walks the tree; the
+/// direct kill is the backstop. Spawn-and-forget: the wait below reaps.
+fn kill_tree(child: &mut std::process::Child) {
+    use std::os::windows::process::CommandExt;
+    let pid = child.id();
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    let _ = child.kill();
+}
+
+/// Generic bounded runner shared by run_shell (cmd.exe) and the winget
+/// helpers (direct argv — no shell, no quoting, no %VAR% surface).
+fn run_command(cmd: &mut std::process::Command, timeout: Duration) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    use std::sync::mpsc;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null());
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let mut child = cmd.spawn().map_err(|e| format!("spawn {program}: {e}"))?;
     // Reading + timeout can't share the borrowed child: a thread pumps
     // each pipe into a channel while the parent enforces the deadline.
-    let mut stdout = child.stdout.take().ok_or("no stdout pipe")?;
-    let mut stderr = child.stderr.take().ok_or("no stderr pipe")?;
+    let stdout = child.stdout.take().ok_or("no stdout pipe")?;
+    let stderr = child.stderr.take().ok_or("no stderr pipe")?;
     let (tx, rx) = mpsc::channel();
-    let tx_err = tx.clone();
-    std::thread::spawn(move || {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
-        let _ = tx.send(buf);
-    });
-    std::thread::spawn(move || {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = stderr.read_to_end(&mut buf);
-        let _ = tx_err.send(buf);
-    });
+    pump_capped(std::io::BufReader::new(stdout), tx.clone());
+    pump_capped(std::io::BufReader::new(stderr), tx);
     let deadline = std::time::Instant::now() + timeout;
     let mut out: Vec<Vec<u8>> = Vec::with_capacity(2);
     while out.len() < 2 {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
-            let _ = child.kill();
-            return Ok(format!(
-                "timed out after {}s (process killed)\n--- partial stdout ---\n{}\n--- partial stderr ---\n{}",
-                timeout.as_secs(),
-                String::from_utf8_lossy(&truncate_marker(
-                    out.first().map(Vec::as_slice).unwrap_or(&[]),
-                    SHELL_OUT_CAP
-                )),
-                String::from_utf8_lossy(&truncate_marker(
-                    out.get(1).map(Vec::as_slice).unwrap_or(&[]),
-                    SHELL_OUT_CAP
-                )),
-            ));
+            kill_tree(&mut child);
+            return Ok(timeout_report(timeout, &out));
         }
         match rx.recv_timeout(remaining) {
             Ok(chunk) => out.push(chunk),
             Err(_) => {
-                let _ = child.kill();
-                return Ok(format!(
-                    "timed out after {}s (process killed)\n--- partial stdout ---\n{}\n--- partial stderr ---\n{}",
-                    timeout.as_secs(),
-                    String::from_utf8_lossy(&truncate_marker(
-                        out.first().map(Vec::as_slice).unwrap_or(&[]),
-                        SHELL_OUT_CAP
-                    )),
-                    String::from_utf8_lossy(&truncate_marker(
-                        out.get(1).map(Vec::as_slice).unwrap_or(&[]),
-                        SHELL_OUT_CAP
-                    )),
-                ));
+                kill_tree(&mut child);
+                return Ok(timeout_report(timeout, &out));
             }
         }
     }
@@ -1505,6 +1519,21 @@ fn run_shell(command: &str, cwd: &str, timeout: Duration) -> Result<String, Stri
         String::from_utf8_lossy(&truncate_marker(&stdout_data, SHELL_OUT_CAP)),
         String::from_utf8_lossy(&truncate_marker(&stderr_data, SHELL_OUT_CAP)),
     ))
+}
+
+fn timeout_report(timeout: Duration, out: &[Vec<u8>]) -> String {
+    format!(
+        "timed out after {}s (process tree killed)\n--- partial stdout ---\n{}\n--- partial stderr ---\n{}",
+        timeout.as_secs(),
+        String::from_utf8_lossy(&truncate_marker(
+            out.first().map(Vec::as_slice).unwrap_or(&[]),
+            SHELL_OUT_CAP
+        )),
+        String::from_utf8_lossy(&truncate_marker(
+            out.get(1).map(Vec::as_slice).unwrap_or(&[]),
+            SHELL_OUT_CAP
+        )),
+    )
 }
 
 fn fs_list(path: &str) -> Result<String, String> {
@@ -1646,16 +1675,74 @@ fn kill_process(pid: u64) -> Result<String, String> {
 
 // -- ADR-012 release A: applications, power, search ----------------------
 
-/// winget for one non-interactive verb. A missing winget (no App
-/// Installer) is an actionable answer, not a hang — probe cheaply first.
-fn winget(args_line: &str, timeout: Duration) -> String {
+/// winget for one non-interactive verb, spawned DIRECTLY (argv vector —
+/// never through cmd.exe: no quoting to get wrong, no %VAR% expansion, no
+/// metacharacters at all; review findings INFO/5). A missing winget (no
+/// App Installer) is an actionable answer, not a hang — probe cheaply
+/// first.
+fn winget(args: &[String], timeout: Duration) -> String {
     if !winget_available() {
         return "winget is not available on this machine — install 'App Installer' \
                 from the Microsoft Store first (or use run_shell / apps_list)."
             .to_owned();
     }
-    run_shell(&format!("winget {args_line}"), "", timeout)
-        .unwrap_or_else(|e| format!("winget failed: {e}"))
+    let mut cmd = std::process::Command::new("winget");
+    cmd.args(args);
+    run_command(&mut cmd, timeout).unwrap_or_else(|e| format!("winget failed: {e}"))
+}
+
+/// Pure arg builders (unit-pinned — the review's "no tests pin the winget
+/// command lines", now argv vectors instead of shell strings).
+fn winget_search_args(query: &str) -> Vec<String> {
+    vec![
+        "search".into(),
+        query.to_owned(),
+        "--accept-source-agreements".into(),
+        "--disable-interactivity".into(),
+    ]
+}
+
+fn winget_install_args(query: &str, exact_id: bool) -> Vec<String> {
+    let mut args = vec!["install".to_owned()];
+    if exact_id {
+        args.push("--id".into());
+    }
+    args.push(query.to_owned());
+    if exact_id {
+        args.push("--exact".into());
+    }
+    args.push("--silent".into());
+    args.push("--accept-package-agreements".into());
+    args.push("--accept-source-agreements".into());
+    args.push("--disable-interactivity".into());
+    args
+}
+
+fn winget_uninstall_args(id: &str) -> Vec<String> {
+    vec![
+        "uninstall".into(),
+        "--id".into(),
+        id.to_owned(),
+        "--exact".into(),
+        "--silent".into(),
+        "--disable-interactivity".into(),
+    ]
+}
+
+fn winget_upgrade_args(id: Option<&str>, all: bool) -> Vec<String> {
+    let mut args = vec!["upgrade".to_owned()];
+    if all {
+        args.push("--all".into());
+    } else if let Some(id) = id {
+        args.push("--id".into());
+        args.push(id.to_owned());
+        args.push("--exact".into());
+    }
+    args.push("--silent".into());
+    args.push("--accept-package-agreements".into());
+    args.push("--accept-source-agreements".into());
+    args.push("--disable-interactivity".into());
+    args
 }
 
 fn winget_available() -> bool {
@@ -1671,8 +1758,13 @@ fn winget_available() -> bool {
 /// is pre-clamped by the caller (0..=300).
 fn power_command(action: &str, delay: u32) -> Result<String, String> {
     match action {
-        "restart" => Ok(format!("shutdown /r /t {delay}")),
-        "shutdown" => Ok(format!("shutdown /s /t {delay}")),
+        "restart" if delay >= 1 => Ok(format!("shutdown /r /t {delay}")),
+        "shutdown" if delay >= 1 => Ok(format!("shutdown /s /t {delay}")),
+        // 0 s would leave nothing for power_cancel to abort — the ADR's
+        // abort window is the safety margin, so it is enforced here.
+        "restart" | "shutdown" => {
+            Err("delay_secs must be at least 1 so power_cancel can abort".to_owned())
+        }
         // /l is immediate by definition — /t with it is invalid.
         "signout" if delay == 0 => Ok("shutdown /l".to_owned()),
         "signout" => Err("signout is immediate — call it with delay_secs 0".to_owned()),
@@ -1727,6 +1819,13 @@ fn search_files(
         };
         for entry in entries.flatten() {
             visited += 1;
+            // The time cap must hold per ENTRY, not per directory (review
+            // finding: one huge flat dir overshot by minutes). Checking
+            // every 64th entry keeps the clock cost near zero.
+            if visited.is_multiple_of(64) && std::time::Instant::now() >= deadline {
+                timed_out = true;
+                break;
+            }
             let Ok(meta) = entry.metadata() else { continue };
             // Reparse point (junction/symlink): never descend, never match.
             if std::fs::symlink_metadata(entry.path())
@@ -1752,8 +1851,9 @@ fn search_files(
                 // A file matches on EITHER needle: a name substring, or a
                 // content substring within the size cap. A content hit is
                 // reported with its matching line; a bare name hit plain.
-                // (Name-only searches must not report every file — the
-                // first draft's bug, caught by the pinned test.)
+                // Line-based and CHAR-capped throughout — byte-index math
+                // on lossy/lowercased text panicked on non-ASCII content
+                // (review blocking finding); chars().take() can't split.
                 let name_hit =
                     !name_needle.is_empty() && file_name.to_lowercase().contains(&name_needle);
                 let mut hit: Option<String> = None;
@@ -1762,21 +1862,11 @@ fn search_files(
                     && let Ok(bytes) = std::fs::read(entry.path())
                 {
                     let text = String::from_utf8_lossy(&bytes);
-                    if let Some(pos) = text.to_lowercase().find(&content_needle) {
-                        // Show the matching line: scan back/forward to
-                        // newline boundaries around the hit.
-                        let line_start = text[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
-                        let line_end = text[pos..]
-                            .find('\n')
-                            .map(|i| pos + i)
-                            .unwrap_or(text.len());
-                        let mut shown = text
-                            [line_start..line_end.min(line_start + SEARCH_LINE_CAP)]
-                            .trim()
-                            .to_owned();
-                        if shown.len() > SEARCH_LINE_CAP {
-                            shown.truncate(SEARCH_LINE_CAP);
-                        }
+                    if let Some(line) = text
+                        .lines()
+                        .find(|l| l.to_lowercase().contains(&content_needle))
+                    {
+                        let shown: String = line.trim().chars().take(SEARCH_LINE_CAP).collect();
                         hit = Some(format!("file {}  |  {}", entry.path().display(), shown));
                     }
                 }
@@ -1991,7 +2081,9 @@ mod tests {
     #[test]
     fn power_commands_are_pinned() {
         assert_eq!(power_command("restart", 30).unwrap(), "shutdown /r /t 30");
-        assert_eq!(power_command("shutdown", 0).unwrap(), "shutdown /s /t 0");
+        // 0 s leaves no abort window — refused (review should-fix).
+        assert!(power_command("restart", 0).is_err());
+        assert!(power_command("shutdown", 0).is_err());
         assert_eq!(
             power_command("sleep", 10).unwrap(),
             "rundll32.exe powrprof.dll,SetSuspendState 0,1,0"
@@ -2043,6 +2135,121 @@ mod tests {
             .starts_with("no such path")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_is_char_safe_on_non_ascii_content() {
+        // Review blocking finding: byte-index math + byte caps panicked
+        // on multibyte content. A long CJK matching line must come back
+        // whole (chars-capped), never crash.
+        let dir = std::env::temp_dir().join(format!("df-search-cjk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let long_cjk = "\u{4e16}\u{754c}".repeat(150); // 300 chars, 900 bytes
+        std::fs::write(dir.join("cjk.txt"), format!("prefix {long_cjk} suffix\n")).unwrap();
+        let out = search_files(
+            &dir.to_string_lossy(),
+            "",
+            "\u{4e16}\u{754c}",
+            50,
+            Duration::from_secs(30),
+        );
+        assert!(out.contains("cjk.txt"), "{out}");
+        assert!(!out.contains("panicked"));
+        // The İ lowercasing case (byte-length change between original and
+        // lowercased text) must not panic either.
+        std::fs::write(dir.join("tr.txt"), "stanbul \u{0130}stanbul\n").unwrap();
+        let _ = search_files(
+            &dir.to_string_lossy(),
+            "",
+            "stanbul",
+            50,
+            Duration::from_secs(30),
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn winget_argv_builders_are_pinned() {
+        // Direct argv (never through cmd.exe): metacharacters and %VAR%
+        // are inert by construction — pin the vectors.
+        assert_eq!(
+            winget_search_args("vlc"),
+            vec![
+                "search",
+                "vlc",
+                "--accept-source-agreements",
+                "--disable-interactivity"
+            ]
+        );
+        assert_eq!(
+            winget_install_args("VideoLAN.VLC", true),
+            vec![
+                "install",
+                "--id",
+                "VideoLAN.VLC",
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--disable-interactivity"
+            ]
+        );
+        assert_eq!(
+            winget_install_args("vlc media player", false),
+            vec![
+                "install",
+                "vlc media player",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--disable-interactivity"
+            ]
+        );
+        assert_eq!(
+            winget_uninstall_args("VideoLAN.VLC"),
+            vec![
+                "uninstall",
+                "--id",
+                "VideoLAN.VLC",
+                "--exact",
+                "--silent",
+                "--disable-interactivity"
+            ]
+        );
+        assert_eq!(
+            winget_upgrade_args(None, true),
+            vec![
+                "upgrade",
+                "--all",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--disable-interactivity"
+            ]
+        );
+        assert_eq!(
+            winget_upgrade_args(Some("X.Y"), false)[..4],
+            ["upgrade", "--id", "X.Y", "--exact"]
+        );
+    }
+
+    #[test]
+    fn shell_output_is_capped_even_when_huge() {
+        // ~5 MB of output must come back truncated, not buffered whole
+        // (pump store cap is 1 MiB; the report caps at 32 KiB).
+        let out = run_shell(
+            "for /l %i in (1,1,20000) do @echo 0123456789abcdefghij",
+            "",
+            Duration::from_secs(120),
+        )
+        .expect("loop runs");
+        assert!(out.contains("exit code 0"), "{out}");
+        assert!(
+            out.len() < 100 * 1024,
+            "report must be capped: {}",
+            out.len()
+        );
     }
 
     #[test]

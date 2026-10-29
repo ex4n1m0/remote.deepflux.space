@@ -63,7 +63,21 @@ prior art, its own project), Windows Update verbs (run_shell covers the
 - The agent can install, remove, and update software, reboot the
   machine (with an abort window), and find files by content — the core
   family-administration verbs — without the model hand-writing shell
-  incantations for them.
+  incantations for them. winget verbs run with whatever authority the
+  app has: under ADR-011's default elevation they administer the
+  machine (installs/uninstalls act as administrator).
+- The abort window on restart/shutdown is enforced, not advisory:
+  `delay_secs` 0 is refused for those actions (`power_cancel` must
+  always have a window to cancel).
+- Review hardening that shipped with release A (rd-code-reviewer +
+  security-reviewer, 2026-10-30): timeouts kill the whole process tree
+  (`taskkill /T /F`, not just the shell), pipe pumps store at most
+  1 MiB per stream while still draining, winget runs as a direct argv
+  spawn (never through cmd.exe — no quoting or `%VAR%` surface), file
+  search matches line-by-line with char-safe caps (byte-index math
+  panicked on non-ASCII content) and checks its deadline per entry, and
+  a panicking tool costs one turn (`catch_unwind` in the worker)
+  instead of killing the assistant.
 - Power actions end sessions by nature (the machine goes down); the
   delay + cancel window is the safety margin, and the prompt tells the
   agent to announce before acting.
