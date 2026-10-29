@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.14.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.14.0-x64-setup.exe",
-  "sha256_hex": "e5763eb6fb54337bd68f3d0455628cf1aee1a771e495ffcf8aa108a119f19fe0",
-  "size_bytes": 7702123,
-  "notes": "0.14.0 \u2014 the claw keeps a diary and minds your windows: scheduled tasks run on their own (nightly cleanups, weekly updates) and report to every paired machine by chat; window tools list, focus, minimize, and close what is open. Reviewed by two independent agents, all findings fixed.",
+  "version": "0.15.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.15.0-x64-setup.exe",
+  "sha256_hex": "d369f10a6265ddb90cfbb8114d4acb73b558685dde7ac7e384f2bf9314309871",
+  "size_bytes": 7727753,
+  "notes": "0.15.0 \u2014 the claw runs your whole setup: it can now install Windows updates (and restart when they need it), clean up what launches at login, and send one instruction to every family machine at once with a collected report. Updates now also say clearly when they succeeded \u2014 no more silent finishes. Reviewed by two independent agents, every finding fixed.",
   "published_at": "2026-10-29"
 }
