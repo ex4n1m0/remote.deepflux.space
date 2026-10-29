@@ -152,9 +152,10 @@ export function UpdateBanner({ state, sessionLive, onUpdate, onInstall, onRetry,
     return (
       <div className="banner banner-info update-banner" role="status">
         <p>
-          <strong>Almost there — restart DeepFlux once more.</strong> The
-          update to {state.latest_version} finished installing while the app
-          was opening; closing and reopening DeepFlux completes it.
+          <strong>DeepFlux may need one more restart.</strong> The update to{" "}
+          {state.latest_version} was installing as the app opened; close and
+          reopen DeepFlux — and if you have already restarted, check for
+          updates again.
         </p>
         <div className="row">
           <button type="button" className="ghost" onClick={onDismiss}>

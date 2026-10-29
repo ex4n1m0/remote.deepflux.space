@@ -215,7 +215,7 @@ pub fn tool_specs() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "instruction": { "type": "string" },
-                    "machines": { "type": "array", "items": { "type": "string" }, "description": "Connection codes (default: every paired machine, capped)" }
+                    "machines": { "type": "array", "items": { "type": "string" }, "description": "Connection codes of PAIRED machines only (default: every paired machine, capped); non-paired codes are refused — use connect for those" }
                 },
                 "required": ["instruction"]
             }),
@@ -879,8 +879,30 @@ pub fn execute(
                     .map(|p| p.code)
                     .collect();
             }
+            // The fleet is the TRUSTED set: explicit machines are filtered
+            // to paired codes (a non-paired target is an ordinary connect
+            // — consent-gated — not a fleet member; the filter keeps the
+            // tool's contract honest and reviewable).
+            let paired: std::collections::HashSet<String> = crate::chat::pairings(app)
+                .into_iter()
+                .filter(|p| !p.pending_ack)
+                .map(|p| p.code)
+                .collect();
+            let unknown: Vec<String> = targets
+                .iter()
+                .filter(|c| !paired.contains(*c))
+                .cloned()
+                .collect();
+            targets.retain(|c| paired.contains(c));
             if targets.is_empty() {
-                return ToolOutput::text("no paired machines to run on — pair at least one first");
+                let note = if unknown.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (not paired: {})", unknown.join(", "))
+                };
+                return ToolOutput::text(format!(
+                    "no PAIRED machines among the targets{note} — fleet_run runs only on paired machines (use connect for new ones)"
+                ));
             }
             targets.truncate(FLEET_MAX_MACHINES);
             ToolOutput::text(fleet_run(app, instruction, &targets))
@@ -1991,17 +2013,22 @@ const FLEET_ANSWER_TIMEOUT: Duration = Duration::from_secs(120);
 /// Whole-call deadline — exceeded machines report as timed out.
 const FLEET_TOTAL_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// True when any session machinery is live (either role) — mirrors the
+/// engine's QUIET_STATES discipline from the updater install gate.
+fn engine_in_session(s: &engine::EngineStatus) -> bool {
+    const QUIET: [&str; 4] = ["Idle", "Registering", "Online", "Disconnected"];
+    !QUIET.contains(&s.host_state.as_str()) || !QUIET.contains(&s.controller_state.as_str())
+}
+
 enum WindowsUpdateVerb {
     Check,
     Install,
 }
 
-/// Windows Update through the built-in Microsoft.Update.Session COM API
-/// (no module installs, works on every Windows 10/11 box). Spawned as a
-/// DIRECT PowerShell argv vector — no cmd.exe, no quoting surface; the
-/// script text is a compile-time constant.
-fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
-    let script = match verb {
+/// The COM script for each verb (compile-time constants — zero
+/// interpolation, reviewable as text).
+fn windows_update_script(verb: &WindowsUpdateVerb) -> &'static str {
+    match verb {
         WindowsUpdateVerb::Check => {
             // One update per line: title<TAB>size. Count rides the header.
             r#"$ErrorActionPreference='Stop'; try { $s=New-Object -ComObject Microsoft.Update.Session; $u=$s.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0"); "pending updates: $($u.Count)"; foreach($x in $u.Updates){ "$($x.Title)`t$([math]::Round($x.MaxDownloadSize/1MB,1))MB" } } catch { "search failed: $($_.Exception.Message)" }"#
@@ -2012,16 +2039,34 @@ fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
             // and whether a restart is required.
             r#"$ErrorActionPreference='Stop'; try { $s=New-Object -ComObject Microsoft.Update.Session; $u=$s.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0"); if($u.Count -eq 0){ "nothing to install"; exit 0 }; $d=$s.CreateUpdateDownloader(); $d.Updates=$u.Updates; $null=$d.Download(); $i=$s.CreateUpdateInstaller(); $i.Updates=$u.Updates; $r=$i.Install(); "install result code: $($r.ResultCode) (2=ok, 3=ok with errors, 4=failed, 5=aborted)"; "restart required: $($i.RebootRequired)" } catch { "install failed: $($_.Exception.Message)" }"#
         }
-    };
-    let mut cmd = std::process::Command::new("powershell.exe");
+    }
+}
+
+/// Absolute System32 powershell (never the search path — a per-user
+/// install dir is user-writable; security hardening) with the argv shape
+/// the tests pin.
+fn windows_update_command(verb: &WindowsUpdateVerb) -> std::process::Command {
+    let exe = std::env::var("SystemRoot")
+        .map(|root| format!("{root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"))
+        .unwrap_or_else(|_| "powershell.exe".to_owned());
+    let mut cmd = std::process::Command::new(exe);
     cmd.args([
         "-NoProfile",
         "-NonInteractive",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        script,
+        windows_update_script(verb),
     ]);
+    cmd
+}
+
+/// Windows Update through the built-in Microsoft.Update.Session COM API
+/// (no module installs, works on every Windows 10/11 box). Spawned as a
+/// DIRECT PowerShell argv vector — no cmd.exe, no quoting surface; the
+/// script text is a compile-time constant.
+fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
+    let mut cmd = windows_update_command(&verb);
     run_command(&mut cmd, timeout).unwrap_or_else(|e| format!("windows update failed: {e}"))
 }
 
@@ -2030,6 +2075,19 @@ fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
 /// wait for its answer, disconnect. The collected report names what each
 /// machine's agent answered. Whole-call deadline bounded.
 fn fleet_run(app: &AppHandle, instruction: &str, targets: &[String]) -> String {
+    // Refuse over ANY live session (review blocking 2): the per-machine
+    // Disconnect must only ever tear down fleet's own connections — run
+    // mid-session it would kill the user's control session, and the
+    // role_conflict would burn every machine's connect timeout.
+    let busy = with_engine(app, |handle| {
+        let s = handle.status();
+        Ok(engine_in_session(&s))
+    })
+    .unwrap_or(true);
+    if busy {
+        return "a remote session is live on this machine — finish it first                 (fleet takes over the connection for each target)"
+            .to_owned();
+    }
     let started = std::time::Instant::now();
     let mut report = Vec::new();
     for code in targets {
@@ -2096,10 +2154,15 @@ fn fleet_one(
         std::thread::sleep(Duration::from_millis(500));
     }
     // 3. Send the instruction to that machine's assistant (agent bit).
-    let sent_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    // Answer detection is ID-based (review blocking 1): stored ts_ms is
+    // the SENDER's engine-uptime ms, never comparable to local clocks —
+    // a timestamp predicate could never match. Snapshot the peer-agent
+    // line ids already stored; the answer is a NEW peer-agent id.
+    let before: std::collections::HashSet<u64> = crate::chat::history(app, code)
+        .iter()
+        .filter(|l| l.sender == "peer-agent")
+        .map(|l| l.id)
+        .collect();
     if let Err(err) = with_engine(app, |handle| {
         handle.send(engine::EngineCmd::ChatSend {
             body: instruction.to_owned(),
@@ -2115,16 +2178,13 @@ fn fleet_one(
         if std::time::Instant::now() >= deadline || started.elapsed() >= FLEET_TOTAL_TIMEOUT {
             return "no answer within the window (its assistant may be busy)".into();
         }
-        let answered = crate::chat::history(app, code)
+        let history = crate::chat::history(app, code);
+        if let Some(answer) = history
             .iter()
-            .any(|l| l.sender == "peer-agent" && l.ts_ms >= sent_at && !l.body.is_empty());
-        if answered {
-            let answer = crate::chat::history(app, code)
-                .iter()
-                .rev()
-                .find(|l| l.sender == "peer-agent" && l.ts_ms >= sent_at)
-                .map(|l| l.body.clone())
-                .unwrap_or_default();
+            .rev()
+            .find(|l| l.sender == "peer-agent" && !before.contains(&l.id))
+            .map(|l| l.body.clone())
+        {
             let clipped: String = answer.chars().take(600).collect();
             return format!("answered: {clipped}");
         }
@@ -2552,20 +2612,34 @@ mod tests {
     }
 
     #[test]
-    fn windows_update_scripts_use_the_builtin_com_api() {
-        // Direct argv spawn; the script text is compile-time constant —
-        // the pin is that powershell itself runs (a broken script would
-        // report a spawn failure).
-        let check = windows_update(WindowsUpdateVerb::Check, Duration::from_secs(300));
-        assert!(
-            !check.starts_with("windows update failed: spawn"),
-            "{check}"
-        );
-        let install = windows_update(WindowsUpdateVerb::Install, Duration::from_secs(900));
-        assert!(
-            !install.starts_with("windows update failed: spawn"),
-            "{install}"
-        );
+    fn windows_update_command_is_pinned_not_executed() {
+        // Pure pins (review blocking 4): the merge gate must never run a
+        // real Windows Update COM session — the old test executed one,
+        // and its install variant could install OS updates from `cargo
+        // test`.
+        for verb in [WindowsUpdateVerb::Check, WindowsUpdateVerb::Install] {
+            let cmd = windows_update_command(&verb);
+            let program = cmd.get_program().to_string_lossy().to_lowercase();
+            assert!(program.ends_with("powershell.exe"), "{program}");
+            assert!(
+                program.contains("system32"),
+                "absolute System32 path, not the search path: {program}"
+            );
+            let args: Vec<String> = cmd
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            assert!(args.contains(&"-NoProfile".to_owned()));
+            assert!(args.contains(&"-NonInteractive".to_owned()));
+            assert!(!args.iter().any(|a| a.contains("cmd.exe")));
+            let script = windows_update_script(&verb);
+            assert!(script.contains("Microsoft.Update.Session"));
+            assert!(!script.contains("{instruction"));
+        }
+        // The install script reports the result code and reboot flag.
+        let install = windows_update_script(&WindowsUpdateVerb::Install);
+        assert!(install.contains("ResultCode"));
+        assert!(install.contains("RebootRequired"));
     }
 
     #[test]

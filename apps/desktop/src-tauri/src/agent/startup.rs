@@ -38,6 +38,9 @@ pub struct StartupEntry {
     pub source: &'static str,
     /// True when this agent disabled it (backed up).
     pub disabled_by_us: bool,
+    /// Registry rows: the value was REG_EXPAND_SZ (carried into the
+    /// backup so restore writes the same kind; finding 7).
+    pub expand_sz: bool,
 }
 
 /// The disable backup (`<app data>/startup-disabled.json`).
@@ -55,6 +58,18 @@ struct DisabledBackup {
     /// guessed).
     source: String,
     ts_ms: u64,
+    /// True when the registry value was REG_EXPAND_SZ — restored as the
+    /// same kind so %VAR% Run commands keep working (finding 7; rows
+    /// predating the field default to plain REG_SZ).
+    #[serde(default)]
+    expand_sz: bool,
+}
+
+/// Identity of a backup: same name in DIFFERENT hives is two entries
+/// (HKLM \"OneDrive\" + HKCU \"OneDrive\" is common) — the old name-only
+/// check wedged the second one (finding 6).
+fn same_entry(a_name: &str, a_source: &str, b: &DisabledBackup) -> bool {
+    a_name.eq_ignore_ascii_case(&b.name) && a_source.eq_ignore_ascii_case(&b.source)
 }
 
 /// The five labels we write, as 'static for StartupEntry.
@@ -101,6 +116,7 @@ pub fn list_entries(app: &AppHandle) -> String {
                 command: b.command.clone(),
                 source: label,
                 disabled_by_us: true,
+                expand_sz: b.expand_sz,
             });
         }
     }
@@ -108,6 +124,12 @@ pub fn list_entries(app: &AppHandle) -> String {
     if entries.is_empty() {
         return "no startup entries found".to_owned();
     }
+    format_rows(&entries)
+}
+
+/// Pure row formatter (test-pinned): state marker, name, source, and a
+/// 140-char-capped command column.
+fn format_rows(entries: &[StartupEntry]) -> String {
     let rows: Vec<String> = entries
         .iter()
         .map(|e| {
@@ -166,12 +188,13 @@ fn enum_run_values(root: HKEY, path: &str, source: &'static str, out: &mut Vec<S
                 continue;
             }
             let name = String::from_utf16_lossy(&name_buf[..name_len as usize]);
-            if let Some(command) = run_value_string(key, &name) {
+            if let Some((command, expand_sz)) = run_value_string(key, &name) {
                 out.push(StartupEntry {
                     name,
                     command,
                     source,
                     disabled_by_us: false,
+                    expand_sz,
                 });
             }
             index += 1;
@@ -180,8 +203,10 @@ fn enum_run_values(root: HKEY, path: &str, source: &'static str, out: &mut Vec<S
     }
 }
 
-/// REG_SZ/REG_EXPAND_SZ value as a lossy string (unexpanded for EXPAND_SZ).
-fn run_value_string(key: HKEY, name: &str) -> Option<String> {
+/// REG_SZ/REG_EXPAND_SZ value as a lossy string plus its expandable
+/// flag (unexpanded for EXPAND_SZ — the flag survives into the backup so
+/// restore rewrites the same kind; review finding 7).
+fn run_value_string(key: HKEY, name: &str) -> Option<(String, bool)> {
     let n = wide(name);
     unsafe {
         let mut kind: REG_VALUE_TYPE = REG_NONE;
@@ -226,7 +251,7 @@ fn run_value_string(key: HKEY, name: &str) -> Option<String> {
         if trimmed.is_empty() {
             None
         } else {
-            Some(trimmed.to_owned())
+            Some((trimmed.to_owned(), kind == REG_EXPAND_SZ))
         }
     }
 }
@@ -256,6 +281,7 @@ fn enum_folder(dir: &PathBuf, source: &'static str, out: &mut Vec<StartupEntry>)
             command: entry.path().display().to_string(),
             source,
             disabled_by_us: false,
+            expand_sz: false,
         });
     }
 }
@@ -305,29 +331,54 @@ pub fn disable_entry(app: &AppHandle, name: &str) -> Result<String, String> {
     };
     match source_root_path(entry.source) {
         Some((root, path)) => {
-            // Back up, then delete the Run value.
+            // Registry rows: BACK UP FIRST, delete second, and ROLL THE
+            // BACKUP BACK if the delete is refused (e.g. HKLM without
+            // elevation — finding 11): a stale row wedges retries.
             let mut doc = read_backups(app).unwrap_or_default();
-            if doc.entries.iter().any(|b| b.name == entry.name) {
-                return Err(format!("{:?} is already disabled", entry.name));
+            if doc
+                .entries
+                .iter()
+                .any(|b| same_entry(&entry.name, entry.source, b))
+            {
+                return Err(format!(
+                    "{:?} ({}) is already disabled",
+                    entry.name, entry.source
+                ));
             }
             doc.entries.push(DisabledBackup {
                 name: entry.name.clone(),
                 command: entry.command.clone(),
                 source: entry.source.to_owned(),
                 ts_ms: now_ms(),
+                expand_sz: entry.expand_sz,
             });
             write_backups(app, &doc)?;
-            delete_run_value(root, path, &entry.name)?;
+            if let Err(err) = delete_run_value(root, path, &entry.name) {
+                doc.entries.pop();
+                let _ = write_backups(app, &doc);
+                return Err(format!(
+                    "backed up but could not remove the registry value ({err}) — nothing changed, try again elevated"
+                ));
+            }
             Ok(format!(
                 "disabled {} ({}; backed up — startup_toggle enable restores it)",
                 entry.name, entry.source
             ))
         }
         None => {
-            // Folder item: move the file into our backup dir.
+            // Folder items: PERSIST THE BACKUP ROW FIRST, then move the
+            // file; on move failure roll the row back (finding 5 — the
+            // old order stranded the file with no restore path).
             let mut doc = read_backups(app).unwrap_or_default();
-            if doc.entries.iter().any(|b| b.name == entry.name) {
-                return Err(format!("{:?} is already disabled", entry.name));
+            if doc
+                .entries
+                .iter()
+                .any(|b| same_entry(&entry.name, entry.source, b))
+            {
+                return Err(format!(
+                    "{:?} ({}) is already disabled",
+                    entry.name, entry.source
+                ));
             }
             let from = PathBuf::from(&entry.command);
             let backup_dir = backups_path(app)
@@ -336,14 +387,21 @@ pub fn disable_entry(app: &AppHandle, name: &str) -> Result<String, String> {
                 .ok_or("no app data dir")?;
             std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
             let to = backup_dir.join(&entry.name);
-            std::fs::rename(&from, &to).map_err(|e| format!("move {}: {e}", from.display()))?;
             doc.entries.push(DisabledBackup {
                 name: entry.name.clone(),
                 command: to.display().to_string(),
                 source: entry.source.to_owned(),
                 ts_ms: now_ms(),
+                expand_sz: false,
             });
             write_backups(app, &doc)?;
+            if let Err(err) =
+                std::fs::rename(&from, &to).map_err(|e| format!("move {}: {e}", from.display()))
+            {
+                doc.entries.pop();
+                let _ = write_backups(app, &doc);
+                return Err(err);
+            }
             Ok(format!(
                 "disabled {} (folder item moved to the app's backup; startup_toggle enable restores it)",
                 entry.name
@@ -360,9 +418,24 @@ pub fn enable_entry(app: &AppHandle, name: &str) -> Result<String, String> {
         .position(|b| b.name.eq_ignore_ascii_case(name))
         .ok_or_else(|| format!("nothing disabled named {name:?}"))?;
     let backup = doc.entries.remove(idx);
+    // The doc is a local file (same-user writable): refuse names that
+    // could escape the Startup folder or the backup dir — a tampered row
+    // must fail loudly, not steer file moves (security hardening).
+    if backup.name.contains(['/', '\\'])
+        || backup.name == "."
+        || backup.name == ".."
+        || backup.name.trim().is_empty()
+    {
+        return Err(format!(
+            "backup row for {:?} has an unsafe name — refusing to act on it",
+            backup.name
+        ));
+    }
     match source_root_path(&backup.source) {
         Some((root, path)) => {
-            write_run_value(root, path, &backup.name, &backup.command)?;
+            // Restore the SAME value kind (finding 7): an %VAR% command
+            // backed up as EXPAND_SZ must come back as EXPAND_SZ.
+            write_run_value(root, path, &backup.name, &backup.command, backup.expand_sz)?;
             write_backups(app, &doc)?;
             Ok(format!(
                 "restored {} ({}), enabled at login",
@@ -370,13 +443,26 @@ pub fn enable_entry(app: &AppHandle, name: &str) -> Result<String, String> {
             ))
         }
         None => {
-            // Folder item: move the file back to its Startup folder.
+            // Folder item: move the file back to its Startup folder. The
+            // backup path must live under OUR backup dir — anything else
+            // in the row is a tamper attempt, refused.
+            let backup_dir = backups_path(app)
+                .and_then(|p| p.parent().map(|d| d.to_owned()))
+                .map(|d| d.join("startup-backup"))
+                .ok_or("no app data dir")?;
+            let from = PathBuf::from(&backup.command);
+            if !from.starts_with(&backup_dir) {
+                return Err(format!(
+                    "backup row for {:?} points outside the app's backup dir — refusing",
+                    backup.name
+                ));
+            }
             let target = if backup.source == "user-folder" {
                 startup_folder_user().join(&backup.name)
             } else {
                 startup_folder_machine().join(&backup.name)
             };
-            std::fs::rename(&backup.command, &target)
+            std::fs::rename(&from, &target)
                 .map_err(|e| format!("restore {}: {e}", target.display()))?;
             write_backups(app, &doc)?;
             Ok(format!(
@@ -405,7 +491,13 @@ fn delete_run_value(root: HKEY, path: &str, name: &str) -> Result<(), String> {
     }
 }
 
-fn write_run_value(root: HKEY, path: &str, name: &str, command: &str) -> Result<(), String> {
+fn write_run_value(
+    root: HKEY,
+    path: &str,
+    name: &str,
+    command: &str,
+    expand_sz: bool,
+) -> Result<(), String> {
     unsafe {
         let p = wide(path);
         let mut key = HKEY::default();
@@ -427,7 +519,8 @@ fn write_run_value(root: HKEY, path: &str, name: &str, command: &str) -> Result<
         let data = wide(command);
         // REG_SZ requires the terminating NUL — `wide` adds it.
         let bytes = std::slice::from_raw_parts(data.as_ptr().cast::<u8>(), data.len() * 2);
-        let set = RegSetValueExW(key, PCWSTR(n.as_ptr()), None, REG_SZ, Some(bytes));
+        let kind = if expand_sz { REG_EXPAND_SZ } else { REG_SZ };
+        let set = RegSetValueExW(key, PCWSTR(n.as_ptr()), None, kind, Some(bytes));
         let _ = RegCloseKey(key);
         if set.is_err() {
             return Err(format!("write {name}: {}", set.0));
@@ -447,6 +540,75 @@ mod tests {
         assert!(user.contains("startup"), "{user}");
         let machine = startup_folder_machine().to_string_lossy().to_lowercase();
         assert!(machine.contains("programdata"), "{machine}");
+    }
+
+    fn backup(name: &str, source: &str, expand_sz: bool) -> DisabledBackup {
+        DisabledBackup {
+            name: name.to_owned(),
+            command: r"C:\Program Files\App\app.exe --start".to_owned(),
+            source: source.to_owned(),
+            ts_ms: 1,
+            expand_sz,
+        }
+    }
+
+    #[test]
+    fn backup_doc_round_trips_and_preserves_the_kind() {
+        let doc = DisabledDoc {
+            entries: vec![
+                backup("OneDrive", "user", false),
+                backup("VendorThing", "machine-64", true),
+            ],
+        };
+        let text = serde_json::to_string(&doc).unwrap();
+        let back: DisabledDoc = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, doc);
+        assert!(back.entries[1].expand_sz);
+        // Rows predating the field default to REG_SZ.
+        let legacy =
+            r#"{"entries":[{"name":"X","command":"C:\\x.exe","source":"user","ts_ms":1}]}"#;
+        let parsed: DisabledDoc = serde_json::from_str(legacy).unwrap();
+        assert!(!parsed.entries[0].expand_sz);
+    }
+
+    #[test]
+    fn same_entry_keys_on_name_case_insensitive_and_source() {
+        // Same name in two hives = two distinct entries (finding 6).
+        let hklm = backup("OneDrive", "machine-64", false);
+        assert!(same_entry("OneDrive", "machine-64", &hklm));
+        assert!(
+            same_entry("onedrive", "machine-64", &hklm),
+            "case-insensitive"
+        );
+        assert!(!same_entry("OneDrive", "user", &hklm), "different hive");
+        assert!(!same_entry("OtherApp", "machine-64", &hklm));
+    }
+
+    #[test]
+    fn list_rows_show_state_and_capped_commands() {
+        let rows = [
+            StartupEntry {
+                name: "Enabled App".into(),
+                command: "C:\\app.exe".into(),
+                source: "user",
+                disabled_by_us: false,
+                expand_sz: false,
+            },
+            StartupEntry {
+                name: "Off App".into(),
+                command: "x".repeat(300),
+                source: "machine-64",
+                disabled_by_us: true,
+                expand_sz: true,
+            },
+        ];
+        let text = format_rows(&rows);
+        assert!(text.starts_with("2\n"), "{text}");
+        assert!(text.contains("[on ]\tEnabled App\tuser"), "{text}");
+        assert!(text.contains("[OFF]\tOff App\tmachine-64"), "{text}");
+        // The long command is capped at 140 chars.
+        let off_line = text.lines().find(|l| l.contains("Off App")).unwrap();
+        assert!(off_line.chars().count() < 200, "{off_line}");
     }
 
     #[test]

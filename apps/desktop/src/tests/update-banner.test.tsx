@@ -52,7 +52,7 @@ describe("UpdateBanner (ADR-008)", () => {
 
   it("pending-restart: the install-race card tells the user to restart once more", () => {
     banner(state({ status: "pending-restart", latest_version: "0.15.0" }));
-    expect(screen.getByText(/restart DeepFlux once more/)).toBeTruthy();
+    expect(screen.getByText(/may need one more restart/)).toBeTruthy();
     expect(screen.getByText(/0\.15\.0/)).toBeTruthy();
   });
 

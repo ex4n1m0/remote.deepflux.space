@@ -370,6 +370,17 @@ fn write_update_marker(app: &AppHandle, from: &str, to: &str) {
 /// restart once more. Either way the marker is consumed (shows once).
 pub fn note_post_update(app: &AppHandle) {
     let Some(path) = marker_path(app) else { return };
+    // A local file is untrusted input (security review): cap its size
+    // BEFORE reading, and accept only dotted-numeric versions — anything
+    // else is corrupt by definition and never becomes banner text.
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return;
+    };
+    if meta.len() > 4096 {
+        let _ = std::fs::remove_file(&path);
+        log_update(app, "post-update marker oversized — ignored");
+        return;
+    }
     let Ok(text) = std::fs::read_to_string(&path) else {
         return;
     };
@@ -378,6 +389,14 @@ pub fn note_post_update(app: &AppHandle) {
         log_update(app, "post-update marker was corrupt — ignored");
         return;
     };
+    if marker.to.len() > 32
+        || marker.from.len() > 32
+        || parse_version(&marker.to).is_none()
+        || parse_version(&marker.from).is_none()
+    {
+        log_update(app, "post-update marker had invalid versions — ignored");
+        return;
+    }
     let current = env!("CARGO_PKG_VERSION");
     let engine = &app.state::<crate::commands::AppServices>().update;
     if marker.to == current {
@@ -387,7 +406,7 @@ pub fn note_post_update(app: &AppHandle) {
         );
         engine.mutate(app, |s| {
             s.status = "updated".into();
-            s.stage = "done".into();
+            s.stage.clear();
             s.latest_version = marker.to.clone();
             s.current_version = current.into();
             s.error.clear();
@@ -503,6 +522,12 @@ fn run_check(app: &AppHandle, forced: bool) {
     // "ready" installer and a running download outrank fresh manifest
     // data (the next cycle re-offers if the version moved again).
     let status = services.update.state().status;
+    // The post-update confirmation cards live until dismissed for this
+    // session — a 20 s auto-check must not replace them while the user
+    // is away from the machine (review finding 10).
+    if matches!(status.as_str(), "updated" | "pending-restart") {
+        return;
+    }
     if matches!(status.as_str(), "downloading" | "ready" | "installing") {
         return;
     }
