@@ -25,12 +25,48 @@
 #      The installer is the public download and must carry the key: a
 #      missing key FAILS the build unless explicitly overridden with
 #      DEEPFLUX_ALLOW_NO_AGENT_KEY=1.
-#   2. Builds via `pnpm tauri build`.
+#   2. DEEPFLUX_CIRCLE_KEY — read from ~/.deepflux/circle-key.txt (the
+#      SAME key the 0.9.x clients used — 0.11.0 rejoins that circle,
+#      ADR-010). That file IS the circle: whoever holds it can read the
+#      directory — never commit it to git, never paste it into logs or
+#      chat. A missing key FAILS the build unless overridden with
+#      DEEPFLUX_ALLOW_NO_CIRCLE_KEY=1 (an installer without it ships an
+#      empty discovery list to everyone).
+#   3. Builds with DEEPFLUX_FAMILY_BUILD=1 (build.rs refuses an embedded
+#      circle key without this flag) via `pnpm tauri build`.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KEYDIR="$HOME/.deepflux"
 AGENTKEYFILE="$KEYDIR/agent-key.txt"
+CIRCLEKEYFILE="$KEYDIR/circle-key.txt"
+
+# The circle key: env override first, then the persistent file. Like the
+# agent key: file-backed on purpose so a released installer can never be
+# silently built keyless by a fresh shell. Never echoed — only its shape
+# is reported.
+CIRCLE_KEY="${DEEPFLUX_CIRCLE_KEY:-}"
+if [ -z "$CIRCLE_KEY" ] && [ -f "$CIRCLEKEYFILE" ]; then
+  CIRCLE_KEY="$(tr -d '[:space:]' < "$CIRCLEKEYFILE")"
+fi
+if [ -z "$CIRCLE_KEY" ] && [ "${DEEPFLUX_ALLOW_NO_CIRCLE_KEY:-0}" != "1" ]; then
+  echo "error: no circle key found." >&2
+  echo "  Put it in $CIRCLEKEYFILE (64 hex chars, one line, chmod 600)." >&2
+  echo "  The installer is the public download and must carry the key or" >&2
+  echo "  the discovery list stays empty for everyone. To deliberately" >&2
+  echo "  build without it, set DEEPFLUX_ALLOW_NO_CIRCLE_KEY=1." >&2
+  exit 1
+fi
+if [ -n "$CIRCLE_KEY" ]; then
+  if [ "${#CIRCLE_KEY}" -ne 64 ] || ! [[ "$CIRCLE_KEY" =~ ^[0-9a-fA-F]+$ ]]; then
+    echo "error: $CIRCLEKEYFILE does not look like a circle key (need 64 hex chars)." >&2
+    exit 1
+  fi
+  export DEEPFLUX_CIRCLE_KEY="$CIRCLE_KEY"
+  echo "==> circle key: present (64 hex chars, never echoed)"
+else
+  echo "==> circle key: ABSENT — deliberate keyless build" >&2
+fi
 
 # The assistant key: env override first, then the persistent file. Never
 # echoed — only its presence/shape is reported.

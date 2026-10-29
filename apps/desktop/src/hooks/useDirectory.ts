@@ -35,7 +35,10 @@ export function useDirectory(): DirectoryBinding {
       try {
         unlisten = await listen<{ machines: DirectoryMachine[] }>(
           "app://directory",
-          (event) => dispatch({ type: "machines", machines: event.payload.machines }),
+          (event) => {
+            dispatch({ type: "machines", machines: event.payload.machines });
+            dispatch({ type: "loaded" });
+          },
         );
       } catch {
         /* same — the pull above already ran where it could */
