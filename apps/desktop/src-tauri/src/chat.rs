@@ -110,6 +110,13 @@ pub struct TrustState {
     /// not tell its role apart and the host minted spurious offers toward
     /// its controller, cross-wiring the two sides' secrets.
     pub owed_pair_offer: Option<String>,
+    /// Prompt-flood follow-up (post-0.10.2 security review): timestamps
+    /// of prompts shown to UNVERIFIED requesters (unpaired AND
+    /// paired-without-valid-proof — both land on the prompt path), pruned
+    /// to the flood window. The per-controller cooldowns above key on
+    /// device ids an attacker freely rotates; this bounds the aggregate
+    /// no matter how many fresh ids arrive.
+    pub untrusted_prompt_times: std::collections::VecDeque<u64>,
 }
 
 /// Prompt-flood cooldown after an explicit user reject (ADR-006 B3).
@@ -118,6 +125,18 @@ pub const REJECT_COOLDOWN_MS: u64 = 5 * 60 * 1000;
 pub const TIMEOUT_COOLDOWN_MS: u64 = 60 * 1000;
 /// Controller-side pending offers older than this are purged on read.
 pub const PENDING_PAIRING_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+/// Global prompt budget (prompt-flood follow-up, post-0.10.2): at most
+/// this many prompts for UNVERIFIED requesters per hour, across ALL ids — beyond it the
+/// host quietly auto-rejects instead of flashing the window. Generous
+/// for a family (a couple of machines, a few retries), fatal for an
+/// id-rotating flood: one pending prompt at a time means the attacker's
+/// ceiling is LIMIT prompts per hour either way.
+pub const PROMPT_FLOOD_GLOBAL_LIMIT: usize = 10;
+/// The budget's sliding window (1 hour).
+pub const PROMPT_FLOOD_WINDOW_MS: u64 = 60 * 60 * 1000;
+/// Hard memory cap on the timestamp deque (invariant-3 paranoia: the
+/// window prune already bounds it; this is the belt to those braces).
+const PROMPT_FLOOD_TIMES_CAP: usize = 64;
 
 impl TrustState {
     pub fn blocked(&self, controller: &str, now: u64) -> bool {
@@ -133,6 +152,31 @@ impl TrustState {
     /// Forget expired blocks (bounded memory).
     pub fn sweep(&mut self, now: u64) {
         self.block_until.retain(|_, until| *until > now);
+    }
+
+    /// Global prompt budget: call before showing a prompt to an
+    /// UNPAIRED controller. Records the prompt and returns true while
+    /// the last-hour count is under the limit; false means the budget is
+    /// spent — auto-reject without prompting (the same silent path as
+    /// the per-controller cooldown). Paired-and-proven reconnects never
+    /// prompt and never touch this.
+    pub fn prompt_budget_ok(&mut self, now: u64) -> bool {
+        let window_start = now.saturating_sub(PROMPT_FLOOD_WINDOW_MS);
+        while self
+            .untrusted_prompt_times
+            .front()
+            .is_some_and(|t| *t < window_start)
+        {
+            self.untrusted_prompt_times.pop_front();
+        }
+        if self.untrusted_prompt_times.len() >= PROMPT_FLOOD_GLOBAL_LIMIT {
+            return false;
+        }
+        self.untrusted_prompt_times.push_back(now);
+        if self.untrusted_prompt_times.len() > PROMPT_FLOOD_TIMES_CAP {
+            self.untrusted_prompt_times.pop_front();
+        }
+        true
     }
 }
 
@@ -848,6 +892,44 @@ mod tests {
         PairingsDoc {
             pairings: pairs,
             remembered: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn prompt_budget_bounds_stranger_floods_across_rotating_ids() {
+        // 0.10.3: the per-controller cooldowns key on device ids an
+        // attacker rotates freely; the GLOBAL budget caps unpaired
+        // prompts per hour no matter how many fresh ids arrive.
+        let mut t = TrustState::default();
+        let hour = PROMPT_FLOOD_WINDOW_MS;
+        for i in 0..PROMPT_FLOOD_GLOBAL_LIMIT {
+            assert!(t.prompt_budget_ok(i as u64), "prompt {i} must show");
+        }
+        // The 11th within the hour — a FRESH id — is silently rejected.
+        assert!(!t.prompt_budget_ok(1_000));
+        // ...and stays spent for the rest of the hour.
+        assert!(!t.prompt_budget_ok(30 * 60 * 1000));
+        // An hour later the window has rolled: prompts show again.
+        assert!(t.prompt_budget_ok(hour + 1));
+        // Old timestamps are pruned (bounded memory under sustained
+        // pressure: the deque never outgrows the cap).
+        assert!(t.untrusted_prompt_times.len() <= PROMPT_FLOOD_GLOBAL_LIMIT);
+    }
+
+    #[test]
+    fn cooldown_rejections_do_not_consume_prompt_budget() {
+        // The `blocked(..) || !budget_ok(..)` short-circuit is load-
+        // bearing: a per-controller cooldown rejection must not spend a
+        // global slot, or an attacker could drain the budget via ids
+        // already in cooldown (free noise, less headroom for family).
+        let mut t = TrustState::default();
+        t.block("aaaaaaaaaaaaaaaa", 60_000);
+        // A blocked id asks again (rejected by the caller before the
+        // budget is consulted) — then a FRESH id still gets a full
+        // budget: every slot available.
+        assert!(t.blocked("aaaaaaaaaaaaaaaa", 1));
+        for i in 0..PROMPT_FLOOD_GLOBAL_LIMIT {
+            assert!(t.prompt_budget_ok(i as u64));
         }
     }
 

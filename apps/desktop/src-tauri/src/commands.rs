@@ -270,12 +270,15 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             } else {
                 // ADR-006 B3 prompt-flood defense: a controller in cooldown
                 // (explicit reject / unanswered timeout) is auto-rejected
-                // without a prompt.
+                // without a prompt. 0.10.3 adds the GLOBAL prompt budget —
+                // the cooldowns key on device ids an attacker rotates, so
+                // the aggregate (unpaired prompts per hour, all ids) is
+                // what actually bounds a flood.
                 let now = crate::chat::now_ms();
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust.sweep(now);
-                if trust.blocked(&controller_device_id, now) {
+                if trust.blocked(&controller_device_id, now) || !trust.prompt_budget_ok(now) {
                     drop(trust);
                     let _ = with_engine(app, |handle| handle.send(EngineCmd::ConsentReject));
                     return true;
