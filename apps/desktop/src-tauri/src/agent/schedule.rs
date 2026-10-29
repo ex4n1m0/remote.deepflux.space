@@ -98,8 +98,7 @@ pub fn valid_once_at(value: &str) -> bool {
         d.len() == 10
             && d[4] == b'-'
             && d[7] == b'-'
-            && d
-                .iter()
+            && d.iter()
                 .enumerate()
                 .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
     }
@@ -210,12 +209,17 @@ pub fn upsert_task(app: &AppHandle, task: ScheduledTask) -> Result<ScheduledDoc,
         return Err("instruction must be 1-2000 characters".to_owned());
     }
     if !valid_trigger(&task.trigger) {
-        return Err("trigger is malformed (daily \"HH:MM\", every_mins 1-1440, once \"YYYY-MM-DD HH:MM\")".to_owned());
+        return Err(
+            "trigger is malformed (daily \"HH:MM\", every_mins 1-1440, once \"YYYY-MM-DD HH:MM\")"
+                .to_owned(),
+        );
     }
     let mut doc = read_doc(app);
     doc.tasks.retain(|t| t.name != task.name);
     if doc.tasks.len() >= MAX_TASKS {
-        return Err(format!("too many scheduled tasks (cap {MAX_TASKS}) — remove one first"));
+        return Err(format!(
+            "too many scheduled tasks (cap {MAX_TASKS}) — remove one first"
+        ));
     }
     doc.tasks.push(task);
     write_doc(app, &doc)?;
@@ -323,10 +327,20 @@ mod tests {
 
     #[test]
     fn once_fires_at_and_only_at() {
-        let t = task(Trigger::Once { at: "2026-10-30 14:00".into() }, 0);
+        let t = task(
+            Trigger::Once {
+                at: "2026-10-30 14:00".into(),
+            },
+            0,
+        );
         assert!(!is_due(&t, 0, &stamp(13, 59)));
         assert!(is_due(&t, 0, &stamp(14, 0)));
-        let fired = task(Trigger::Once { at: "2026-10-30 14:00".into() }, 1);
+        let fired = task(
+            Trigger::Once {
+                at: "2026-10-30 14:00".into(),
+            },
+            1,
+        );
         assert!(!is_due(&fired, 5, &stamp(15, 0)), "never refires");
     }
 

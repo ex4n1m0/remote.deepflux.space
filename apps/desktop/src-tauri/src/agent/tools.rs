@@ -13,8 +13,10 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
+use crate::agent::{schedule, winctl};
 use crate::engine::{self, AgentInput};
 use crate::store::AppSettings;
+use schedule::Trigger;
 
 /// The assistant's key material lives under this synthetic "username" in
 /// the Windows Credential Manager (the existing `SessionStore` seam).
@@ -165,6 +167,74 @@ pub fn tool_specs() -> Vec<Value> {
                 "type": "object",
                 "properties": { "delta_v": { "type": "integer" } },
                 "required": ["delta_v"]
+            }),
+        ),
+        f(
+            "schedule",
+            "Create or update a recurring agent task: an instruction that fires as an \
+             assistant turn on this machine — \"daily 02:30\" style or every N minutes — \
+             runs unattended with full powers, and REPORTS the result by chat to every \
+             paired machine. Name: lowercase-dashes. Example: nightly temp cleanup, \
+             weekly app updates.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Slug: lowercase, digits, dashes (e.g. nightly-clean)" },
+                    "instruction": { "type": "string" },
+                    "daily_at": { "type": "string", "description": "\"HH:MM\" 24h local — daily" },
+                    "every_mins": { "type": "integer", "description": "1-1440 — repeating while the app runs" },
+                    "disable": { "type": "boolean", "description": "Pause the task instead of removing it" }
+                },
+                "required": ["name", "instruction"]
+            }),
+        ),
+        f(
+            "schedule_list",
+            "List scheduled agent tasks (name, trigger, enabled, last run, last result).",
+            json!({ "type": "object", "properties": {}, "required": [] }),
+        ),
+        f(
+            "schedule_remove",
+            "Remove a scheduled agent task by name.",
+            json!({
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"]
+            }),
+        ),
+        f(
+            "windows_list",
+            "List the visible top-level windows (title, minimized, pid) — sharper than a \
+             screenshot for finding what is open.",
+            json!({ "type": "object", "properties": {}, "required": [] }),
+        ),
+        f(
+            "window_focus",
+            "Bring the first window whose title contains the substring to the front \
+             (restoring it when minimized).",
+            json!({
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"]
+            }),
+        ),
+        f(
+            "window_minimize",
+            "Minimize the first window whose title contains the substring.",
+            json!({
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"]
+            }),
+        ),
+        f(
+            "window_close",
+            "Ask a window to close gracefully (WM_CLOSE — the app can still prompt about \
+             unsaved work; nothing is killed).",
+            json!({
+                "type": "object",
+                "properties": { "title": { "type": "string" } },
+                "required": ["title"]
             }),
         ),
         f(
@@ -707,6 +777,116 @@ pub fn execute(
                 Err(e) => ToolOutput::text(format!("scroll failed: {e}")),
             }
         }
+        "schedule" => {
+            let (Some(name), Some(instruction)) = (
+                args.get("name").and_then(|v| v.as_str()),
+                args.get("instruction").and_then(|v| v.as_str()),
+            ) else {
+                return ToolOutput::text("schedule requires name and instruction");
+            };
+            let disable = args
+                .get("disable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let daily = args.get("daily_at").and_then(|v| v.as_str());
+            let every = args.get("every_mins").and_then(|v| v.as_u64());
+            let trigger = if let Some(at) = daily {
+                Trigger::Daily { at: at.to_owned() }
+            } else if let Some(mins) = every {
+                Trigger::EveryMinutes {
+                    minutes: mins as u32,
+                }
+            } else {
+                return ToolOutput::text("schedule needs daily_at \"HH:MM\" or every_mins 1-1440");
+            };
+            let task = schedule::ScheduledTask {
+                name: name.to_owned(),
+                instruction: instruction.to_owned(),
+                trigger,
+                enabled: !disable,
+                created_ms: schedule::now_ms(),
+                last_fire_ms: 0,
+                last_result: None,
+            };
+            match schedule::upsert_task(app, task) {
+                Ok(doc) => ToolOutput::text(format!(
+                    "saved task {name:?} ({} tasks total) — the scheduler checks every 30 s while the app runs; results are reported by chat to paired machines",
+                    doc.tasks.len()
+                )),
+                Err(err) => ToolOutput::text(format!("schedule failed: {err}")),
+            }
+        }
+        "schedule_list" => {
+            let doc = schedule::read_doc(app);
+            if doc.tasks.is_empty() {
+                return ToolOutput::text("no scheduled tasks yet");
+            }
+            let rows: Vec<String> = doc
+                .tasks
+                .iter()
+                .map(|t| {
+                    format!(
+                        "{}\t{}\t{}\tlast run {}{}",
+                        t.name,
+                        match &t.trigger {
+                            Trigger::Daily { at } => format!("daily {at}"),
+                            Trigger::EveryMinutes { minutes } => format!("every {minutes}m"),
+                            Trigger::Once { at } => format!("once {at}"),
+                        },
+                        if t.enabled { "on" } else { "PAUSED" },
+                        if t.last_fire_ms == 0 {
+                            "never".to_owned()
+                        } else {
+                            t.last_fire_ms.to_string()
+                        },
+                        t.last_result
+                            .as_deref()
+                            .map(|r| format!("\n  last result: {}", r.trim()))
+                            .unwrap_or_default()
+                    )
+                })
+                .collect();
+            ToolOutput::text(rows.join("\n"))
+        }
+        "schedule_remove" => {
+            let Some(name) = args.get("name").and_then(|v| v.as_str()) else {
+                return ToolOutput::text("schedule_remove requires name");
+            };
+            match schedule::remove_task(app, name) {
+                Ok(_) => ToolOutput::text(format!("removed task {name:?}")),
+                Err(err) => ToolOutput::text(format!("schedule_remove failed: {err}")),
+            }
+        }
+        "windows_list" => {
+            let windows = winctl::list_windows();
+            if windows.is_empty() {
+                return ToolOutput::text("no visible titled windows right now");
+            }
+            let rows: Vec<String> = windows
+                .iter()
+                .map(|w| {
+                    format!(
+                        "{}\t{}\tpid {}",
+                        if w.minimized { "[min]" } else { "     " },
+                        w.title,
+                        w.pid
+                    )
+                })
+                .collect();
+            ToolOutput::text(rows.join("\n"))
+        }
+        "window_focus" => match winctl::focus_window(title_arg(args)) {
+            Ok(text) => ToolOutput::text(text),
+            Err(err) => ToolOutput::text(format!("window_focus failed: {err}")),
+        },
+        "window_minimize" => match winctl::minimize_window(title_arg(args)) {
+            Ok(text) => ToolOutput::text(text),
+            Err(err) => ToolOutput::text(format!("window_minimize failed: {err}")),
+        },
+        "window_close" => match winctl::close_window(title_arg(args)) {
+            Ok(text) => ToolOutput::text(text),
+            Err(err) => ToolOutput::text(format!("window_close failed: {err}")),
+        },
         "apps_list" => {
             let filter = args
                 .get("filter")
@@ -1673,6 +1853,10 @@ fn kill_process(pid: u64) -> Result<String, String> {
     Ok(text.trim().to_owned())
 }
 
+fn title_arg(args: &Value) -> &str {
+    args.get("title").and_then(|v| v.as_str()).unwrap_or("")
+}
+
 // -- ADR-012 release A: applications, power, search ----------------------
 
 /// winget for one non-interactive verb, spawned DIRECTLY (argv vector —
@@ -1957,8 +2141,11 @@ system agent. You administer THIS machine directly: installed applications (apps
 inventory, app_search, app_install, app_uninstall, app_upgrade — winget under the hood), the \
 machine's power (power: restart, shutdown, sleep, lock, signout; power_cancel aborts a pending \
 one), the filesystem (fs_list, fs_read, fs_write, fs_delete on any path; search finds files by \
-name or content), processes (ps, kill), and run_shell for any cmd.exe command without a \
-dedicated tool (services, registry, network config, git, anything).\n\
+name or content), processes (ps, kill), open windows (windows_list, window_focus, \
+window_minimize, window_close), recurring maintenance (schedule, schedule_list, \
+schedule_remove — a scheduled task fires as a full turn while nobody watches and \
+reports to every paired machine by chat), and run_shell for any cmd.exe command \
+without a dedicated tool (services, registry, network config, git, anything).\n\
 {admin_line}\n\
 You also run the remote-desktop side of the app: save machines, change settings, share this \
 machine, and, once a session is connected, SEE the remote screen (screenshot tool) and drive \

@@ -5,13 +5,13 @@
 //! Reviewed unsafe (the `apps/desktop` scope note): EnumWindows with a
 //! boxed Vec receiver in LPARAM; every call checked; titles capped.
 
-use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, PostMessageW, SetForegroundWindow, ShowWindow, SW_MINIMIZE, SW_RESTORE,
+    IsWindowVisible, PostMessageW, SW_MINIMIZE, SW_RESTORE, SetForegroundWindow, ShowWindow,
     WM_CLOSE,
 };
+use windows::core::BOOL;
 
 /// One visible top-level window. `handle` is the HWND as usize (the tool
 /// surface stays plain numbers/strings).
@@ -33,7 +33,7 @@ pub fn list_windows() -> Vec<WindowInfo> {
     unsafe {
         let _ = EnumWindows(Some(enum_proc), LPARAM(boxed as isize));
     }
-    out.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    out.sort_by_key(|w| w.title.to_lowercase());
     out
 }
 

@@ -10,8 +10,8 @@
 
 pub mod apps;
 pub mod schedule;
-pub mod winctl;
 pub mod tools;
+pub mod winctl;
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -109,11 +109,17 @@ pub struct AssistantState {
 #[derive(Debug, Clone)]
 pub enum AssistantInput {
     User(String),
-    PeerAgent { peer: String, body: String },
+    PeerAgent {
+        peer: String,
+        body: String,
+    },
     /// ADR-012 release B: a scheduled task fired — same authority as a
     /// user turn, and the final answer is reported to every paired
     /// machine by chat (the unattended-action trail).
-    Scheduled { name: String, body: String },
+    Scheduled {
+        name: String,
+        body: String,
+    },
 }
 
 impl Default for AssistantState {
@@ -508,28 +514,28 @@ fn broadcast_scheduled_report(app: &AppHandle, name: &str, text: &str) {
 pub fn spawn_scheduler(app: AppHandle) {
     std::thread::Builder::new()
         .name("agent-scheduler".into())
-        .spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(30));
-            let services = app.state::<crate::commands::AppServices>();
-            if *services.assistant.busy.lock().expect("assistant busy") {
-                continue; // a turn is running — try the next tick
-            }
-            let now_ms = schedule::now_ms();
-            let now = schedule::LocalStamp::now();
-            for task in schedule::read_doc(&app).tasks {
-                if !schedule::is_due(&task, now_ms, &now) {
-                    continue;
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                let services = app.state::<crate::commands::AppServices>();
+                if *services.assistant.busy.lock().expect("assistant busy") {
+                    continue; // a turn is running — try the next tick
                 }
-                // Mark the fire BEFORE delivering: a crash mid-turn must
-                // not refire the task every 30 s (the report notes the
-                // missing result instead).
-                schedule::mark_fired(&app, &task.name, None);
-                let _ = services
-                    .assistant
-                    .deliver(AssistantInput::Scheduled {
+                let now_ms = schedule::now_ms();
+                let now = schedule::LocalStamp::now();
+                for task in schedule::read_doc(&app).tasks {
+                    if !schedule::is_due(&task, now_ms, &now) {
+                        continue;
+                    }
+                    // Mark the fire BEFORE delivering: a crash mid-turn must
+                    // not refire the task every 30 s (the report notes the
+                    // missing result instead).
+                    schedule::mark_fired(&app, &task.name, None);
+                    let _ = services.assistant.deliver(AssistantInput::Scheduled {
                         name: task.name.clone(),
                         body: task.instruction.clone(),
                     });
+                }
             }
         })
         .expect("spawn agent scheduler");
