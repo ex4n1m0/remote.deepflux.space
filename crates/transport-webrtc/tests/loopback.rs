@@ -163,13 +163,17 @@ fn loopback_connect_channels_and_stats() {
     let mut set_host = order_host.clone();
     set_controller.sort_by_key(|c| *c as u8);
     set_host.sort_by_key(|c| *c as u8);
+    // ADR-005 added the Chat data channel (and 0.9.3's open-mask fix
+    // made its OnOpen reliably land inside the capture window), so the
+    // readiness set is five channels now.
     assert_eq!(
         set_controller,
         [
             Channel::Control,
             Channel::InputFast,
             Channel::InputReliable,
-            Channel::Cursor
+            Channel::Cursor,
+            Channel::Chat
         ]
     );
     assert_eq!(
@@ -178,7 +182,8 @@ fn loopback_connect_channels_and_stats() {
             Channel::Control,
             Channel::InputFast,
             Channel::InputReliable,
-            Channel::Cursor
+            Channel::Cursor,
+            Channel::Chat
         ]
     );
 

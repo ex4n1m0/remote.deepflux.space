@@ -4,7 +4,9 @@
  * live, this card pins to the top of the center column regardless of
  * which machine is selected, so chatting with other machines keeps
  * working during a session. RD-012 controls (monitor/quality/scale/
- * fullscreen) fold in when live. */
+ * fullscreen) fold in when live. Agent sessions (chat-only connect)
+ * render their own card: no viewer controls, a "Show the screen"
+ * affordance to attach the visual for monitoring, same disconnect. */
 
 import { Section, StatusChip } from "./Common";
 import { controllerView, formatMonitorLabel } from "../state/mapping";
@@ -25,11 +27,15 @@ export function SessionCard({
   quality,
   scale,
   viewerCreated,
+  agentSession,
+  agentOrigin,
   onCancel,
   onQuality,
   onMonitor,
   onScale,
   onFullscreen,
+  onShowViewer,
+  onHideViewer,
   onDisconnect,
 }: {
   controllerState: ControllerStateName;
@@ -40,20 +46,38 @@ export function SessionCard({
   quality: string;
   scale: string;
   viewerCreated: boolean;
+  /** Agent session: connected chat-only (no viewer attached right
+   * now) — render the agent card instead of the visual controls. */
+  agentSession: boolean;
+  /** This session was initiated with the Agent verb (sticky): while the
+   * viewer is attached, offer hide — back to chat-only, session stays. */
+  agentOrigin: boolean;
   onCancel: () => void;
   onQuality: (preset: QualityPresetName) => void;
   onMonitor: (monitorId: string) => void;
   onScale: (mode: ScaleModeName) => void;
   onFullscreen: () => void;
+  /** Attach the viewer to the live agent session (monitor mode). */
+  onShowViewer: () => void;
+  /** Detach the viewer (agent sessions): chat-only again, the host
+   * stops streaming, the session stays. */
+  onHideViewer: () => void;
   onDisconnect: () => void;
 }) {
   const view = controllerView(controllerState);
   const who = machineName ?? "the other machine";
   const connecting = view.view === "connecting";
+  const agentCard = agentSession && !viewerCreated && !connecting;
 
   return (
     <Section
-      title={connecting ? `Asking ${who} to allow control` : `Controlling ${who}`}
+      title={
+        connecting
+          ? `Asking ${who} to allow control`
+          : agentCard
+            ? `Agent session with ${who}`
+            : `Controlling ${who}`
+      }
       actions={<StatusChip tone={view.tone} label="Session" text={view.status} />}
       className={connecting ? "session-card connecting" : "session-card"}
     >
@@ -63,6 +87,23 @@ export function SessionCard({
           <div className="row">
             <button type="button" onClick={onCancel}>
               Cancel request
+            </button>
+          </div>
+        </>
+      ) : agentCard ? (
+        <>
+          <p className="muted">
+            Connected without the screen — you're chatting with {who}'s
+            assistant in the box below; it executes your instructions over
+            there. Attach the visual any time to watch what it does; closing
+            that window returns here without ending the session.
+          </p>
+          <div className="row">
+            <button type="button" className="primary" onClick={onShowViewer}>
+              Show the screen
+            </button>
+            <button type="button" className="danger" onClick={onDisconnect}>
+              Stop session
             </button>
           </div>
         </>
@@ -126,6 +167,13 @@ export function SessionCard({
               </div>
             </fieldset>
           </div>
+          {agentOrigin && viewerCreated ? (
+            <div className="row">
+              <button type="button" onClick={onHideViewer}>
+                Hide the screen (keep the agent session)
+              </button>
+            </div>
+          ) : null}
           <div className="row">
             <button type="button" className="danger" onClick={onDisconnect}>
               Stop controlling

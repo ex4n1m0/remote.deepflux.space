@@ -399,6 +399,7 @@ pub fn execute(
                             code,
                             pairing_secret,
                             requester_name: Some(requester_name),
+                            agent: false,
                         })
                         .map_err(|e| e.to_string())
                 })

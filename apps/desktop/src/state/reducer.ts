@@ -37,6 +37,12 @@ export interface EngineUiState {
   viewer: ViewerInfo;
   activeMonitor: string | null;
   quality: string;
+  /** Agent session: engine says the viewer is suppressed (chat-only). */
+  viewerSuppressed: boolean;
+  /** This controller session was initiated with the Agent verb. */
+  sessionAgent: boolean;
+  /** Host side: the connected controller asked us not to stream video. */
+  streamingSuppressed: boolean;
   engineStarted: boolean;
 }
 
@@ -57,6 +63,9 @@ export function initialUiState(): EngineUiState {
     viewer: { created: false, fullscreen: false, focused: false, scale: "fit" },
     activeMonitor: null,
     quality: "balanced",
+    viewerSuppressed: false,
+    sessionAgent: false,
+    streamingSuppressed: false,
     engineStarted: false,
   };
 }
@@ -122,6 +131,9 @@ export function engineReducer(state: EngineUiState, action: UiAction): EngineUiS
         viewer: status.viewer,
         activeMonitor: status.active_monitor,
         quality: status.quality,
+        viewerSuppressed: status.viewer_suppressed,
+        sessionAgent: status.session_agent,
+        streamingSuppressed: status.streaming_suppressed,
         engineStarted: true,
       };
     }

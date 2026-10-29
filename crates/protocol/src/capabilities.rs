@@ -82,6 +82,13 @@ impl FeatureFlags {
     /// trust accurately. Additive — a peer that predates the bit parses and
     /// ignores it.
     pub const PAIRING_REMEMBER: u32 = 1 << 5;
+    /// Controller runs this session chat-only right now (agent connect):
+    /// the host must keep its capture/encode/stream pipeline down until
+    /// the bit clears. Carried in the direct-path `Hello` — the
+    /// controller re-sends the `Hello` on the `control` channel to toggle
+    /// it mid-session (monitor attach/detach). A host that predates the
+    /// bit parses and ignores it (it streams; the controller drops).
+    pub const VIDEO_SUPPRESSED: u32 = 1 << 6;
 
     pub const fn empty() -> Self {
         Self(0)
@@ -177,6 +184,23 @@ mod tests {
         assert!(!f.has(FeatureFlags::AI_SESSION));
         let json = serde_json::to_string(&f).expect("serialize");
         let back: FeatureFlags = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, f);
+    }
+
+    #[test]
+    fn video_suppressed_is_additive_bit_six() {
+        assert_eq!(FeatureFlags::VIDEO_SUPPRESSED, 1 << 6);
+        let f = FeatureFlags::empty().with(FeatureFlags::VIDEO_SUPPRESSED);
+        assert!(f.has(FeatureFlags::VIDEO_SUPPRESSED));
+        assert!(!f.has(FeatureFlags::PAIRING_REMEMBER));
+        // The wire contract is the bare u32: the bit rides the `Hello`
+        // caps (JSON on the control plane, bincode on the direct path)
+        // and a pre-bit peer round-trips it without interpreting it.
+        let json = serde_json::to_string(&f).expect("serialize");
+        let back: FeatureFlags = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, f);
+        let bin = bincode::serialize(&f).expect("bincode serialize");
+        let back: FeatureFlags = bincode::deserialize(&bin).expect("bincode deserialize");
         assert_eq!(back, f);
     }
 

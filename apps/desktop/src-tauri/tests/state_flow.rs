@@ -91,6 +91,7 @@ fn full_session_state_flow_through_the_command_layer() {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
         requester_name: None,
+        agent: false,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -130,6 +131,13 @@ fn full_session_state_flow_through_the_command_layer() {
         event,
         EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
     )));
+
+    // 4b. Visual connect: no video suppression anywhere (the Hello
+    //     carries no VIDEO_SUPPRESSED bit).
+    assert!(!ctrl.status().viewer_suppressed);
+    wait_for("host streaming not suppressed", deadline, || {
+        !host.status().streaming_suppressed
+    });
 
     // 5. Quality preset over the wire: the host records the preset and the
     //    rebuild counter (no pipeline to rebuild in this mode).
@@ -221,6 +229,7 @@ fn reject_leaves_host_online_and_controller_disconnected() {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
         requester_name: None,
+        agent: false,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -268,6 +277,7 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
         requester_name: None,
+        agent: false,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -331,6 +341,7 @@ fn connect_from_idle_is_one_press() {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
         requester_name: None,
+        agent: false,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -431,6 +442,7 @@ fn chat_message_flows_over_the_wire_without_killing_the_engine() {
         code: HOST_DEVICE.to_owned(),
         pairing_secret: None,
         requester_name: None,
+        agent: false,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -470,6 +482,122 @@ fn chat_message_flows_over_the_wire_without_killing_the_engine() {
         host.status().host_state == "Disconnected"
             && ctrl.status().controller_state == "Disconnected"
     });
+    host.shutdown();
+    ctrl.shutdown();
+}
+
+/// Agent session (chat-only connect): `Connect { agent: true }`
+/// establishes the same session, but the controller runs viewer-less —
+/// `viewer_suppressed` is armed from establishment, agent-flagged chat
+/// still rides the wire (host sees sender "agent"), `ViewerShow`
+/// attaches the visual to the SAME session, and session end resets the
+/// suppression so the next visual connect starts clean.
+#[test]
+fn agent_session_runs_chat_only_and_attaches_the_viewer_on_demand() {
+    let hub = SignalingHub::new();
+    let (mut host, host_events) = spawn_engine(&hub, HOST_DEVICE);
+    let (mut ctrl, ctrl_events) = spawn_engine(&hub, CTRL_DEVICE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut host_log = Vec::new();
+    let mut ctrl_log = Vec::new();
+
+    host.send(EngineCmd::HostStart).expect("host start");
+    ctrl.send(EngineCmd::ControllerStart).expect("ctrl start");
+    wait_for("both Online", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Online" && ctrl.status().controller_state == "Online"
+    });
+
+    // 1. Agent connect → normal consent chain → Connected.
+    ctrl.send(EngineCmd::Connect {
+        code: HOST_DEVICE.to_owned(),
+        pairing_secret: None,
+        requester_name: None,
+        agent: true,
+    })
+    .expect("agent connect");
+    wait_for("consent prompt", deadline, || {
+        collect(&host_events, &mut host_log);
+        host.status().host_state == "ConsentPrompted"
+    });
+    host.send(EngineCmd::ConsentAccept { remember: false })
+        .expect("accept");
+    wait_for("both Connected", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Connected" && ctrl.status().controller_state == "Connected"
+    });
+
+    // 2. Chat-only: suppression armed from establishment (no viewer
+    //    pipeline even attempted — this test mode has none anyway, the
+    //    flag is the contract).
+    wait_for("viewer suppressed", deadline, || {
+        ctrl.status().viewer_suppressed
+    });
+    assert!(ctrl.status().session_agent);
+
+    // 2b. The establishment `Hello` carried VIDEO_SUPPRESSED: the host
+    //     sees the chat-only request and keeps streaming off.
+    wait_for("host streaming suppressed", deadline, || {
+        host.status().streaming_suppressed
+    });
+
+    // 3. Agent-flagged chat rides the same session: the host receives
+    //    it with the wire sender "agent" (its assistant's wake turn).
+    ctrl.send(EngineCmd::ChatSend {
+        body: "clean temp files".to_owned(),
+        agent: true,
+    })
+    .expect("agent chat send");
+    wait_for("host received agent chat", deadline, || {
+        collect(&host_events, &mut host_log);
+        host_log.iter().any(|event| {
+            matches!(
+                event,
+                EngineEvent::ChatReceived { sender, body, .. }
+                    if sender == "agent" && body == "clean temp files"
+            )
+        })
+    });
+    assert!(ctrl.is_alive(), "agent chat must not kill the engine");
+
+    // 4. Show the screen: same session stays Connected, suppression
+    //    clears (the reconcile starts the pipeline when there is one),
+    //    and the refreshed `Hello` flips the host back to streaming.
+    ctrl.send(EngineCmd::ViewerShow).expect("viewer show");
+    wait_for("viewer attached", deadline, || {
+        !ctrl.status().viewer_suppressed
+    });
+    assert_eq!(ctrl.status().controller_state, "Connected");
+    wait_for("host streaming resumed", deadline, || {
+        !host.status().streaming_suppressed
+    });
+
+    // 4b. Hide the screen: chat-only again, session stays, host stops
+    //     streaming (the bit goes back out in another `Hello`).
+    ctrl.send(EngineCmd::ViewerHide).expect("viewer hide");
+    wait_for("viewer detached", deadline, || {
+        ctrl.status().viewer_suppressed
+    });
+    assert_eq!(ctrl.status().controller_state, "Connected");
+    wait_for("host streaming suppressed again", deadline, || {
+        host.status().streaming_suppressed
+    });
+
+    // 5. ViewerShow with no live session is a typed error, not a crash.
+    ctrl.send(EngineCmd::Disconnect).expect("disconnect");
+    wait_for("both Disconnected", deadline, || {
+        collect(&host_events, &mut host_log);
+        collect(&ctrl_events, &mut ctrl_log);
+        host.status().host_state == "Disconnected"
+            && ctrl.status().controller_state == "Disconnected"
+    });
+    // Session end resets the mode so the next visual connect is visual.
+    assert!(!ctrl.status().viewer_suppressed);
+    assert!(!ctrl.status().session_agent);
+    assert!(!host.status().streaming_suppressed);
+
     host.shutdown();
     ctrl.shutdown();
 }

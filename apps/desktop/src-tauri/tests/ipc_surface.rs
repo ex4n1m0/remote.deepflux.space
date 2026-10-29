@@ -243,6 +243,9 @@ fn sample_status() -> EngineStatus {
         active_monitor: Some("\\\\.\\DISPLAY1".into()),
         quality: "balanced".into(),
         encoder: Some("enc".into()),
+        viewer_suppressed: false,
+        session_agent: false,
+        streaming_suppressed: false,
         counters: remote_desktop_app_lib::engine::EngineCounters {
             input_sent_fast: 10,
             input_sent_reliable: 4,
@@ -329,6 +332,7 @@ fn command_argument_dtos_carry_metadata_only() {
             "ConnectArgs",
             serde_json::to_value(ConnectArgs {
                 code: "0123456789abcdef".into(),
+                agent: false,
             })
             .unwrap(),
         ),

@@ -10,6 +10,7 @@ import {
   unifiedMachines,
 } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
+import { AgentChat } from "../components/AgentChat";
 import { Conversation } from "../components/Conversation";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import type { MachineRow } from "../components/MachinesRail";
@@ -393,10 +394,11 @@ describe("RemoveMachineButton (machine-page removal)", () => {
   });
 });
 
-/** Destination toggle (2026-10-28): the Conversation pane is the chat box
- * for the remote agent — "Them" vs "{name}'s assistant", gated on a live
- * session with that machine. */
-describe("Conversation destination toggle", () => {
+/** Two chat boxes (2026-10-28): the human Conversation is always there;
+ * the peer machine's assistant gets its OWN box (AgentChat) rendered by
+ * App only while a live session with that machine exists. Each box
+ * filters the shared history to its own senders. */
+describe("Conversation / AgentChat split", () => {
   const chatBinding = (
     lines: Array<{ id: number; ts_ms: number; sender: string; body: string }> = [],
   ) => ({
@@ -406,55 +408,50 @@ describe("Conversation destination toggle", () => {
     refresh: vi.fn(async () => {}),
   });
 
+  const mixed = [
+    { id: 1, ts_ms: 0, sender: "user", body: "hi mom" },
+    { id: 2, ts_ms: 1, sender: "peer-user", body: "hello dear" },
+    { id: 3, ts_ms: 2, sender: "to-agent", body: "clean temp files" },
+    { id: 4, ts_ms: 3, sender: "peer-agent", body: "done, freed 3 GB" },
+    { id: 5, ts_ms: 4, sender: "agent", body: "sent on your behalf" },
+  ];
+
   const type = (text: string) => {
     const input = screen.getByRole("textbox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: text } });
     fireEvent.keyDown(input, { key: "Enter" });
   };
 
-  it("assistant destination is disabled without a live session with the machine", () => {
-    const chat = chatBinding();
-    render(<Conversation name="Office" chat={chat} agentReachable={false} />);
-    const agentBtn = screen.getByRole("button", { name: /Office's assistant/ });
-    expect((agentBtn as HTMLButtonElement).disabled).toBe(true);
-    expect(agentBtn.getAttribute("title")).toContain("connect to this machine first");
-    // The human destination still works.
-    type("hello");
-    expect(chat.send).toHaveBeenCalledWith("hello", false);
+  it("the human box carries the human conversation and sends without the agent flag", () => {
+    const chat = chatBinding(mixed);
+    render(<Conversation name="Office" chat={chat} />);
+    expect(screen.getByText("hi mom")).toBeTruthy();
+    expect(screen.getByText("hello dear")).toBeTruthy();
+    expect(screen.getByText("sent on your behalf")).toBeTruthy();
+    // Agent-traffic lines live in the other box, not here.
+    expect(screen.queryByText("clean temp files")).toBeNull();
+    expect(screen.queryByText("done, freed 3 GB")).toBeNull();
+    type("see you sunday");
+    expect(chat.send).toHaveBeenCalledWith("see you sunday", false);
   });
 
-  it("defaults to Them; assistant mode routes sends with the agent flag", () => {
-    const chat = chatBinding();
-    render(<Conversation name="Office" chat={chat} agentReachable />);
-    type("hi there");
-    expect(chat.send).toHaveBeenCalledWith("hi there", false);
-    fireEvent.click(screen.getByRole("button", { name: /Office's assistant/ }));
-    expect(screen.getByRole("textbox").getAttribute("placeholder")).toContain(
-      "tell Office's assistant",
-    );
-    type("clean temp files");
-    expect(chat.send).toHaveBeenLastCalledWith("clean temp files", true);
-  });
-
-  it("a dropped session downgrades an armed assistant mode back to Them", () => {
-    const chat = chatBinding();
-    const view = render(<Conversation name="Office" chat={chat} agentReachable />);
-    fireEvent.click(view.getByRole("button", { name: /Office's assistant/ }));
-    view.rerender(<Conversation name="Office" chat={chat} agentReachable={false} />);
-    expect(view.getByRole("textbox").getAttribute("placeholder")).toContain("message Office");
-    type("still there?");
-    expect(chat.send).toHaveBeenLastCalledWith("still there?", false);
-  });
-
-  it("labels to-agent lines distinctly in the log", () => {
-    render(
-      <Conversation
-        name="Office"
-        chat={chatBinding([{ id: 1, ts_ms: 0, sender: "to-agent", body: "clean temp files" }])}
-        agentReachable
-      />,
-    );
+  it("the agent box carries only the assistant traffic and always sends with the agent flag", () => {
+    const chat = chatBinding(mixed);
+    render(<AgentChat name="Office" chat={chat} />);
+    expect(screen.getByText("Office's assistant")).toBeTruthy();
     expect(screen.getByText("you → their assistant")).toBeTruthy();
-    expect(screen.getByText("clean temp files")).toBeTruthy();
+    expect(screen.getByText("their assistant")).toBeTruthy();
+    expect(screen.getByText("done, freed 3 GB")).toBeTruthy();
+    expect(screen.queryByText("hi mom")).toBeNull();
+    type("empty the recycle bin");
+    expect(chat.send).toHaveBeenLastCalledWith("empty the recycle bin", true);
+  });
+
+  it("each box teaches its purpose when empty", () => {
+    render(<Conversation name="Office" chat={chatBinding()} />);
+    expect(screen.getByText(/messages wait sealed until the machine returns/i)).toBeTruthy();
+    cleanup();
+    render(<AgentChat name="Office" chat={chatBinding()} />);
+    expect(screen.getByText(/Tell Office's assistant what to do/i)).toBeTruthy();
   });
 });

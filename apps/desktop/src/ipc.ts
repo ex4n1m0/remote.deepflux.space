@@ -119,9 +119,15 @@ export const api = {
   controllerStart: (): Promise<void> => invoke("controller_start"),
   controllerStop: (): Promise<void> => invoke("controller_stop"),
 
-  connect: (code: string): Promise<void> => invoke("connect", { args: { code } }),
+  connect: (code: string, agent = false): Promise<void> =>
+    invoke("connect", { args: { code, agent } }),
   cancelConnect: (): Promise<void> => invoke("cancel_connect"),
   disconnect: (): Promise<void> => invoke("disconnect"),
+  // Attach the viewer to a live agent session (monitor what the agent
+  // does) — the same session, just the visual on top; the host streams
+  // again. viewer_hide detaches: chat-only, host streaming back off.
+  viewerShow: (): Promise<void> => invoke("viewer_show"),
+  viewerHide: (): Promise<void> => invoke("viewer_hide"),
 
   consentAccept: (remember: boolean): Promise<void> => invoke("consent_accept", { remember }),
   consentReject: (): Promise<void> => invoke("consent_reject"),

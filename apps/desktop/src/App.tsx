@@ -24,6 +24,7 @@ import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
 import { AssistantPanel } from "./components/AssistantPanel";
+import { AgentChat } from "./components/AgentChat";
 import { Conversation } from "./components/Conversation";
 import { Onboarding, displayNameValid } from "./components/Onboarding";
 import { SessionCard } from "./components/ControllerPanel";
@@ -76,8 +77,13 @@ export default function App() {
   const [sessionCode, setSessionCode] = useState<string | null>(null);
   // ADR-007 control gate: the machine the user tried to control before
   // signing in / adding a name. Fired automatically the moment the
-  // account has a name — still one press, the first time only.
-  const [pendingControl, setPendingControl] = useState<string | null>(null);
+  // account has a name — still one press, the first time only. Keeps the
+  // connect verb (visual vs agent) so the deferred fire opens the box
+  // the user actually pressed.
+  const [pendingControl, setPendingControl] = useState<{
+    code: string;
+    agent: boolean;
+  } | null>(null);
   const [namePromptOpen, setNamePromptOpen] = useState(false);  const chat = useChat(selectedCode);
   useEffect(() => {
     void refreshTrusted();
@@ -236,12 +242,12 @@ export default function App() {
   // yet? The intent is remembered and auto-fired the moment the name
   // exists (see the pendingControl effect below) — the only extra work
   // the user ever does is the one-time sign-in / add-name card.
-  const controlMachine = async (code: string) => {
+  const controlMachine = async (code: string, agent = false) => {
     const normalized = normalizeCode(code);
     setSelectedCode(normalized);
     setSessionCode(normalized);
     if (accountUi.status !== "logged_in" || !accountUi.displayName) {
-      setPendingControl(normalized);
+      setPendingControl({ code: normalized, agent });
       if (accountUi.status === "logged_in") {
         setNamePromptOpen(true);
       } else {
@@ -251,7 +257,7 @@ export default function App() {
       return;
     }
     if (await ensureEngine()) {
-      await engine.run(() => api.connect(normalized));
+      await engine.run(() => api.connect(normalized, agent));
     }
   };
 
@@ -261,12 +267,12 @@ export default function App() {
   useEffect(() => {
     if (!pendingControl || accountUi.status !== "logged_in") return;
     if (accountUi.displayName) {
-      const code = pendingControl;
+      const { code, agent } = pendingControl;
       setPendingControl(null);
       setNamePromptOpen(false);
       void (async () => {
         if (await ensureEngine()) {
-          await engine.run(() => api.connect(code));
+          await engine.run(() => api.connect(code, agent));
         }
       })();
     } else if (!namePromptOpen) {
@@ -365,6 +371,13 @@ export default function App() {
   // The session card pins while a connect is in flight or a session is
   // live; afterwards its label is not needed (the end banner names it).
   const sessionRow = sessionCode ? machines.find((m) => m.code === sessionCode) ?? null : null;
+  // Live session with the SELECTED machine (either verb): the agent chat
+  // box is up, and Control turns into "Show screen" while the viewer is
+  // suppressed (agent session without the visual attached).
+  const connectedToSelected =
+    ui.controllerState === "Connected" &&
+    sessionCode !== null &&
+    sessionCode === selected?.code;
 
   const share = async () => {
     if (await ensureEngine()) {
@@ -520,11 +533,15 @@ export default function App() {
                 "fit"
               }
               viewerCreated={ui.viewer.created}
+              agentSession={ui.viewerSuppressed}
+              agentOrigin={ui.sessionAgent}
               onCancel={() => engine.run(() => api.cancelConnect())}
               onQuality={(preset) => engine.run(() => api.setQuality(preset))}
               onMonitor={(monitorId) => engine.run(() => api.selectMonitor(monitorId))}
               onScale={(mode) => engine.run(() => api.viewerSetScale(mode))}
               onFullscreen={() => engine.run(() => api.viewerToggleFullscreen())}
+              onShowViewer={() => engine.run(() => api.viewerShow())}
+              onHideViewer={() => engine.run(() => api.viewerHide())}
               onDisconnect={() => engine.run(() => api.disconnect())}
             />
           ) : null}
@@ -549,17 +566,41 @@ export default function App() {
                 </p>
               </div>
               <div className="machine-actions">
+                {connectedToSelected && ui.viewerSuppressed ? (
+                  <button
+                    type="button"
+                    className="primary machine-control"
+                    onClick={() => engine.run(() => api.viewerShow())}
+                    title="Attach the viewer window to this live session — watch what the assistant is doing; closing it keeps the session"
+                  >
+                    Show screen
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="primary machine-control"
+                    onClick={() => void controlMachine(selected.code)}
+                    title={
+                      selected.trusted
+                        ? "Trusted machine — connects without asking again"
+                        : "They'll be asked to allow it — once per machine"
+                    }
+                  >
+                    Control
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="primary machine-control"
-                  onClick={() => void controlMachine(selected.code)}
+                  className="machine-agent"
+                  disabled={connectedToSelected}
+                  onClick={() => void controlMachine(selected.code, true)}
                   title={
-                    selected.trusted
-                      ? "Trusted machine — connects without asking again"
-                      : "They'll be asked to allow it — once per machine"
+                    connectedToSelected
+                      ? "This machine's assistant is already reachable — its chat box is below"
+                      : "Connect chat-only: give this machine's assistant instructions without opening the screen"
                   }
                 >
-                  Control
+                  Agent
                 </button>
                 {/* Circle-only machines aren't yours to remove — they leave
                  * the list when their owner leaves the circle. */}
@@ -597,21 +638,19 @@ export default function App() {
             />
           ) : null}
 
-          {/* Agent-addressable (2026-10-28): the Conversation's "their
-           * assistant" destination is offered only while a live session
+          {/* Agent box (session-gated, its own surface): the peer
+           * machine's assistant is reachable only while a live session
            * with THIS machine exists — controller side (we connected to
-           * it) or host side (it connected to us; the session peer comes
-           * from the SessionEstablished event). Out of session the inbox
-           * carries no agent bit, so the backend would refuse anyway. */}
-          <Conversation
-            name={selected?.name ?? null}
-            chat={chat}
-            agentReachable={
-              !!selected &&
-              ((ui.controllerState === "Connected" && sessionCode === selected.code) ||
-                (ui.hostState === "Connected" && ui.sessionPeer === selected.code))
-            }
-          />
+           * it, either verb) or host side (it connected to us; the
+           * session peer comes from the SessionEstablished event). Out of
+           * session the inbox carries no agent bit, so the backend would
+           * refuse anyway. */}
+          {!!selected &&
+          ((ui.controllerState === "Connected" && sessionCode === selected.code) ||
+            (ui.hostState === "Connected" && ui.sessionPeer === selected.code)) ? (
+            <AgentChat name={selected.name} chat={chat} />
+          ) : null}
+          <Conversation name={selected?.name ?? null} chat={chat} />
 
           {endCopy && ui.controllerState === "Disconnected" ? (
             <div className="banner banner-info" role="status">

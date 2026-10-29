@@ -30,11 +30,15 @@ describe("SessionCard", () => {
     quality: "balanced",
     scale: "fit",
     viewerCreated: true,
+    agentSession: false,
+    agentOrigin: false,
     onCancel: vi.fn(),
     onQuality: vi.fn(),
     onMonitor: vi.fn(),
     onScale: vi.fn(),
     onFullscreen: vi.fn(),
+    onShowViewer: vi.fn(),
+    onHideViewer: vi.fn(),
     onDisconnect: vi.fn(),
   };
 
@@ -78,6 +82,72 @@ describe("SessionCard", () => {
       <SessionCard {...base} machineName={null} controllerState="Offering" monitors={[]} />,
     );
     expect(screen.getByText(/Asking the other machine to allow control/i)).toBeTruthy();
+  });
+
+  it("agent session: chat-only card offers Show the screen, no viewer controls", () => {
+    const onShowViewer = vi.fn();
+    const onDisconnect = vi.fn();
+    render(
+      <SessionCard
+        {...base}
+        controllerState="Connected"
+        viewerCreated={false}
+        agentSession
+        monitors={[]}
+        onShowViewer={onShowViewer}
+        onDisconnect={onDisconnect}
+      />,
+    );
+    expect(screen.getByText(/Agent session with Mom's PC/i)).toBeTruthy();
+    expect(screen.queryByText("Monitor")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show the screen" }));
+    expect(onShowViewer).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("agent session with the viewer attached renders the normal visual controls", () => {
+    render(
+      <SessionCard
+        {...base}
+        controllerState="Connected"
+        viewerCreated
+        agentSession
+        monitors={[monitor("\\.\DISPLAY1", true)]}
+      />,
+    );
+    expect(screen.getByText(/Controlling Mom's PC/i)).toBeTruthy();
+    expect(screen.getByText("Monitor")).toBeTruthy();
+  });
+
+  it("agent session with the viewer attached offers hide: chat-only again, session stays", () => {
+    const onHideViewer = vi.fn();
+    render(
+      <SessionCard
+        {...base}
+        controllerState="Connected"
+        viewerCreated
+        agentOrigin
+        monitors={[]}
+        onHideViewer={onHideViewer}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Hide the screen/ }),
+    );
+    expect(onHideViewer).toHaveBeenCalledTimes(1);
+    // A visual session (no agent origin) never offers hide — closing
+    // its viewer is the disconnect.
+    cleanup();
+    render(
+      <SessionCard
+        {...base}
+        controllerState="Connected"
+        viewerCreated
+        monitors={[]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Hide the screen/ })).toBeNull();
   });
 });
 

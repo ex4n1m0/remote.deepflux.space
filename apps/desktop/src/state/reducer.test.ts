@@ -18,6 +18,9 @@ const poll = (patch: Partial<EngineStatus>): EngineStatus => ({
   active_monitor: null,
   quality: "balanced",
   encoder: null,
+  viewer_suppressed: false,
+  session_agent: false,
+  streaming_suppressed: false,
   counters: {
     input_sent_fast: 0,
     input_sent_reliable: 0,

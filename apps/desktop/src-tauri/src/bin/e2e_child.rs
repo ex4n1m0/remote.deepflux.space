@@ -388,6 +388,7 @@ fn run_controller(
             code: host_device,
             pairing_secret: None,
             requester_name: None,
+            agent: false,
         })
         .expect("connect");
     // Connected.
@@ -605,6 +606,7 @@ fn run_controller_expect_connect_failure(
             code: host_device,
             pairing_secret: None,
             requester_name: None,
+            agent: false,
         })
         .expect("connect");
     let mut ended = None;

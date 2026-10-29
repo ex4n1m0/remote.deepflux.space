@@ -1013,39 +1013,43 @@ legend {
   border-style: dashed;
 }
 
-/* Destination toggle (2026-10-28): who the composer addresses — the
- * machine's human or its assistant (the remote-agent chat box). */
-.conversation-dest {
-  border-top: 1px solid var(--line);
-  padding: 8px 12px 0;
+/* ── Agent chat box (session-gated): the peer machine's assistant ──── */
+
+.agent-box {
+  flex: 0 1 auto;
+  max-height: 320px;
+}
+
+.agent-box-head {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.dest-option {
+.agent-box-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* The Agent connect verb on the machine page — secondary to Control. */
+.machine-agent {
   border: 1px solid var(--line);
   background: var(--panel-2);
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 14px;
   cursor: pointer;
 }
 
-.dest-option.active {
+.machine-agent:hover:not(:disabled) {
   border-color: #1d4ed8;
-  background: #1d4ed833;
-  font-weight: 600;
 }
 
-.dest-option:disabled {
+.machine-agent:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.dest-hint {
-  margin-left: 4px;
 }
 
 .conversation-compose {

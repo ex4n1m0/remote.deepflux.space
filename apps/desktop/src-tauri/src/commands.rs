@@ -898,8 +898,24 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
             code,
             pairing_secret,
             requester_name: Some(requester_name),
+            agent: args.agent,
         })
     })
+}
+
+/// Attach the viewer window to a live agent session ("show the screen"):
+/// the same session keeps running — the visual is monitoring only, and
+/// the host starts streaming again.
+#[tauri::command]
+pub fn viewer_show(app: AppHandle) -> CmdResult<()> {
+    with_engine(&app, |handle| handle.send(EngineCmd::ViewerShow))
+}
+
+/// Detach the viewer from a live agent session ("hide the screen"):
+/// chat-only again, the host stops streaming. The session stays.
+#[tauri::command]
+pub fn viewer_hide(app: AppHandle) -> CmdResult<()> {
+    with_engine(&app, |handle| handle.send(EngineCmd::ViewerHide))
 }
 
 #[tauri::command]

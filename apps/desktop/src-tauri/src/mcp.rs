@@ -270,6 +270,7 @@ impl AgentBridge {
                 code: device_code,
                 pairing_secret,
                 requester_name: Some(requester_name),
+                agent: false,
             })
         }) {
             Ok(()) => {

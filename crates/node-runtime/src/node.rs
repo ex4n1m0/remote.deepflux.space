@@ -373,6 +373,31 @@ impl Node {
         self.step_controller(ControllerEvent::Start { capabilities }, observer);
     }
 
+    /// Update the controller-role capability snapshot (what the
+    /// direct-path `Hello` sends at establishment). The engine refreshes
+    /// it before each connect so an agent session's `Hello` carries the
+    /// current `VIDEO_SUPPRESSED` bit — and clears it again for visual
+    /// connects. No signaling effect: registration caps stay as they
+    /// were at role start.
+    pub fn set_controller_caps(&mut self, capabilities: Capabilities) {
+        self.controller_caps = Some(capabilities);
+    }
+
+    /// Re-send the direct-path `Hello` with the current controller caps
+    /// (mid-session capability refresh). The host re-answers
+    /// `HelloAck` and re-reads the flags — this is how the controller
+    /// toggles the host's video streaming on/off during an agent
+    /// session. Returns whether a caps snapshot existed to send.
+    pub fn resend_controller_hello(&mut self) -> bool {
+        if let Some(caps) = self.controller_caps.clone() {
+            let _ = self.send_wire(Channel::Control, &WireMessage::Hello { capabilities: caps });
+            self.counters.hello_sent += 1;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Controller user asked to control `host_device_id`, with the
     /// node-level simultaneous-call rule (`World::controller_connect`):
     /// if this node's host already holds an inbound session toward the

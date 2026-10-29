@@ -67,6 +67,11 @@ pub struct SetQualityArgs {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectArgs {
     pub code: String,
+    /// Agent session (chat-only connect): true suppresses the viewer —
+    /// the session exists to talk to the peer's assistant; attach the
+    /// visual later with `viewer_show` to monitor it.
+    #[serde(default)]
+    pub agent: bool,
 }
 
 // -- account / computers (post-MVP accounts phase) ---------------------------
@@ -292,6 +297,13 @@ pub struct EngineStatusDto {
     pub active_monitor: Option<String>,
     pub quality: String,
     pub encoder: Option<String>,
+    /// Agent session: the viewer is currently suppressed (chat-only) —
+    /// the UI's "show the screen" affordance while true.
+    pub viewer_suppressed: bool,
+    /// The live controller session was initiated with the Agent verb.
+    pub session_agent: bool,
+    /// Host side: the connected controller asked us not to stream video.
+    pub streaming_suppressed: bool,
     pub counters: EngineCounters,
 }
 
@@ -312,6 +324,9 @@ impl From<EngineStatus> for EngineStatusDto {
             active_monitor: status.active_monitor,
             quality: status.quality,
             encoder: status.encoder,
+            viewer_suppressed: status.viewer_suppressed,
+            session_agent: status.session_agent,
+            streaming_suppressed: status.streaming_suppressed,
             counters: status.counters,
         }
     }

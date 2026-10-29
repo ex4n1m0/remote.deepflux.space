@@ -241,6 +241,8 @@ pub fn run() {
             commands::list_monitors,
             commands::viewer_set_scale,
             commands::viewer_toggle_fullscreen,
+            commands::viewer_show,
+            commands::viewer_hide,
             agent::agent_configure,
             agent::agent_status,
             agent::agent_send,

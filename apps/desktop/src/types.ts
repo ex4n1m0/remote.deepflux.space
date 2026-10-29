@@ -168,6 +168,12 @@ export interface EngineStatus {
   active_monitor: string | null;
   quality: string;
   encoder: string | null;
+  /** Agent session: the viewer is suppressed (chat-only) right now. */
+  viewer_suppressed: boolean;
+  /** This controller session was initiated with the Agent verb. */
+  session_agent: boolean;
+  /** Host side: the connected controller asked us not to stream video. */
+  streaming_suppressed: boolean;
   counters: EngineCounters;
 }
 

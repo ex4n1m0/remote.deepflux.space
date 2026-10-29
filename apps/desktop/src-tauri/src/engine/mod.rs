@@ -84,7 +84,25 @@ pub enum EngineCmd {
         /// `connect_request` so the host's prompt says who is asking.
         /// The command layer refuses to connect without one.
         requester_name: Option<String>,
+        /// Agent session: connect WITHOUT the viewer. The session exists
+        /// to chat with the peer's assistant, so the controller pipeline
+        /// (decode/present/input) stays down until
+        /// [`EngineCmd::ViewerShow`] attaches it for monitoring.
+        agent: bool,
     },
+    /// Attach the viewer to a live agent session ("show the screen"):
+    /// clears viewer suppression so the next reconcile starts the
+    /// controller pipeline on the SAME session — the visual is then just
+    /// monitoring what the agent does. Closing the viewer on an
+    /// agent-origin session drops back to chat-only instead of ending
+    /// the session.
+    ViewerShow,
+    /// Detach the viewer from a live agent session ("hide the screen"):
+    /// back to chat-only WITHOUT ending the session, and the host stops
+    /// streaming video (the `VIDEO_SUPPRESSED` bit goes out again).
+    /// Agent-origin sessions only — a visual session ends when its
+    /// viewer closes.
+    ViewerHide,
     CancelConnect,
     Disconnect,
     /// ADR-006: `remember` is the consent dialog's "remember this machine"
@@ -585,6 +603,16 @@ pub struct EngineStatus {
     pub active_monitor: Option<String>,
     pub quality: String,
     pub encoder: Option<String>,
+    /// Agent session: the viewer is currently suppressed (chat-only).
+    /// True only while a live controller session runs without its
+    /// pipeline — the UI's "show the screen" affordance.
+    pub viewer_suppressed: bool,
+    /// This controller session was initiated with the Agent verb (chat
+    /// only, viewer attached on demand) — sticky for the session.
+    pub session_agent: bool,
+    /// Host side: the connected controller asked us not to stream video
+    /// (`VIDEO_SUPPRESSED` in its `Hello`) — capture/encode stay down.
+    pub streaming_suppressed: bool,
     pub counters: EngineCounters,
     pub input: diag::InputStat,
 }
@@ -603,6 +631,9 @@ struct SharedInner {
     quality: String,
     encoder: Option<String>,
     viewer_scale: String,
+    viewer_suppressed: bool,
+    session_agent: bool,
+    streaming_suppressed: bool,
 }
 
 /// Status shared between the engine loop and external readers (the
@@ -652,6 +683,9 @@ impl EngineShared {
             active_monitor: inner.active_monitor.clone(),
             quality: inner.quality.clone(),
             encoder: inner.encoder.clone(),
+            viewer_suppressed: inner.viewer_suppressed,
+            session_agent: inner.session_agent,
+            streaming_suppressed: inner.streaming_suppressed,
             counters,
             input,
         }
@@ -745,6 +779,25 @@ impl EngineShared {
 
     fn set_encoder(&self, describe: Option<String>) {
         self.inner.lock().expect("engine shared").encoder = describe;
+    }
+
+    /// Agent-session viewer suppression (level; see
+    /// [`Engine::viewer_suppressed`]).
+    fn set_viewer_suppressed(&self, suppressed: bool) {
+        self.inner.lock().expect("engine shared").viewer_suppressed = suppressed;
+    }
+
+    /// The live controller session's origin verb (Agent vs Control).
+    fn set_session_agent(&self, agent: bool) {
+        self.inner.lock().expect("engine shared").session_agent = agent;
+    }
+
+    /// Host side: the peer's video-suppression request (level).
+    fn set_streaming_suppressed(&self, suppressed: bool) {
+        self.inner
+            .lock()
+            .expect("engine shared")
+            .streaming_suppressed = suppressed;
     }
 
     fn set_viewer_scale(&self, scale: String) {
@@ -931,6 +984,7 @@ struct PendingConnect {
     code: String,
     pairing_secret: Option<crate::chat::PairingSecret>,
     requester_name: Option<String>,
+    agent: bool,
     queued_at: Instant,
 }
 
@@ -958,6 +1012,7 @@ struct Engine {
     pool: pool::CodecPool,
     observer: observer::EngineObserver,
     events: SyncSender<EngineEvent>,
+    shared: Arc<EngineShared>,
     input_pump: Option<Arc<Mutex<InputPump<SinkBox>>>>,
     send_sink: Option<Arc<Mutex<input_windows::SendInputSink>>>,
     host_pipeline: Option<host::HostPipeline>,
@@ -974,6 +1029,20 @@ struct Engine {
     /// role reaches Online; dropped (with a clear error) if it never
     /// does. Cleared by cancel/disconnect/stop.
     pending_connect: Option<PendingConnect>,
+    /// Agent session (chat-only connect): this controller session was
+    /// initiated without the viewer. Sticky for the session's lifetime —
+    /// closing a monitoring viewer returns to chat-only instead of
+    /// disconnecting.
+    session_agent_origin: bool,
+    /// Rendering suppression right now: true while the agent session
+    /// runs viewer-less (and again after the user closes a monitoring
+    /// viewer). `ViewerShow` clears it; session end resets it.
+    viewer_suppressed: bool,
+    /// Host side: the connected controller asked us not to stream video
+    /// (its `Hello` carries `VIDEO_SUPPRESSED` — an agent session). The
+    /// capture/encode/stream pipeline stays down until the bit clears;
+    /// a peer that never sends the bit streams normally.
+    peer_video_suppressed: bool,
     session_end_handled: bool,
     selected_monitor: Option<String>,
     selected_plan: Option<quality::QualityPlan>,
@@ -1129,6 +1198,7 @@ fn run(
         pool: pool::CodecPool::new(),
         observer,
         events: event_tx,
+        shared: Arc::clone(&shared),
         input_pump: None,
         send_sink: None,
         host_pipeline: None,
@@ -1141,6 +1211,9 @@ fn run(
         host_reonline_at: None,
         ctrl_reonline_at: None,
         pending_connect: None,
+        session_agent_origin: false,
+        viewer_suppressed: false,
+        peer_video_suppressed: false,
         session_end_handled: false,
         selected_monitor: None,
         selected_plan: None,
@@ -1278,7 +1351,10 @@ impl Engine {
                 code,
                 pairing_secret,
                 requester_name,
-            } => self.cmd_connect(code, pairing_secret, requester_name),
+                agent,
+            } => self.cmd_connect(code, pairing_secret, requester_name, agent),
+            EngineCmd::ViewerShow => self.cmd_viewer_show(),
+            EngineCmd::ViewerHide => self.cmd_viewer_hide(),
             EngineCmd::CancelConnect => {
                 self.pending_connect = None;
                 match self.node.controller_state() {
@@ -1414,6 +1490,7 @@ impl Engine {
         code: String,
         pairing_secret: Option<crate::chat::PairingSecret>,
         requester_name: Option<String>,
+        agent: bool,
     ) {
         if host_in_session(self.node.host_state()) {
             self.error(
@@ -1424,7 +1501,9 @@ impl Engine {
             return;
         }
         match self.node.controller_state() {
-            ControllerState::Online => self.connect_now(code, pairing_secret, requester_name),
+            ControllerState::Online => {
+                self.connect_now(code, pairing_secret, requester_name, agent)
+            }
             state if controller_in_session(state) => self.error(
                 "role_conflict",
                 "Finish or cancel the current control session first.",
@@ -1445,10 +1524,72 @@ impl Engine {
                     code,
                     pairing_secret,
                     requester_name,
+                    agent,
                     queued_at: Instant::now(),
                 });
             }
         }
+    }
+
+    /// Monitor mode: attach the viewer to a live agent session. The same
+    /// WebRTC session keeps running; only the controller pipeline
+    /// (decode/present/input) comes up.
+    fn cmd_viewer_show(&mut self) {
+        if !controller_in_session(self.node.controller_state()) {
+            self.error(
+                "no_session",
+                "No live control session — connect to a machine first.",
+                None,
+            );
+            return;
+        }
+        if self.viewer_suppressed {
+            self.info("viewer attached — the remote screen window is opening");
+            self.set_agent_video(false);
+        } else {
+            self.info("viewer already attached");
+        }
+    }
+
+    /// Stop watching without ending the agent session: viewer down, host
+    /// streaming back off. Visual sessions keep close=disconnect, so this
+    /// is refused there.
+    fn cmd_viewer_hide(&mut self) {
+        if !controller_in_session(self.node.controller_state()) {
+            self.error(
+                "no_session",
+                "No live control session — connect to a machine first.",
+                None,
+            );
+            return;
+        }
+        if !self.session_agent_origin {
+            self.error(
+                "not_agent_session",
+                "A visual session ends when its viewer closes — hide is for agent sessions.",
+                None,
+            );
+            return;
+        }
+        if self.viewer_suppressed {
+            self.info("viewer already detached");
+            return;
+        }
+        self.info("viewer detached — back to the agent session (chat only)");
+        self.set_agent_video(true);
+    }
+
+    /// The one toggle for in-session agent video state (show/hide/close
+    /// revert): local rendering suppression AND the host-side streaming
+    /// request travel together — the refreshed `Hello` flips the peer's
+    /// `VIDEO_SUPPRESSED` view, so the host's capture/encode/stream
+    /// pipeline follows within a reconcile tick.
+    fn set_agent_video(&mut self, suppressed: bool) {
+        self.viewer_suppressed = suppressed;
+        self.shared.set_viewer_suppressed(suppressed);
+        self.node
+            .set_controller_caps(controller_caps_with(suppressed));
+        self.node.resend_controller_hello();
     }
 
     /// The connect body shared by the immediate and deferred paths.
@@ -1457,8 +1598,22 @@ impl Engine {
         code: String,
         pairing_secret: Option<crate::chat::PairingSecret>,
         requester_name: Option<String>,
+        agent: bool,
     ) {
         self.pending_connect = None;
+        // Agent session: arm viewer suppression for the whole session —
+        // the reconcile block then never starts the controller pipeline
+        // until `ViewerShow` clears it. Reset on session end.
+        self.session_agent_origin = agent;
+        self.viewer_suppressed = agent;
+        self.shared.set_viewer_suppressed(agent);
+        self.shared.set_session_agent(agent);
+        // Stamp the caps snapshot BEFORE establishment: the direct-path
+        // `Hello` (sent the moment the session opens) carries the
+        // `VIDEO_SUPPRESSED` bit, so the host never spins up
+        // capture/encode for a chat-only session. Visual connects clear
+        // any stale bit from a previous agent session.
+        self.node.set_controller_caps(controller_caps_with(agent));
         self.ensure_transport(MachineKind::Controller);
         self.observer.set_current_peer(code.clone());
         let secret = pairing_secret.as_ref().map(|s| s.0.as_str());
@@ -1483,9 +1638,12 @@ impl Engine {
             return;
         }
         match self.node.controller_state() {
-            ControllerState::Online => {
-                self.connect_now(pending.code, pending.pairing_secret, pending.requester_name)
-            }
+            ControllerState::Online => self.connect_now(
+                pending.code,
+                pending.pairing_secret,
+                pending.requester_name,
+                pending.agent,
+            ),
             // RegistrationFailed dropped the role back to Idle — restart
             // it (legal from Idle) so the deferral rides the retry.
             ControllerState::Idle if pending.queued_at.elapsed() < PENDING_CONNECT_TIMEOUT => {
@@ -1674,19 +1832,33 @@ impl Engine {
             self.flags_mut().force_keyframe = true; // pipeline not up yet; keep
         }
 
-        // Host pipeline start/stop.
-        if want_streaming && self.host_pipeline.is_none() && self.real_pipeline_ready() {
+        // Host pipeline start/stop. `peer_video_suppressed` (the
+        // controller's chat-only request in its `Hello`) gates the start:
+        // an agent session's host never captures or encodes, and a
+        // mid-session `Hello` flip starts/stops streaming under the SAME
+        // session (monitor attach/detach).
+        if want_streaming
+            && !self.peer_video_suppressed
+            && self.host_pipeline.is_none()
+            && self.real_pipeline_ready()
+        {
             self.start_host_pipeline();
         }
-        if !want_streaming && self.host_pipeline.is_some() {
+        if (!want_streaming || self.peer_video_suppressed) && self.host_pipeline.is_some() {
             self.stop_host_pipeline();
         }
 
-        // Controller pipeline start/stop.
-        if want_rendering && self.controller_pipeline.is_none() && self.real_pipeline_ready() {
+        // Controller pipeline start/stop. `viewer_suppressed` (agent
+        // session) gates the start: the session rides the data channels
+        // alone — no decode, no viewer, no input — until `ViewerShow`.
+        if want_rendering
+            && !self.viewer_suppressed
+            && self.controller_pipeline.is_none()
+            && self.real_pipeline_ready()
+        {
             self.start_controller_pipeline();
         }
-        if !want_rendering && self.controller_pipeline.is_some() {
+        if (!want_rendering || self.viewer_suppressed) && self.controller_pipeline.is_some() {
             self.stop_controller_pipeline();
         }
 
@@ -1699,29 +1871,42 @@ impl Engine {
             next.want_rendering = false;
         }
 
-        // Viewer window closed by the user: treat as disconnect intent —
-        // data-plane goodbye first (the host's key safety fires on it),
-        // then the machine transition (F50 wiring completed).
+        // Viewer window closed by the user. A visual session treats it as
+        // disconnect intent — data-plane goodbye first (the host's key
+        // safety fires on it), then the machine transition (F50 wiring
+        // completed). An agent-origin session just drops back to
+        // chat-only: the viewer was a monitor, closing it must not kill
+        // the agent conversation.
         if viewer_closed
             && matches!(
                 self.node.controller_state(),
                 ControllerState::Connected { .. }
             )
         {
-            self.info("viewer window closed; disconnecting");
-            let _ = self.node.send_wire(
-                Channel::Control,
-                &WireMessage::Disconnect {
-                    reason: protocol::wire::ControlDisconnectReason::User,
-                },
-            );
-            self.node.controller_disconnect(&mut self.observer);
-            // The machine fires StopRendering DURING this call; the flag
-            // snapshot taken above is stale-true and would respawn the
-            // (user-closed) viewer window on the next iteration if the
-            // snapshot restore clobbered it.
-            next.want_rendering = false;
-            next.want_streaming = false;
+            if self.session_agent_origin {
+                self.info("viewer window closed; back to the agent session (chat only)");
+                // Suppression back on, and the refreshed `Hello` tells
+                // the host to stop streaming (it was monitoring).
+                self.set_agent_video(true);
+                // `want_rendering` stays armed (level flag, no
+                // StopRendering fired) — suppression alone keeps the
+                // pipeline down until the next `ViewerShow`.
+            } else {
+                self.info("viewer window closed; disconnecting");
+                let _ = self.node.send_wire(
+                    Channel::Control,
+                    &WireMessage::Disconnect {
+                        reason: protocol::wire::ControlDisconnectReason::User,
+                    },
+                );
+                self.node.controller_disconnect(&mut self.observer);
+                // The machine fires StopRendering DURING this call; the flag
+                // snapshot taken above is stale-true and would respawn the
+                // (user-closed) viewer window on the next iteration if the
+                // snapshot restore clobbered it.
+                next.want_rendering = false;
+                next.want_streaming = false;
+            }
         }
 
         // Session-end edges: retire the dead session's transport and
@@ -1737,6 +1922,18 @@ impl Engine {
                 pump.lock()
                     .expect("input pump")
                     .all_keys_up(AllKeysUpTrigger::Disconnect);
+            }
+            // Agent-session flags retire with the session: the next
+            // connect (either verb) starts from a clean visual default.
+            self.session_agent_origin = false;
+            if self.viewer_suppressed {
+                self.viewer_suppressed = false;
+                self.shared.set_viewer_suppressed(false);
+            }
+            self.shared.set_session_agent(false);
+            if self.peer_video_suppressed {
+                self.peer_video_suppressed = false;
+                self.shared.set_streaming_suppressed(false);
             }
             if self.auto_reonline {
                 if self.host_started && self.host_reonline_at.is_none() && host_down {
@@ -1802,6 +1999,20 @@ impl Engine {
             .collect::<Vec<_>>();
         self.observer.set_peer_monitors(monitors.clone());
         self.emit(EngineEvent::PeerCaps { monitors });
+        // Host side: the controller's video-suppression request rides the
+        // same `Hello`/`HelloAck` (also re-sent mid-session to toggle).
+        let video_off = caps.features.has(FeatureFlags::VIDEO_SUPPRESSED);
+        if video_off != self.peer_video_suppressed {
+            self.peer_video_suppressed = video_off;
+            self.shared.set_streaming_suppressed(video_off);
+            if host_in_session(self.node.host_state()) {
+                self.info(if video_off {
+                    "controller asked for chat-only — video streaming off"
+                } else {
+                    "controller attached the screen — video streaming on"
+                });
+            }
+        }
     }
 
     fn start_host_pipeline(&mut self) {
@@ -2719,6 +2930,18 @@ fn controller_caps() -> Capabilities {
         max_bitrate_kbps: 50_000,
         features,
     }
+}
+
+/// Controller caps with the agent-session video bit stamped to match the
+/// CURRENT suppression state — what the direct-path `Hello` sends. The
+/// bit is additive: hosts that predate it stream anyway (the controller
+/// drops the frames), which is exactly the pre-0.9.4 behavior.
+fn controller_caps_with(video_suppressed: bool) -> Capabilities {
+    let mut caps = controller_caps();
+    if video_suppressed {
+        caps.features = caps.features.with(FeatureFlags::VIDEO_SUPPRESSED);
+    }
+    caps
 }
 
 fn host_caps_stub() -> Capabilities {

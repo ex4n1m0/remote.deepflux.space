@@ -12,7 +12,7 @@ export interface ChatBinding {
   lines: ChatLine[];
   sending: boolean;
   /** Send a line to this machine. `toAgent` addresses the peer's
-   * assistant (the Conversation toggle) — allowed only while a session
+   * assistant (the AgentChat box) — allowed only while a session
    * with that machine is live (the backend refuses otherwise). */
   send: (text: string, toAgent?: boolean) => Promise<void>;
   refresh: () => Promise<void>;

@@ -166,8 +166,13 @@ bitmask re-negotiated in binary on the direct path) are additive: a peer
 that predates a bit parses and ignores it. Current bits: trickle-ice,
 cursor-channel, input-fast, h264-hardware, `AI_SESSION = 1<<4`
 (ADR-004: changes only the host consent prompt's wording — an
-agent-driven controller), and `PAIRING_REMEMBER = 1<<5` (ADR-006: the
-host gates pairing acks on the consent dialog's "remember" choice).
+agent-driven controller), `PAIRING_REMEMBER = 1<<5` (ADR-006: the
+host gates pairing acks on the consent dialog's "remember" choice),
+and `VIDEO_SUPPRESSED = 1<<6` (agent sessions, 0.9.4: the controller
+runs chat-only; the host keeps its capture/encode/stream pipeline
+down until the bit clears — the controller re-sends the direct-path
+`Hello` mid-session to toggle it when attaching/detaching the
+monitoring viewer).
 
 Rules:
 
