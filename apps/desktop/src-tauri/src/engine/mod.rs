@@ -2295,7 +2295,11 @@ impl Engine {
     /// input-fast semantics) and dropped entirely when no controller
     /// pipeline (and therefore no session) exists.
     fn send_agent_input(&mut self, mut batch: Vec<AgentInput>) {
-        if self.controller_pipeline.is_none() {
+        // Control follows the screen (user rule, 0.11.2): while an agent
+        // session runs chat-only (`viewer_suppressed`), input is refused —
+        // the pipeline check below already implies it, but the rule is
+        // deliberate and stays legible here.
+        if self.viewer_suppressed || self.controller_pipeline.is_none() {
             return;
         }
         if batch.len() > MAX_AGENT_BATCH {

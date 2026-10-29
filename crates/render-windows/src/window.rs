@@ -7,13 +7,14 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRect, CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
     DispatchMessageW, GWL_STYLE, GetClientRect, GetWindowPlacement, MSG, PM_REMOVE, PeekMessageW,
     RegisterClassW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, TranslateMessage, UnregisterClassW,
-    WINDOW_EX_STYLE, WINDOWPLACEMENT, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WNDCLASSW,
-    WS_OVERLAPPEDWINDOW, WS_POPUP, WS_VISIBLE,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, TranslateMessage,
+    UnregisterClassW, WINDOW_EX_STYLE, WINDOWPLACEMENT, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND,
+    WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_VISIBLE,
 };
 use windows::core::PCWSTR;
 use windows::core::w;
@@ -107,6 +108,23 @@ impl PresenterWindow {
             if GetClientRect(self.hwnd, &mut rect).is_ok() {
                 self.client = (rect.right - rect.left, rect.bottom - rect.top);
             }
+        }
+    }
+
+    /// Bring the window to the foreground and give it keyboard focus
+    /// (0.11.2: called right after the viewer is created — "show the
+    /// screen" implies full mouse+keyboard control, and an unfocused
+    /// viewer window silently swallows the keyboard half). Best-effort:
+    /// Windows only lets the foreground process claim foreground, which
+    /// holds at this call site (the user just clicked in our app);
+    /// failure leaves the pre-Windows behavior (click to focus).
+    /// Must be called on the window's owning thread (`SetFocus` is
+    /// thread-bound; `SetForegroundWindow` is not, but the owner is
+    /// where it matters).
+    pub fn focus(&self) {
+        unsafe {
+            let _ = SetForegroundWindow(self.hwnd);
+            let _ = SetFocus(Some(self.hwnd));
         }
     }
 

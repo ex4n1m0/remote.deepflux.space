@@ -180,6 +180,11 @@ impl ViewerWindow {
         let capture = WindowInputCapture::attach(window.hwnd())
             .map_err(|e| format!("viewer input capture: {e}"))?;
         ctl.attach_input(Arc::clone(&capture));
+        // 0.11.2: showing the screen means full control — take keyboard
+        // focus immediately so mouse AND keyboard act on the remote from
+        // the first moment the viewer appears (no click-to-focus step).
+        window.focus();
+        ctl.attach_input(Arc::clone(&capture));
         let viewer = Self {
             window,
             renderer,

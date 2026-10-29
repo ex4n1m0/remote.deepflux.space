@@ -367,7 +367,7 @@ export default function App() {
                     type="button"
                     className="primary machine-control"
                     onClick={() => engine.run(() => api.viewerShow())}
-                    title="Attach the viewer window to this live session — watch what the assistant is doing; closing it keeps the session"
+                    title="Show the remote screen and control it — your mouse and keyboard go to it; closing the window keeps the chat session"
                   >
                     Show screen
                   </button>
