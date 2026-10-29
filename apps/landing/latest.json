@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.11.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.0-x64-setup.exe",
-  "sha256_hex": "dd07ad53a007f7c1252f32bb2fec79ef737d0589c2d8b4b38ecf033e7157d7eb",
-  "size_bytes": 7620185,
-  "notes": "0.11.0 \u2014 the discovery list is back. Machines running the app appear in your list on their own: no code typing, one row per machine, duplicates impossible. Their user still answers the approval request just once (Always allow) \u2014 after that it connects silently. Same sealed directory as before; the server never sees machine names.",
+  "version": "0.11.1",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.1-x64-setup.exe",
+  "sha256_hex": "1b08d12e3368cc5cee37d885bcc367d7cdb63b9088502eee949e50d679274c4d",
+  "size_bytes": 7647140,
+  "notes": "0.11.1 \u2014 agent replies now come back to the machine that asked. The reply used to rely on the assistant choosing to send it; now the app delivers it automatically \u2014 in the agent chat box during a session, or as a chat message if the session ended. Also stops your own assistant from waking on the reply it just received.",
   "published_at": "2026-10-29"
 }
