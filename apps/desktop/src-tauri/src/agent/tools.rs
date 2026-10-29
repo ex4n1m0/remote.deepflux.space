@@ -822,7 +822,7 @@ pub fn execute(
                 Ok(command) => {
                     let executed = run_shell(&command, "", Duration::from_secs(20))
                         .unwrap_or_else(|e| format!("run failed: {e}"));
-                    ToolOutput::text(format!("scheduled: {action} (delay {delay}s)\\n{executed}"))
+                    ToolOutput::text(format!("scheduled: {action} (delay {delay}s)\n{executed}"))
                 }
                 Err(err) => ToolOutput::text(format!("power failed: {err}")),
             }
@@ -830,7 +830,7 @@ pub fn execute(
         "power_cancel" => {
             let executed = run_shell("shutdown /a", "", Duration::from_secs(20))
                 .unwrap_or_else(|e| format!("run failed: {e}"));
-            ToolOutput::text(format!("cancel attempted\\n{executed}"))
+            ToolOutput::text(format!("cancel attempted\n{executed}"))
         }
         "search" => {
             let Some(root) = args.get("root").and_then(|v| v.as_str()) else {
@@ -2236,10 +2236,10 @@ mod tests {
 
     #[test]
     fn shell_output_is_capped_even_when_huge() {
-        // ~5 MB of output must come back truncated, not buffered whole
+        // ~2.2 MB of output must come back truncated, not buffered whole
         // (pump store cap is 1 MiB; the report caps at 32 KiB).
         let out = run_shell(
-            "for /l %i in (1,1,20000) do @echo 0123456789abcdefghij",
+            "for /l %i in (1,1,100000) do @echo 0123456789abcdefghij",
             "",
             Duration::from_secs(120),
         )

@@ -389,6 +389,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
             .expect("assistant busy") = true;
         emit(&app, AssistantEvent::Busy { on: true });
         log.push(ChatTurn::user(&user_text));
+        let turn_mark = log.len();
         // A panicking tool must cost ONE turn, not the whole assistant
         // (the worker thread is the only consumer of this channel —
         // review blocking finding 1's blast radius, closed generally).
@@ -439,7 +440,11 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 emit(&app, AssistantEvent::Done { ok: true });
             }
             Err(err) => {
-                log.pop(); // drop the failed user turn; the UI shows the error
+                // Drop the WHOLE failed turn (reviewer hardening): a bare
+                // pop leaves a dangling assistant-tool_calls message when
+                // the failure hit after tool results — providers reject
+                // that shape until history drains.
+                log.truncate(turn_mark.saturating_sub(1));
                 emit(&app, AssistantEvent::Error { message: err });
                 emit(&app, AssistantEvent::Done { ok: false });
             }
