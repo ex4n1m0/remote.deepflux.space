@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.10.2",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.2-x64-setup.exe",
-  "sha256_hex": "73a7a35988faa7be8b9dc4049126708628eba4de3ff645fa41944edc1b097095",
-  "size_bytes": 7586797,
-  "notes": "Review-hardening release. A mistyped connection code is now caught immediately with a clear message (it used to be misreported as the other machine being offline). Clearer, honest wording for declined/unreachable connections, the consent prompt shows the machine code on its own line, your own machine's name + copyable code on the This-machine card, name-length protections, and assorted dead-code cleanup.",
+  "version": "0.11.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.0-x64-setup.exe",
+  "sha256_hex": "dd07ad53a007f7c1252f32bb2fec79ef737d0589c2d8b4b38ecf033e7157d7eb",
+  "size_bytes": 7620185,
+  "notes": "0.11.0 \u2014 the discovery list is back. Machines running the app appear in your list on their own: no code typing, one row per machine, duplicates impossible. Their user still answers the approval request just once (Always allow) \u2014 after that it connects silently. Same sealed directory as before; the server never sees machine names.",
   "published_at": "2026-10-29"
 }
