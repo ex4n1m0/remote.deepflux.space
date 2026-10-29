@@ -60,6 +60,9 @@ windows = { workspace = true, features = [
     "Win32_Security",
     "Win32_System_Threading",
     "Win32_UI_Shell",
+    # ADR-012 release A: installed-app inventory reads the Uninstall hives
+    # (agent/apps.rs).
+    "Win32_System_Registry",
 ] }
 # CSPRNG for device ids and the one-time session secret (same source the
 # signaling client uses for tokens).

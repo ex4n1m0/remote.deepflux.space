@@ -8,6 +8,7 @@
 //! key never appears in events, logs, or settings JSON — it lives in the
 //! Windows Credential Manager (`agent-api-key`).
 
+pub mod apps;
 pub mod tools;
 
 use std::collections::VecDeque;
