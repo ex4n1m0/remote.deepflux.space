@@ -2085,7 +2085,7 @@ fn fleet_run(app: &AppHandle, instruction: &str, targets: &[String]) -> String {
     })
     .unwrap_or(true);
     if busy {
-        return "a remote session is live on this machine — finish it first                 (fleet takes over the connection for each target)"
+        return "a remote session is live on this machine — finish it first (fleet takes over the connection for each target)"
             .to_owned();
     }
     let started = std::time::Instant::now();
@@ -2182,7 +2182,7 @@ fn fleet_one(
         if let Some(answer) = history
             .iter()
             .rev()
-            .find(|l| l.sender == "peer-agent" && !before.contains(&l.id))
+            .find(|l| l.sender == "peer-agent" && !before.contains(&l.id) && !l.body.is_empty())
             .map(|l| l.body.clone())
         {
             let clipped: String = answer.chars().take(600).collect();

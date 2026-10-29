@@ -922,9 +922,10 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         s.stage = "install".into();
         s.error.clear();
     });
-    // Confirmation marker (0.15.0): the relaunch reads this and says
-    // "Updated to X" — the silent-success gap from the 0.11.0 report.
-    write_update_marker(&app, env!("CARGO_PKG_VERSION"), &staged_version(&staged));
+    // NOTE: the confirmation marker is written only AFTER a successful
+    // installer spawn (below) — a marker left behind by a failed start
+    // would surface a false "restart once more" card on a later launch
+    // (review finding 3).
     let app_exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => return Err(bail(&format!("couldn't locate the app program: {e}"))),
@@ -944,6 +945,11 @@ pub fn install(app: AppHandle) -> Result<(), String> {
     if let Err(e) = spawned {
         return Err(bail(&format!("couldn't start the installer: {e}")));
     }
+    // Confirmation marker (0.15.0), written once the installer is really
+    // running: the relaunch reads this and says "Updated to X" — the
+    // silent-success gap from the 0.11.0 report. Nothing below can
+    // return, so the marker can never outlive a failed install start.
+    write_update_marker(&app, env!("CARGO_PKG_VERSION"), &staged_version(&staged));
     // The wrapper now owns the machine: shut down and get out of the way.
     crate::commands::shutdown_and_exit(&app);
     Ok(())
