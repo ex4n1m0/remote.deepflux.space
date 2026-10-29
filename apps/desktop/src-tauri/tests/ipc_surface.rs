@@ -290,6 +290,7 @@ fn command_argument_dtos_carry_metadata_only() {
                 default_viewer_scale: "fit".into(),
                 launch_at_login: false,
                 host_sharing: true,
+                agent_admin: true,
                 auto_update: true,
             })
             .unwrap(),

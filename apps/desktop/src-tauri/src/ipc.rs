@@ -24,6 +24,10 @@ pub struct SettingsPatch {
     /// ADR-009: answer connection requests (host presence at launch).
     #[serde(default = "default_true")]
     pub host_sharing: bool,
+    /// ADR-011: run elevated so the agent has admin rights (applies on
+    /// the next launch).
+    #[serde(default = "default_true")]
+    pub agent_admin: bool,
     /// Domains allowed for assistant downloads without asking (Settings
     /// UI editable; `agent_download_domains` in the store).
     #[serde(default)]
@@ -83,6 +87,9 @@ pub struct SettingsDto {
     /// ADR-009: answer connection requests (host presence at launch).
     #[serde(default = "default_true")]
     pub host_sharing: bool,
+    /// ADR-011: run elevated so the agent has admin rights.
+    #[serde(default = "default_true")]
+    pub agent_admin: bool,
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
     /// ADR-008: automatic update checks (Settings toggle).

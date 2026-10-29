@@ -249,6 +249,7 @@ describe("SettingsPanel", () => {
     default_viewer_scale: "fit",
     device_token: "t",
     host_sharing: true,
+  agent_admin: true,
     agent_base_url: "https://api.deepseek.com/v1",
     agent_model: "deepseek-flash",
     launch_at_login: false,

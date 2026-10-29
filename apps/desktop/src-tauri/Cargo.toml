@@ -56,6 +56,10 @@ windows = { workspace = true, features = [
     "Win32_Graphics_Gdi",
     # Account session tokens in the Windows Credential Manager (credstore.rs)
     "Win32_Security_Credentials",
+    # ADR-011 elevation: token check + ShellExecuteW runas (elevate.rs)
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
 ] }
 # CSPRNG for device ids and the one-time session secret (same source the
 # signaling client uses for tokens).

@@ -9,6 +9,7 @@ pub mod commands;
 pub mod credstore;
 pub mod directory;
 pub mod dl;
+pub mod elevate;
 pub mod engine;
 pub mod ipc;
 pub mod mcp;
@@ -97,6 +98,20 @@ pub fn run() {
             store
                 .adopt_identity_anchor(&crate::credstore::WindowsCredStore)
                 .map_err(|e| e.to_string())?;
+            // ADR-011 admin posture: relaunch elevated when the setting
+            // is on and this process is not (release builds only — dev
+            // and test runs stay put; DEEPFLUX_NO_ELEVATE=1 is the
+            // escape hatch). A declined UAC prompt or a failed spawn
+            // just continues unelevated — never a dead app.
+            if !cfg!(debug_assertions)
+                && store.settings().agent_admin
+                && !elevate::is_elevated()
+                && std::env::var("DEEPFLUX_NO_ELEVATE").as_deref() != Ok("1")
+                && elevate::relaunch_elevated()
+            {
+                std::process::exit(0);
+            }
+            let launch_at_login = store.settings().launch_at_login;
             app.manage(AppServices {
                 store: Mutex::new(store),
                 engine: Mutex::new(None),
@@ -109,6 +124,15 @@ pub fn run() {
             // Always-ready first-run default: login autostart on once
             // (idempotent — the flag persists; reversible in Settings).
             commands::enable_autostart_default(app.handle());
+            // ADR-011: while running elevated with login autostart on,
+            // keep the HIGHEST scheduled task in place (idempotent) so
+            // logon starts the admin app with no UAC prompt.
+            if elevate::is_elevated() && launch_at_login {
+                let exe = std::env::current_exe().unwrap_or_default();
+                if !exe.as_os_str().is_empty() && !elevate::ensure_admin_autostart(&exe) {
+                    eprintln!("[autostart] elevated task refresh failed (non-fatal)");
+                }
+            }
             // ADR-010: the family build auto-joins the circle from its
             // embedded key; the directory poller keeps the discovery list
             // fresh while online.

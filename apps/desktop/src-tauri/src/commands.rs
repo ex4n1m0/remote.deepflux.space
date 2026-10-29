@@ -587,6 +587,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         default_viewer_scale: s.default_viewer_scale.clone(),
         launch_at_login: s.launch_at_login,
         host_sharing: s.host_sharing,
+        agent_admin: s.agent_admin,
         agent_download_domains: s.agent_download_domains.clone(),
         auto_update: s.auto_update,
     })
@@ -612,6 +613,9 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         // (the always-ready role replay reads it at launch). ADR-010: it
         // also gates the directory entry — republish/remove on the flip.
         host_sharing: patch.host_sharing,
+        // ADR-011: applies on the next launch (the elevation gate in
+        // lib.rs reads it at startup).
+        agent_admin: patch.agent_admin,
         autostart_default_applied: store.settings().autostart_default_applied,
         // Assistant provider fields are managed via `agent_configure`,
         // not the settings patch — preserve them here.
@@ -621,6 +625,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         auto_update: patch.auto_update,
     };
     let sharing_flipped = store.settings().host_sharing != patch.host_sharing;
+    let admin_flipped = store.settings().agent_admin != patch.agent_admin;
     store.update_settings(next)?;
     drop(store);
     if sharing_flipped {
@@ -628,6 +633,13 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         // network best-effort off-thread — the poller retries puts.
         let handle = app.clone();
         std::thread::spawn(move || crate::directory::sync_visibility(&handle));
+    }
+    if admin_flipped {
+        // ADR-011: swap the autostart mechanism to match the posture
+        // (scheduled task vs Run key). When turning admin ON from an
+        // unelevated app the swap completes on the next (elevated)
+        // launch — the startup gate in lib.rs handles the relaunch.
+        let _ = set_launch_at_login(&app, patch.launch_at_login);
     }
     let s = app
         .state::<AppServices>()
@@ -644,6 +656,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_viewer_scale: s.default_viewer_scale,
         launch_at_login: s.launch_at_login,
         host_sharing: s.host_sharing,
+        agent_admin: s.agent_admin,
         agent_download_domains: s.agent_download_domains.clone(),
         auto_update: s.auto_update,
     })
@@ -1046,6 +1059,40 @@ pub fn update_dismiss(app: AppHandle) -> CmdResult<()> {
 // ---------------------------------------------------------------------------
 
 fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
+    // ADR-011: in admin mode (and while actually elevated) the logon
+    // autostart is a HIGHEST scheduled task — the registry Run key the
+    // plugin manages would start the app unelevated and trigger a UAC
+    // prompt on every boot. Otherwise (admin off, or not elevated right
+    // now — e.g. the UAC was declined) the plugin path applies and any
+    // stale admin task is removed so the two never double-start.
+    let admin = app
+        .state::<AppServices>()
+        .store
+        .lock()
+        .map(|s| s.settings().agent_admin)
+        .unwrap_or(false);
+    if enabled && admin && crate::elevate::is_elevated() {
+        match std::env::current_exe() {
+            Ok(exe) => {
+                if !crate::elevate::ensure_admin_autostart(&exe) {
+                    eprintln!("[autostart] elevated scheduled task failed; falling back");
+                    return plugin_autostart(app, true);
+                }
+                let _ = plugin_autostart(app, false);
+                return Ok(());
+            }
+            Err(err) => {
+                eprintln!("[autostart] no current exe: {err}; falling back");
+                return plugin_autostart(app, true);
+            }
+        }
+    }
+    let _ = crate::elevate::remove_admin_autostart();
+    plugin_autostart(app, enabled)
+}
+
+/// The registry Run-key autostart the plugin owns (unelevated starts).
+fn plugin_autostart(app: &AppHandle, enabled: bool) -> CmdResult<()> {
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app.autolaunch();
     let result = if enabled {

@@ -28,6 +28,7 @@ export function SettingsPanel({
   const [scale, setScale] = useState("fit");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [hostSharing, setHostSharing] = useState(true);
+  const [agentAdmin, setAgentAdmin] = useState(true);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [domains, setDomains] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,6 +42,7 @@ export function SettingsPanel({
     setScale(settings.default_viewer_scale);
     setLaunchAtLogin(settings.launch_at_login);
     setHostSharing(settings.host_sharing);
+    setAgentAdmin(settings.agent_admin);
     setAutoUpdate(settings.auto_update);
     setDomains((settings.agent_download_domains ?? []).join(", "));
   }
@@ -82,6 +84,7 @@ export function SettingsPanel({
               default_viewer_scale: scale,
               launch_at_login: launchAtLogin,
               host_sharing: hostSharing,
+              agent_admin: agentAdmin,
               auto_update: autoUpdate,
               agent_download_domains: domains
                 .split(",")
@@ -134,6 +137,16 @@ export function SettingsPanel({
               onChange={(event) => setLaunchAtLogin(event.target.checked)}
             />
             Launch at Windows login (stay reachable in the tray)
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={agentAdmin}
+              onChange={(event) => setAgentAdmin(event.target.checked)}
+            />
+            Run with administrator rights — the assistant can manage
+            anything on this computer (shell, files, programs). Takes
+            effect the next time DeepFlux starts; Windows may ask once.
           </label>
           <label className="settings-check">
             <input

@@ -57,6 +57,7 @@ Key docs: `docs/adr/ADR-001-architecture.md`,
 `docs/adr/ADR-002-webrtc-rs-behind-transport-trait.md`,
 `docs/adr/ADR-009-machine-name-identity-trusted-host-list.md`,
 `docs/adr/ADR-010-directory-discovery-restored.md`,
+`docs/adr/ADR-011-agent-admin-power.md`,
 `docs/adr/ADR-008-automatic-updates.md`,
 `docs/protocol/state-machines.md`, `docs/perf-counter-schema.md`.
 

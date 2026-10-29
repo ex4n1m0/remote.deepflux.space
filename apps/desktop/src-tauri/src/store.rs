@@ -41,6 +41,13 @@ pub struct AppSettings {
     /// prompt still gates every untrusted session.
     #[serde(default = "default_true")]
     pub host_sharing: bool,
+    /// ADR-011 (owner decision 2026-10-29: "a very powerful agent with
+    /// admin rights … access to everything"): run the app elevated so
+    /// the agent administers the whole machine — shell, files,
+    /// processes, and input into elevated windows (UIPI). Defaults ON;
+    /// turning it off returns to the unelevated posture on next launch.
+    #[serde(default = "default_true")]
+    pub agent_admin: bool,
     /// One-shot: the family-build autostart default has been applied —
     /// persisted so leave/rejoin never re-enables a login setting the
     /// user deliberately turned off.
@@ -101,6 +108,7 @@ impl Default for AppSettings {
             device_token: new_token(),
             launch_at_login: false,
             host_sharing: true,
+            agent_admin: true,
             autostart_default_applied: false,
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),

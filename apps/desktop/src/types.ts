@@ -75,6 +75,8 @@ export interface Settings {
   /** ADR-009: answer connection requests (host presence at launch). Was
    * the circle visibility toggle; default on. */
   host_sharing: boolean;
+  /** ADR-011: run elevated — the agent has admin rights. */
+  agent_admin: boolean;
   /** Domains the local user allowed the assistant to download from
    * without asking again ("always allow" on the confirm card). */
   agent_download_domains: string[];
