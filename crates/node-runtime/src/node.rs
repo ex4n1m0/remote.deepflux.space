@@ -146,7 +146,7 @@ pub trait NodeObserver {
     /// `pairing_proof_hex` is the controller's claimed pairing proof
     /// (ADR-006), forwarded verbatim — the app layer verifies it against
     /// its pairing store and decides silent-accept vs prompt.
-    /// `requester_name` (ADR-007) is the controller's account display name
+    /// `requester_name` (ADR-007) is the controller's machine display name
     /// from the wire — advisory, the device id stays the identity.
     #[allow(clippy::too_many_arguments)]
     fn prompt_consent(
@@ -411,7 +411,7 @@ impl Node {
     /// `Send` action in place. The secret itself never appears in any
     /// envelope or log.
     ///
-    /// `requester_name` (ADR-007): the caller's account display name,
+    /// `requester_name` (ADR-007): the caller's machine display name,
     /// stamped the same way. Our 0.8 app refuses to connect without one;
     /// `None` keeps the field absent for older/test callers.
     pub fn controller_connect(

@@ -10,7 +10,7 @@
  * (host role). */
 import { useEffect, useState } from "react";
 import { hostView } from "../state/mapping";
-import type { Computer, DirectoryMachine, Favorite, HostStateName } from "../types";
+import type { DirectoryMachine, Favorite, HostStateName } from "../types";
 
 export interface MachineRow {
   id: string;
@@ -24,20 +24,18 @@ export interface MachineRow {
   fromCircle: boolean;
 }
 
-/** The ADR-003 union + the ADR-006 circle merge. Circle rows that are not
- * saved machines appear with the circle tag; a circle nickname beats a
+/** Saved favorites merged with the ADR-006 circle directory (the roster
+ * leg died with accounts, ADR-009). Circle rows that are not saved
+ * machines appear with the circle tag; a circle nickname beats a
  * favorite whose name is just the bare code (the auto-favorite
- * placeholder) but never a real roster/favorite name. */
+ * placeholder) but never a real favorite name. */
 export function unifiedMachines(
   favorites: Favorite[],
-  computers: Computer[] | null,
-  onlineCodes: string[],
   peerOnline: Record<string, boolean>,
   selectedCode: string | null,
   directory: DirectoryMachine[] | null = null,
   trustedCodes: ReadonlySet<string> = new Set(),
 ): MachineRow[] {
-  const onlineSet = new Set(onlineCodes);
   const seen = new Set<string>();
   const rows: MachineRow[] = [];
   const push = (row: Omit<MachineRow, "trusted" | "active">) => {
@@ -48,17 +46,6 @@ export function unifiedMachines(
       active: selectedCode === row.code,
     });
   };
-  if (computers) {
-    for (const c of computers) {
-      push({
-        id: c.id,
-        name: c.name || c.code,
-        code: c.code,
-        online: onlineSet.has(c.code) ? true : peerOnline[c.code] ?? null,
-        fromCircle: false,
-      });
-    }
-  }
   for (const f of favorites) {
     if (seen.has(f.code)) continue;
     push({
@@ -90,14 +77,6 @@ export function unifiedMachines(
     }
   }
   return rows;
-}
-
-export function machinesFromFavorites(
-  favorites: Favorite[],
-  peerOnline: Record<string, boolean>,
-  selectedCode: string | null,
-): MachineRow[] {
-  return unifiedMachines(favorites, null, [], peerOnline, selectedCode);
 }
 
 /** Machine-page removal (user request, 2026-10-26): two-step confirm —

@@ -4,18 +4,15 @@
  * (rail, left) where every row is both a chat and a remote-control
  * target; the center column is the selected machine's page (header +
  * one Control action + conversation); a connect/session card pins above
- * it while in flight; the assistant panel stays on the right. The
- * accounts onboarding gate stays in front.
+ * it while in flight; the assistant panel stays on the right.
  *
- * 0.8.0: everything configurable moved into the top menu bar
- * (File / Config / Help — see MenuBar + ConfigDialog); controlling a
- * machine requires a signed-in account WITH a display name (ADR-007) —
- * the name travels on the connect request and the host's prompt shows
- * it. */
+ * 0.10.0 (ADR-009): no accounts, no onboarding gate — the machine's
+ * display name is the only identity and it travels on the connect
+ * request; the host's prompt shows it beside the device id. Everything
+ * configurable lives in the top menu bar (File / Config / Help). */
 import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
-import { useAccount } from "./hooks/useAccount";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useDirectory } from "./hooks/useDirectory";
@@ -26,22 +23,18 @@ import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { AgentChat } from "./components/AgentChat";
 import { Conversation } from "./components/Conversation";
-import { Onboarding, displayNameValid } from "./components/Onboarding";
 import { SessionCard } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
 import { ErrorBanner } from "./components/Common";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { useUpdate } from "./hooks/useUpdate";
 import { api, normalizeCode } from "./ipc";
-import { CONTROL_GATE_MARKER, accountErrorCopy, accountGate } from "./state/account";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
 import mark from "./assets/mark.png";
 
 export default function App() {
   const engine = useEngine();
   const [ui] = engine.ui;
-  const account = useAccount();
-  const [accountUi] = account.ui;
   const assistant = useAssistant();
   const directory = useDirectory();
   const [directoryUi] = directory.ui;
@@ -69,22 +62,11 @@ export default function App() {
   // OK button); it self-dismisses and visibility is managed in
   // Config → Circle.
   const [circleNoticeDismissed, setCircleNoticeDismissed] = useState(false);
-  const [signInOpen, setSignInOpen] = useState(false);
-  const [onboardingMode, setOnboardingMode] = useState<"signin" | "create">("signin");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   // The machine the current connect/session belongs to — the session card
   // stays labeled with it even when the user browses another machine.
   const [sessionCode, setSessionCode] = useState<string | null>(null);
-  // ADR-007 control gate: the machine the user tried to control before
-  // signing in / adding a name. Fired automatically the moment the
-  // account has a name — still one press, the first time only. Keeps the
-  // connect verb (visual vs agent) so the deferred fire opens the box
-  // the user actually pressed.
-  const [pendingControl, setPendingControl] = useState<{
-    code: string;
-    agent: boolean;
-  } | null>(null);
-  const [namePromptOpen, setNamePromptOpen] = useState(false);  const chat = useChat(selectedCode);
+  const chat = useChat(selectedCode);
   useEffect(() => {
     void refreshTrusted();
   }, []);
@@ -152,26 +134,16 @@ export default function App() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
-  const gate =
-    engine.settings === null
-      ? ("loading" as const)
-      : accountGate(accountUi, engine.settings.skipped_onboarding, signInOpen, {
-          circleJoined: directoryUi.joined,
-        });
 
-  // Machine list + selection: computed before the onboarding gate so the
-  // hooks below it never become conditional (Rules of Hooks).
-  const signedIn = accountUi.status === "logged_in";
-  // This machine's own directory row never becomes a connectable contact —
-  // the pinned "This machine" card already represents self.
+  // Machine list + selection. This machine's own directory row never
+  // becomes a connectable contact — the pinned "This machine" card
+  // already represents self.
   const directoryRows =
     directoryUi.joined && directoryUi.loaded
       ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
       : null;
   const machines = unifiedMachines(
     engine.favorites,
-    signedIn ? accountUi.computers : null,
-    signedIn ? accountUi.online : [],
     ui.peerOnline,
     selectedCode,
     directoryRows,
@@ -203,117 +175,32 @@ export default function App() {
     }
   };
 
-  const skipOnboarding = async () => {
-    setSignInOpen(false);
-    // ADR-007: skipping abandons any gate-deferred control — a stale
-    // intent must never fire a surprise session hours later.
-    setPendingControl(null);
-    setNamePromptOpen(false);
-    if (engine.settings && !engine.settings.skipped_onboarding) {
-      await engine.saveSettings({ ...engine.settings, skipped_onboarding: true });
-    }
-  };
-
-  const afterAuth = async (error: string | null) => {
-    if (error === null) {
-      setSignInOpen(false);
-      await engine.refreshFavorites();
-    }
-  };
-
-  const signOut = async () => {
-    await account.logout();
-    setPendingControl(null);
-    setNamePromptOpen(false);
-    if (engine.settings && !engine.settings.skipped_onboarding) {
-      await engine.saveSettings({ ...engine.settings, skipped_onboarding: true });
-    }
-    await engine.refreshFavorites();
-  };
-
   // One-step remote control: the ONLY connect path (rail Control button,
   // machine-page Control button, add-machine "Save & control" — all end
   // up here). Starts the engine if needed and asks to control; the
   // engine brings the controller role online itself when it isn't yet
-  // (always-ready, 0.6.3) — there is no enable step anywhere.
-  //
-  // ADR-007 gate: the connect request must carry the account's display
-  // name, so controlling requires a signed-in named account. Not there
-  // yet? The intent is remembered and auto-fired the moment the name
-  // exists (see the pendingControl effect below) — the only extra work
-  // the user ever does is the one-time sign-in / add-name card.
+  // (always-ready, 0.6.3) — there is no enable step anywhere. The
+  // connect request carries this machine's display name (ADR-009).
   const controlMachine = async (code: string, agent = false) => {
     const normalized = normalizeCode(code);
     setSelectedCode(normalized);
     setSessionCode(normalized);
-    if (accountUi.status !== "logged_in" || !accountUi.displayName) {
-      setPendingControl({ code: normalized, agent });
-      if (accountUi.status === "logged_in") {
-        setNamePromptOpen(true);
-      } else {
-        setOnboardingMode("create");
-        setSignInOpen(true);
-      }
-      return;
-    }
     if (await ensureEngine()) {
       await engine.run(() => api.connect(normalized, agent));
     }
   };
 
-  // Fire a gate-deferred control attempt once the account qualifies. Runs
-  // on the reducer's state (not a stale closure): login/register/setName
-  // refresh accountUi, which re-triggers this effect.
-  useEffect(() => {
-    if (!pendingControl || accountUi.status !== "logged_in") return;
-    if (accountUi.displayName) {
-      const { code, agent } = pendingControl;
-      setPendingControl(null);
-      setNamePromptOpen(false);
-      void (async () => {
-        if (await ensureEngine()) {
-          await engine.run(() => api.connect(code, agent));
-        }
-      })();
-    } else if (!namePromptOpen) {
-      setNamePromptOpen(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingControl, accountUi.status, accountUi.displayName]);
-
-  // ADR-007 belt-and-braces: if the UI's account state lagged the engine's
-  // (e.g. the session expired server-side), `connect` refuses with a
-  // marker string. Treat it as flow control — open the right card — never
-  // as a raw bracket-jargon error banner.
-  useEffect(() => {
-    if (engine.commandError?.startsWith(CONTROL_GATE_MARKER)) {
-      engine.clearCommandError();
-      if (accountUi.status === "logged_in") {
-        setNamePromptOpen(true);
-      } else {
-        setOnboardingMode("create");
-        setSignInOpen(true);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine.commandError]);
-
   // Remove a machine YOU added (or that's pending approval): drops the
-  // saved entry (favorite + roster row when signed in) and forgets the
-  // pairing — established or still pending — so trust goes back to
-  // asking. A circle machine merely falls back to "Not added yet".
-  // Each leg is independent best-effort: a machine can be any mix of
-  // roster row, favorite, and pairing record.
+  // saved entry (favorite) and forgets the pairing — established or still
+  // pending — so trust goes back to asking. A circle machine merely falls
+  // back to "Not added yet". Each leg is independent best-effort: a
+  // machine can be any mix of favorite and pairing record.
   const removeMachine = async (code: string) => {
     const favorite = engine.favorites.find((f) => f.code === code);
-    const roster = signedIn ? accountUi.computers.find((c) => c.code === code) : undefined;
     if (favorite) {
       await engine.run(async () => {
         await api.removeFavorite(favorite.id);
       });
-    }
-    if (roster) {
-      await account.removeComputer(roster.id);
     }
     // Pairing removal covers both established trust and pending offers;
     // absence is not an error worth surfacing.
@@ -326,46 +213,6 @@ export default function App() {
     await refreshTrusted();
     setSelectedCode((current) => (current === code ? null : current));
   };
-
-  // -- onboarding gate: the card replaces the whole shell ---------------
-  if (gate === "loading") {
-    return (
-      <div className="app">
-        <p className="muted onboarding-loading" role="status">
-          Loading…
-        </p>
-      </div>
-    );
-  }
-  if (gate === "onboarding" || gate === "unlock") {
-    return (
-      <div className="app">
-        <Onboarding
-          mode={gate === "unlock" ? "unlock" : onboardingMode}
-          username={accountUi.username}
-          busy={accountUi.busy}
-          error={accountUi.error}
-          reason={
-            pendingControl
-              ? "Controlling another machine needs an account with your name — the other person sees who is asking. You only do this once; the connect continues by itself afterwards."
-              : null
-          }
-          onModeChange={(mode) => setOnboardingMode(mode)}
-          onSignIn={(username, password) => {
-            void account.login(username, password).then(afterAuth);
-          }}
-          onCreate={(username, displayName, password) => {
-            void account.register(username, displayName, password).then(afterAuth);
-          }}
-          onUnlock={(password) => {
-            void account.unlock(password).then(afterAuth);
-          }}
-          onDismissError={account.clearError}
-          onSkip={() => void skipOnboarding()}
-        />
-      </div>
-    );
-  }
 
   const sharing = ui.hostState !== "Idle" && ui.hostState !== "Registering";
   // The session card pins while a connect is in flight or a session is
@@ -407,33 +254,6 @@ export default function App() {
               v{appVersion}
               {directoryUi.familyBuild ? " family" : ""}
             </span>
-          ) : null}
-        </div>
-        <div className="chips">
-          {signedIn && accountUi.username ? (
-            <span
-              className="chip chip-good account-chip"
-              title={accountUi.displayName ? `Signed in as ${accountUi.displayName}` : "Signed in"}
-            >
-              <span className="chip-dot" aria-hidden="true" />@
-              {accountUi.username}
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                setOnboardingMode("signin");
-                setSignInOpen(true);
-              }}
-            >
-              Sign in
-            </button>
-          )}
-          {signedIn ? (
-            <button type="button" className="ghost" onClick={() => void signOut()}>
-              Sign out
-            </button>
           ) : null}
         </div>
       </header>
@@ -623,21 +443,6 @@ export default function App() {
             </div>
           )}
 
-          {/* ADR-007 name prompt: signed in, but the account predates
-           * display names — one input, then the deferred control fires. */}
-          {namePromptOpen && signedIn && !accountUi.displayName ? (
-            <NamePromptCard
-              busy={accountUi.busy}
-              error={accountUi.error}
-              onSave={(name) => void account.setName(name)}
-              onCancel={() => {
-                setNamePromptOpen(false);
-                setPendingControl(null);
-                account.clearError();
-              }}
-            />
-          ) : null}
-
           {/* Agent box (session-gated, its own surface): the peer
            * machine's assistant is reachable only while a live session
            * with THIS machine exists — controller side (we connected to
@@ -742,75 +547,6 @@ function CircleNoticeToast({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** One input, one button: give the account its display name (ADR-007).
- * Saving refreshes account state; App's pendingControl effect fires the
- * deferred connect on success — no second press. */
-function NamePromptCard({
-  busy,
-  error,
-  onSave,
-  onCancel,
-}: {
-  busy: boolean;
-  error: string | null;
-  onSave: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const trimmed = draft.trim();
-  return (
-    <div className="center-card name-prompt" role="dialog" aria-label="Add your name">
-      <h3>Add your name</h3>
-      <p className="muted">
-        Controlling another machine needs a name — the other person sees who is asking
-        (&ldquo;Igor wants to control this PC&rdquo;) instead of a code. You only do this
-        once.
-      </p>
-      <form
-        className="onboarding-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!busy && displayNameValid(trimmed)) {
-            onSave(trimmed);
-          }
-        }}
-      >
-        <label>
-          Your name
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Igor"
-            autoComplete="name"
-            autoFocus
-          />
-        </label>
-        {error ? (
-          <p className="form-error" role="alert">
-            {accountErrorCopy(error)}
-          </p>
-        ) : null}
-        <div className="row">
-          <button
-            type="submit"
-            className="primary"
-            disabled={busy || !displayNameValid(trimmed)}
-          >
-            {busy ? "Saving…" : "Save name"}
-          </button>
-          <button type="button" className="ghost" onClick={onCancel}>
-            Not now
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-// Re-exported for the account-error copy used by the Computers flow (kept
-// from the previous layout; the roster Computers list rejoins the rail
-// with the chat phase).
-export { accountErrorCopy };
 // Exported for the toast-timer test (the self-dismiss depends on a stable
 // timer across the 1–2 s polls that re-render the shell).
 export { CircleNoticeToast };

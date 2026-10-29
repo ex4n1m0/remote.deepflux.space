@@ -153,7 +153,7 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                     capabilities: caps(),
                     pairing_proof_hex: Some("9e".repeat(32)),
                     // ADR-007 additive-optional field: the controller's
-                    // account display name, shown beside the device id in
+                    // machine display name, shown beside the device id in
                     // the host's consent prompt (advisory — the device id
                     // stays the identity).
                     requester_name: Some("Alice Doe".to_owned()),

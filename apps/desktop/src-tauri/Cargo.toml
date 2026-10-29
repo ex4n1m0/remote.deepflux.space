@@ -62,7 +62,6 @@ windows = { workspace = true, features = [
 getrandom = { workspace = true }
 # Zeroized DEK buffers for the in-memory account session (same crate the
 # crypto layer uses; key bytes are never serialized).
-zeroize = { workspace = true }
 # AI-agent MCP bridge (ADR-004, RD-018): stdio MCP server exposing the
 # engine as screenshot/click/type tools to a local agent. Official Tier-1
 # Rust SDK; runs on its own tokio current-thread runtime inside the app.

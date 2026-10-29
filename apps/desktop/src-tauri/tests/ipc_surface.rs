@@ -12,12 +12,10 @@
 //! must be added there** (the compiler cannot force it — the match in
 //! `forward_event` can, so keep both in sync).
 
-use remote_desktop_app_lib::account::AccountStatus;
 use remote_desktop_app_lib::engine::{DiagSnapshot, EngineEvent, EngineStatus, disconnect_copy};
 use remote_desktop_app_lib::ipc::{
-    AccountStateDto, AddFavoriteArgs, ComputerAddArgs, ComputerDto, ComputerIdArgs,
-    ComputerRenameArgs, ComputersListDto, ConnectArgs, MonitorDto, PresenceDto, RemoveFavoriteArgs,
-    RenameFavoriteArgs, SelectMonitorArgs, SetQualityArgs, SettingsPatch,
+    AddFavoriteArgs, ConnectArgs, MonitorDto, RemoveFavoriteArgs, RenameFavoriteArgs,
+    SelectMonitorArgs, SetQualityArgs, SettingsPatch,
 };
 use session::DisconnectCause;
 
@@ -288,7 +286,6 @@ fn command_argument_dtos_carry_metadata_only() {
                 signaling_base_url: "https://example.vercel.app".into(),
                 default_quality: "balanced".into(),
                 default_viewer_scale: "fit".into(),
-                skipped_onboarding: false,
                 launch_at_login: false,
                 auto_update: true,
             })
@@ -336,39 +333,6 @@ fn command_argument_dtos_carry_metadata_only() {
             })
             .unwrap(),
         ),
-        // Account command arguments. Passwords are arguments by design
-        // (the only place they exist); results never carry them.
-        // Password-bearing args are Deserialize-only (no Serialize derive,
-        // redacted Debug — security review P2); walk their wire shape as
-        // literals instead of serializing the structs.
-        (
-            "AccountCredentialsArgs",
-            serde_json::json!({ "username": "alice", "password": "correct horse battery" }),
-        ),
-        (
-            "AccountPasswordArgs",
-            serde_json::json!({ "password": "correct horse battery" }),
-        ),
-        (
-            "ComputerAddArgs",
-            serde_json::to_value(ComputerAddArgs {
-                name: "Office".into(),
-                code: "0123456789abcdef".into(),
-            })
-            .unwrap(),
-        ),
-        (
-            "ComputerIdArgs",
-            serde_json::to_value(ComputerIdArgs { id: "f1".into() }).unwrap(),
-        ),
-        (
-            "ComputerRenameArgs",
-            serde_json::to_value(ComputerRenameArgs {
-                id: "f1".into(),
-                name: "Workstation".into(),
-            })
-            .unwrap(),
-        ),
     ];
     for (name, value) in &dtos {
         assert_clean(value, name);
@@ -401,51 +365,6 @@ fn result_forbidden_list_fires_as_intended() {
     let probe = serde_json::json!({ "ok": true, "session_token": "ab".repeat(32) });
     find_keys(&probe, "probe", &mut violations);
     assert_eq!(violations, vec!["probe.session_token".to_string()]);
-}
-
-/// Account/computers results: clean metadata only — no session tokens, no
-/// key material, no ciphertext (the FORBIDDEN_KEYS walk enforces it).
-#[test]
-fn account_result_dtos_carry_metadata_only() {
-    for status in [
-        AccountStatus::LoggedOut,
-        AccountStatus::SavedAccount {
-            username: "alice".into(),
-        },
-        AccountStatus::LoggedIn {
-            username: "alice".into(),
-            display_name: None,
-            expires_ms: 1_760_000_000_000,
-        },
-    ] {
-        let dto: AccountStateDto = status.into();
-        let value = serde_json::to_value(&dto).unwrap();
-        assert_result_clean(&value, &format!("AccountStateDto::{}", dto.status));
-    }
-    let list = ComputersListDto {
-        computers: (0..130)
-            .map(|i| ComputerDto {
-                id: format!("{i:08x}"),
-                name: format!("PC {i}"),
-                code: format!("{i:016x}"),
-                added_at_ms: 1,
-                updated_at_ms: 2,
-                is_self: i == 0,
-            })
-            .collect(),
-        server_version: 9,
-    };
-    assert_result_clean(&serde_json::to_value(&list).unwrap(), "ComputersListDto");
-    assert_result_clean(
-        &serde_json::to_value(&PresenceDto {
-            online: vec!["0123456789abcdef".into()],
-        })
-        .unwrap(),
-        "PresenceDto",
-    );
-    // No result DTO ever embeds the token or password fields.
-    let raw = serde_json::to_string(&list).unwrap();
-    assert!(!raw.contains("token") && !raw.contains("password") && !raw.contains("ciphertext"));
 }
 
 /// Updater state (ADR-008): the only updater payload that crosses IPC —

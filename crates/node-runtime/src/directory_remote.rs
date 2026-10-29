@@ -3,7 +3,7 @@
 //! and the sealed-entry AES-256-GCM envelope.
 //!
 //! Blocking request/response JSON over ureq, mirroring
-//! [`crate::account_remote`] conventions (version gate on both directions,
+//! account-remote-style conventions (version gate on both directions,
 //! structured Api errors, header-only bearer). Auth is the **device token**
 //! — the same presence-binding secret [`crate::signaling_remote`] uses —
 //! and every action names the caller's own `device`; the service
@@ -28,7 +28,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use ureq::Agent;
 
-use protocol::account::valid_hex;
+use protocol::directory::valid_hex;
 use protocol::directory::{
     CIRCLE_ID_HEX_LEN, CIRCLE_KEY_HEX_LEN, DIRECTORY_MAX_MEMBERS, DIRECTORY_PROTOCOL_VERSION,
     DirectoryCall, DirectoryEntryDoc, DirectoryRequest, DirectoryResponse, DirectoryRow,

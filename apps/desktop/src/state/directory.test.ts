@@ -1,5 +1,4 @@
-/** ADR-006 directory-state tests: reducer transitions + error copy +
- * the account-gate circle bypass. */
+/** ADR-006 directory-state tests: reducer transitions + error copy. */
 
 import { describe, expect, it } from "vitest";
 import {
@@ -8,7 +7,6 @@ import {
   directoryReducer,
   initialDirectoryState,
 } from "./directory";
-import { accountGate } from "./account";
 import type { CircleStatus } from "../types";
 
 const status = (over: Partial<CircleStatus>): CircleStatus => ({
@@ -87,17 +85,5 @@ describe("circleErrorCopy", () => {
     const copy = circleErrorCopy("service error 429 rate_limited");
     expect(copy).toContain("Too many attempts");
     expect(copy).toContain("wait a minute");
-  });
-});
-
-describe("accountGate circle bypass (ADR-006)", () => {
-  const anon = { status: "logged_out" as const, loaded: true };
-  it("a circle member goes straight to the app", () => {
-    expect(accountGate(anon, false, false, { circleJoined: true })).toBe("app");
-  });
-  it("non-members see the onboarding unchanged", () => {
-    expect(accountGate(anon, false, false, { circleJoined: false })).toBe("onboarding");
-    expect(accountGate(anon, false, false)).toBe("onboarding");
-    expect(accountGate(anon, true, false)).toBe("app");
   });
 });

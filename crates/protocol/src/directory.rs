@@ -73,10 +73,20 @@ pub fn valid_name(name: &str) -> bool {
     (NAME_MIN_CHARS..=NAME_MAX_CHARS).contains(&len)
 }
 
+/// Validates a lowercase hex string of the expected byte length (moved
+/// here from the retired `account` module, ADR-009 — the directory and
+/// its fixtures validation still need it).
+pub fn valid_hex(value: &str, bytes: usize) -> bool {
+    value.len() == bytes * 2
+        && value
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// Validates a device id (16 lowercase hex — the signaling id / connection
-/// code). Reuses [`crate::account::valid_hex`].
+/// code).
 pub fn valid_device(device: &str) -> bool {
-    crate::account::valid_hex(device, DEVICE_HEX_LEN / 2)
+    valid_hex(device, DEVICE_HEX_LEN / 2)
 }
 
 /// One request, carried as the JSON body of `POST /api/directory` inside

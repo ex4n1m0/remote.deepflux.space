@@ -4,7 +4,7 @@
 //! paths; this module is the in-app authority).
 //!
 //! Every tool rides the SAME typed surfaces the UI uses (engine commands,
-//! the store, the account manager) — there is no privileged path. Tool
+//! the store) — there is no privileged path. Tool
 //! results are text; the screenshot tool additionally returns the JPEG as
 //! base64 so a vision model (default `deepseek-flash`) can see it.
 
@@ -362,28 +362,13 @@ pub fn execute(
                 return ToolOutput::text("connect requires {\"code\": ...}");
             };
             let code = code.trim().to_lowercase();
-            // ADR-007 control gate: identical rule to the UI — the account
-            // display name travels on the request so the host prompt says
-            // who is asking. Signed-out / name-less accounts cannot control.
-            // (Human-facing copy, no UI marker — an agent may relay this.)
+            // ADR-009: this machine's display name travels on the request
+            // so the host prompt says who is asking (same rule as the UI
+            // and the MCP bridge).
             let requester_name = {
                 let services = app.state::<crate::AppServices>();
-                let account = services.account.lock().expect("account");
-                match account.control_identity() {
-                    Ok(name) => name,
-                    Err(gate) => {
-                        let message = gate.message();
-                        let friendly = message
-                            .strip_prefix(crate::account::CONTROL_GATE_MARKER)
-                            .map(str::trim)
-                            .unwrap_or(message.as_str());
-                        return ToolOutput::text(format!(
-                            "connect blocked by the account gate: {friendly} — ask the \
-                             machine's owner to sign in (and add their name) in the app, then \
-                             retry."
-                        ));
-                    }
-                }
+                let store = services.store.lock().expect("store");
+                crate::commands::display_name(store.settings())
             };
             // ADR-006: carry the pairing secret so the engine stamps the
             // pairing proof (silent paired accept must prove the secret).

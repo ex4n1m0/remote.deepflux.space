@@ -32,10 +32,6 @@ pub struct AppSettings {
     /// never logged, never synced).
     #[serde(default = "new_token")]
     pub device_token: String,
-    /// The user skipped the first-run account onboarding (persisted so the
-    /// gate opens straight into the main UI; signing in later still works).
-    #[serde(default)]
-    pub skipped_onboarding: bool,
     /// ADR-006 always-ready: launch at Windows login (drives the autostart
     /// plugin; the family build turns it on once at first run).
     #[serde(default)]
@@ -98,7 +94,6 @@ impl Default for AppSettings {
             default_quality: "balanced".to_owned(),
             default_viewer_scale: "fit".to_owned(),
             device_token: new_token(),
-            skipped_onboarding: false,
             launch_at_login: false,
             autostart_default_applied: false,
             agent_base_url: default_agent_base_url(),
@@ -179,36 +174,8 @@ impl core::fmt::Debug for AnchorDoc {
 /// path surface it as-is).
 pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's the 16-character code shown on the other machine's \"This machine\" card (or in its Share prompt).";
 
-/// Account material (post-MVP accounts): everything needed to log in again
-/// except the password. The session token is NOT here (it lives in the
-/// Windows Credential Manager) and the roster is NOT here (it lives
-/// encrypted in `roster.json` under a DEK wrapped by this material).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AccountDoc {
-    pub v: u16,
-    pub username: String,
-    pub auth_salt_hex: String,
-    pub wrap_salt_hex: String,
-    pub wrapped_dek_hex: String,
-    pub dek_nonce_hex: String,
-}
-
-/// Encrypted roster cache: AES-256-GCM under the account DEK — decryptable
-/// only while logged in (the DEK itself needs the password).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct RosterCacheDoc {
-    pub v: u16,
-    pub username: String,
-    pub ciphertext_hex: String,
-    pub nonce_hex: String,
-    /// Last-known server roster version (optimistic-concurrency base).
-    pub version: u32,
-}
-
 const SETTINGS_FILE: &str = "settings.json";
 const FAVORITES_FILE: &str = "favorites.json";
-const ACCOUNT_FILE: &str = "account.json";
-const ROSTER_FILE: &str = "roster.json";
 
 /// Errors are strings: they cross IPC as user-facing copy.
 pub type StoreResult<T> = Result<T, String>;
@@ -243,8 +210,6 @@ pub struct LocalStore {
     dir: PathBuf,
     settings: AppSettings,
     favorites: FavoritesDoc,
-    account: Option<AccountDoc>,
-    roster_cache: Option<RosterCacheDoc>,
     /// True when this load minted an identity (no settings file / empty
     /// ids) — the app-startup [`LocalStore::adopt_identity_anchor`] uses
     /// it to restore a surviving identity instead.
@@ -321,17 +286,19 @@ impl LocalStore {
                 );
             }
         }
-        let account = read_json::<AccountDoc>(&dir.join(ACCOUNT_FILE))?;
-        let roster_cache = read_json::<RosterCacheDoc>(&dir.join(ROSTER_FILE))?;
         if purged_dead_favorites {
             write_json_atomic(&dir.join(FAVORITES_FILE), &favorites)?;
+        }
+        // ADR-009 cleanup: `account.json` / `roster.json` belong to the
+        // retired accounts phase — delete them instead of orphaning them
+        // (the trusted-host list is pairings.json, which is untouched).
+        for legacy in ["account.json", "roster.json"] {
+            let _ = std::fs::remove_file(dir.join(legacy));
         }
         Ok(Self {
             dir: dir.to_owned(),
             settings,
             favorites,
-            account,
-            roster_cache,
             fresh_identity,
         })
     }
@@ -393,26 +360,6 @@ impl LocalStore {
 
     pub fn favorites(&self) -> &[Favorite] {
         &self.favorites.favorites
-    }
-
-    /// Saved account material, when this machine has logged in before.
-    pub fn account(&self) -> Option<&AccountDoc> {
-        self.account.as_ref()
-    }
-
-    /// Encrypted local roster cache, when present.
-    pub fn roster_cache(&self) -> Option<&RosterCacheDoc> {
-        self.roster_cache.as_ref()
-    }
-
-    pub fn save_account(&mut self, doc: AccountDoc) -> StoreResult<()> {
-        self.account = Some(doc.clone());
-        write_json_atomic(&self.dir.join(ACCOUNT_FILE), &doc)
-    }
-
-    pub fn save_roster_cache(&mut self, doc: RosterCacheDoc) -> StoreResult<()> {
-        self.roster_cache = Some(doc.clone());
-        write_json_atomic(&self.dir.join(ROSTER_FILE), &doc)
     }
 
     /// Replace the favorites wholesale (the roster write-back path: the
@@ -539,11 +486,9 @@ mod tests {
             DEFAULT_SIGNALING_BASE_URL,
             "accounts-phase default service URL"
         );
-        assert!(!store.settings().skipped_onboarding);
         store
             .update_settings(AppSettings {
                 signaling_base_url: "http://127.0.0.1:38013".into(),
-                skipped_onboarding: true,
                 ..store.settings().clone()
             })
             .unwrap();
@@ -553,7 +498,6 @@ mod tests {
             reloaded.settings().signaling_base_url,
             "http://127.0.0.1:38013"
         );
-        assert!(reloaded.settings().skipped_onboarding);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -587,8 +531,8 @@ mod tests {
     #[test]
     fn old_settings_files_keep_identity_and_default_the_new_flag() {
         let dir = temp_dir("upgrade");
-        // A pre-accounts settings.json (no skipped_onboarding key): the
-        // serde default must kick in instead of the corrupt-file path,
+        // A pre-accounts settings.json (missing later-added keys): the
+        // serde defaults must kick in instead of the corrupt-file path,
         // which would have minted a NEW device id.
         std::fs::write(
             dir.join(SETTINGS_FILE),
@@ -605,7 +549,6 @@ mod tests {
         .unwrap();
         let store = LocalStore::load(&dir).unwrap();
         assert_eq!(store.settings().device_id, "0123456789abcdef");
-        assert!(!store.settings().skipped_onboarding);
         // 0.5.1 migration: a pre-0.5 file (no launch_at_login key) with an
         // empty URL gets the production default — the empty-URL opt-out
         // predates anyone choosing it deliberately in 0.5+.
@@ -799,49 +742,22 @@ mod tests {
         let dir = temp_dir("corrupt");
         std::fs::write(dir.join(SETTINGS_FILE), "{not json").unwrap();
         std::fs::write(dir.join(FAVORITES_FILE), "]]").unwrap();
-        std::fs::write(dir.join(ACCOUNT_FILE), "{not json").unwrap();
-        std::fs::write(dir.join(ROSTER_FILE), "]]").unwrap();
         let store = LocalStore::load(&dir).unwrap();
         assert!(!store.settings().device_id.is_empty());
         assert!(store.favorites().is_empty());
-        assert!(store.account().is_none());
-        assert!(store.roster_cache().is_none());
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    fn account_doc(username: &str) -> AccountDoc {
-        AccountDoc {
-            v: 1,
-            username: username.to_owned(),
-            auth_salt_hex: "aa".repeat(16),
-            wrap_salt_hex: "bb".repeat(16),
-            wrapped_dek_hex: "cc".repeat(48),
-            dek_nonce_hex: "dd".repeat(12),
-        }
-    }
-
     #[test]
-    fn account_and_roster_cache_persist_with_identity_stability() {
-        let dir = temp_dir("account");
-        let mut store = LocalStore::load(&dir).unwrap();
-        assert!(store.account().is_none() && store.roster_cache().is_none());
-
-        store.save_account(account_doc("alice")).unwrap();
-        let roster = RosterCacheDoc {
-            v: 1,
-            username: "alice".to_owned(),
-            ciphertext_hex: "ab".repeat(64),
-            nonce_hex: "0".repeat(24),
-            version: 7,
-        };
-        store.save_roster_cache(roster.clone()).unwrap();
-
-        let reloaded = LocalStore::load(&dir).unwrap();
-        assert_eq!(reloaded.account(), Some(&account_doc("alice")));
-        assert_eq!(reloaded.roster_cache(), Some(&roster));
-        // The roster cache carries NO plaintext entry data.
-        let raw = std::fs::read_to_string(dir.join(ROSTER_FILE)).unwrap();
-        assert!(!raw.contains("alice@") && !raw.contains("\"computers\""));
+    fn retired_account_files_are_cleaned_up_on_load() {
+        // ADR-009: account.json/roster.json from the accounts era must not
+        // linger as dead data on upgraded machines.
+        let dir = temp_dir("legacy-account");
+        std::fs::write(dir.join("account.json"), "{\"v\":1}").unwrap();
+        std::fs::write(dir.join("roster.json"), "{\"v\":1}").unwrap();
+        let _ = LocalStore::load(&dir).unwrap();
+        assert!(!dir.join("account.json").exists());
+        assert!(!dir.join("roster.json").exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 

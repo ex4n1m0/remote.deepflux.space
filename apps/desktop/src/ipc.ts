@@ -5,16 +5,13 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  AccountState,
   CircleStatus,
-  ComputersList,
   DirectoryMachine,
   EngineStatus,
   Favorite,
   Identity,
   MonitorInfo,
   PairingInfo,
-  PresenceResult,
   Settings,
 } from "./types";
 
@@ -87,29 +84,6 @@ export const api = {
     invoke("remove_favorite", { args: { id } }),
   renameFavorite: (id: string, name: string): Promise<Favorite> =>
     invoke("rename_favorite", { args: { id, name } }),
-
-  // Accounts & roster (post-MVP). Passwords are arguments ONLY — results
-  // never carry them (invariant 6 discipline).
-  accountState: (): Promise<AccountState> => invoke("account_state"),
-  accountRegister: (username: string, displayName: string, password: string): Promise<AccountState> =>
-    invoke("account_register", { args: { username, display_name: displayName, password } }),
-  accountLogin: (username: string, password: string): Promise<AccountState> =>
-    invoke("account_login", { args: { username, password } }),
-  accountUnlock: (password: string): Promise<AccountState> =>
-    invoke("account_unlock", { args: { password } }),
-  // ADR-007: set/update the signed-in account's display name.
-  accountSetName: (displayName: string): Promise<AccountState> =>
-    invoke("account_set_name", { args: { display_name: displayName } }),
-  accountLogout: (): Promise<AccountState> => invoke("account_logout"),
-  computersList: (): Promise<ComputersList> => invoke("computers_list"),
-  computerAdd: (name: string, code: string): Promise<ComputersList> =>
-    invoke("computer_add", { args: { name, code } }),
-  computerAddThis: (): Promise<ComputersList> => invoke("computer_add_this"),
-  computerRemove: (id: string): Promise<ComputersList> =>
-    invoke("computer_remove", { args: { id } }),
-  computerRename: (id: string, name: string): Promise<ComputersList> =>
-    invoke("computer_rename", { args: { id, name } }),
-  computersPresence: (): Promise<PresenceResult> => invoke("computers_presence"),
 
   engineStart: (): Promise<EngineStatus> => invoke("engine_start"),
   engineStatus: (): Promise<EngineStatus> => invoke("engine_status"),

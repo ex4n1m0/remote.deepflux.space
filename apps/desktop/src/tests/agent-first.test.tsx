@@ -17,29 +17,18 @@ import type { MachineRow } from "../components/MachinesRail";
 
 afterEach(cleanup);
 
-describe("unifiedMachines (ADR-003 union)", () => {
+describe("unifiedMachines (saved machines, ADR-009)", () => {
   const favorites = [
     { id: "f1", name: "Office", code: "aa" },
     { id: "f2", name: "Laptop", code: "bb" },
   ];
 
-  it("signed out: favorites only, presence from session events", () => {
-    const rows = unifiedMachines(favorites, null, [], { bb: true }, "bb");
+  it("favorites with presence from session events", () => {
+    const rows = unifiedMachines(favorites, { bb: true }, "bb");
     expect(rows.map((r) => r.code)).toEqual(["aa", "bb"]);
     expect(rows[0].online).toBeNull();
     expect(rows[1].online).toBe(true);
     expect(rows[1].active).toBe(true);
-  });
-
-  it("signed in: roster wins the name for shared codes, roster presence preferred", () => {
-    const roster = [
-      { id: "r1", name: "Mom's PC", code: "aa", added_at_ms: 0, updated_at_ms: 0, is_self: false },
-    ];
-    const rows = unifiedMachines(favorites, roster, ["aa"], {}, null);
-    expect(rows).toHaveLength(2);
-    expect(rows[0].name).toBe("Mom's PC");
-    expect(rows[0].online).toBe(true);
-    expect(rows[1].code).toBe("bb");
   });
 });
 
@@ -259,7 +248,7 @@ describe("unifiedMachines with the circle directory (ADR-006)", () => {
   ];
 
   it("merges circle rows by code; a real favorite name beats the nickname", () => {
-    const rows = unifiedMachines(favs, null, [], {}, "aaaaaaaaaaaaaaaa", dir, new Set());
+    const rows = unifiedMachines(favs, {}, "aaaaaaaaaaaaaaaa", dir, new Set());
     const merged = rows.find((r) => r.code === "aaaaaaaaaaaaaaaa");
     // The favorite's name IS the bare code here — the circle nickname wins
     // over the placeholder (UI-review decision).
@@ -269,13 +258,13 @@ describe("unifiedMachines with the circle directory (ADR-006)", () => {
   });
 
   it("trusted codes produce the shield flag", () => {
-    const rows = unifiedMachines([], null, [], {}, null, dir, new Set(["cccccccccccccccc"]));
+    const rows = unifiedMachines([], {}, null, dir, new Set(["cccccccccccccccc"]));
     expect(rows.find((r) => r.code === "cccccccccccccccc")?.trusted).toBe(true);
     expect(rows.find((r) => r.code === "aaaaaaaaaaaaaaaa")?.trusted).toBe(false);
   });
 
   it("directory=null keeps the old behavior", () => {
-    const rows = unifiedMachines(favs, null, [], {}, null, null, new Set());
+    const rows = unifiedMachines(favs, {}, null, null, new Set());
     expect(rows).toHaveLength(1);
     expect(rows[0]?.trusted).toBe(false);
   });

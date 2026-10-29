@@ -80,7 +80,7 @@ pub enum EngineCmd {
         /// to stamp the pairing proof on the outgoing `connect_request`.
         /// Redacted wrapper — see `chat::PairingSecret`.
         pairing_secret: Option<crate::chat::PairingSecret>,
-        /// ADR-007: the account display name stamped on the outgoing
+        /// ADR-007: the machine display name stamped on the outgoing
         /// `connect_request` so the host's prompt says who is asking.
         /// The command layer refuses to connect without one.
         requester_name: Option<String>,
@@ -379,7 +379,7 @@ pub enum EngineEvent {
         /// app layer to verify against its pairing store (v2: message-id
         /// bound + freshness-checked; not secret material).
         pairing_proof_hex: Option<String>,
-        /// ADR-007: the controller's account display name from the wire
+        /// ADR-007: the controller's machine display name from the wire
         /// (advisory; the device id stays the identity). `None` on
         /// pre-0.8 controllers.
         requester_name: Option<String>,

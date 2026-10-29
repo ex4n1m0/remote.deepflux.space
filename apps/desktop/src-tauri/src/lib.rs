@@ -3,7 +3,6 @@
 //! surface only; video lives in the native viewer window owned by the
 //! engine's controller pipeline (AGENTS.md invariant 1).
 
-pub mod account;
 pub mod agent;
 pub mod chat;
 pub mod commands;
@@ -98,17 +97,9 @@ pub fn run() {
             store
                 .adopt_identity_anchor(&crate::credstore::WindowsCredStore)
                 .map_err(|e| e.to_string())?;
-            // Account manager. The startup session validation (credential
-            // manager → cheap authenticated roster_get) runs lazily in the
-            // first `account_state` command — off the window's critical
-            // path; the roster itself stays encrypted until the user
-            // re-enters the password (unlock) — the DEK needs it by
-            // construction.
-            let account = account::AccountManager::remote(&store.settings().signaling_base_url);
             app.manage(AppServices {
                 store: Mutex::new(store),
                 engine: Mutex::new(None),
-                account: Mutex::new(account),
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
@@ -214,18 +205,6 @@ pub fn run() {
             commands::add_favorite,
             commands::remove_favorite,
             commands::rename_favorite,
-            commands::account_state,
-            commands::account_register,
-            commands::account_login,
-            commands::account_unlock,
-            commands::account_set_name,
-            commands::account_logout,
-            commands::computers_list,
-            commands::computer_add,
-            commands::computer_add_this,
-            commands::computer_remove,
-            commands::computer_rename,
-            commands::computers_presence,
             commands::host_start,
             commands::host_stop,
             commands::controller_start,

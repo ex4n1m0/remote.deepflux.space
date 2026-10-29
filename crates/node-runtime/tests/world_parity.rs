@@ -358,7 +358,7 @@ fn happy_path() -> (TestNode, TestNode) {
 // ---------------------------------------------------------------- scenarios
 
 /// The M0 exit-gate scenario, now through the real runtime plumbing.
-/// ADR-007: the account display name stamped on the outgoing
+/// ADR-007: the machine display name stamped on the outgoing
 /// `connect_request` survives the hub and lands in the host's consent
 /// prompt (outbound stamp → wire → inbound extraction → PromptConsent),
 /// and a name-less connect (pre-0.8 shape) arrives as `None`, not

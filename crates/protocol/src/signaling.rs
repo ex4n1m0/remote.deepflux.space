@@ -154,7 +154,7 @@ pub enum SignalingBody {
     /// that predate the field ignore it.
     ///
     /// `requester_name` (ADR-007, additive-optional within version 1) is
-    /// the controller's account display name, shown beside the device id in
+    /// the controller's machine display name, shown beside the device id in
     /// the host's consent prompt. Advisory only — `from_device_id` stays
     /// the identity. Absent on pre-0.8 controllers (our 0.8 client refuses
     /// to send a control request without one); hosts fall back to the
