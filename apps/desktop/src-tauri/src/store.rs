@@ -202,20 +202,16 @@ impl LocalStore {
         std::fs::create_dir_all(dir).map_err(|err| format!("create {}: {err}", dir.display()))?;
         let settings_path = dir.join(SETTINGS_FILE);
         let had_settings = settings_path.exists();
-        let raw_settings = std::fs::read_to_string(&settings_path).unwrap_or_default();
         let mut settings = read_json::<AppSettings>(&settings_path)?.unwrap_or_default();
-        // One-time upgrade migration (0.5.1): settings written before 0.5
-        // lack the `launch_at_login` key; if such a file carries an EMPTY
-        // signaling URL (the old opt-out), it predates anyone choosing
-        // that deliberately in 0.5+ — restore the default so login, the
-        // engine, and the circle work after an upgrade (the second-machine
-        // bug). A URL cleared in 0.5+ keeps the field in the file and the
-        // opt-out intact.
+        // Empty-URL self-heal (0.5.1 one-time migration, made unconditional
+        // in 0.10.1): an EMPTY signaling URL means the machine silently
+        // never registers — every connect to it answers "not online". The
+        // pre-0.5 "blank = opt-out" era is long gone and the 0.9.x family
+        // build healed this at every launch; ADR-009 deleted that healing
+        // with the circle code, so it lives here now. A CUSTOM URL (local
+        // dev server, private deploy) is untouched — only blank heals.
         let mut healed_url = false;
-        if had_settings
-            && !raw_settings.contains("\"launch_at_login\"")
-            && settings.signaling_base_url.trim().is_empty()
-        {
+        if settings.signaling_base_url.trim().is_empty() {
             settings.signaling_base_url = DEFAULT_SIGNALING_BASE_URL.to_owned();
             healed_url = true;
         }
@@ -435,15 +431,17 @@ mod tests {
     }
 
     #[test]
-    fn post_05_empty_url_opt_out_is_preserved() {
-        let dir = temp_dir("optout");
-        // A 0.5+ file carries launch_at_login; an empty URL here IS a
-        // deliberate opt-out and must survive the migration untouched.
+    fn empty_url_heals_to_the_default_on_every_load() {
+        let dir = temp_dir("url-heal");
+        // 0.10.1: a blank URL is never a valid state — the machine would
+        // silently never register and every connect to it would answer
+        // "not online". Every load heals it to the deployed service (the
+        // old "blank = deliberate opt-out" rule died with the circle).
         std::fs::write(
             dir.join(SETTINGS_FILE),
             serde_json::json!({
                 "device_id": "0123456789abcdef",
-                "device_name": "privacy install",
+                "device_name": "legacy install",
                 "signaling_base_url": "",
                 "default_quality": "balanced",
                 "default_viewer_scale": "fit",
@@ -454,7 +452,25 @@ mod tests {
         )
         .unwrap();
         let store = LocalStore::load(&dir).unwrap();
-        assert_eq!(store.settings().signaling_base_url, "");
+        assert_eq!(
+            store.settings().signaling_base_url,
+            DEFAULT_SIGNALING_BASE_URL
+        );
+        // ...and the healed value is persisted (not just in memory).
+        let mut reloaded = LocalStore::load(&dir).unwrap();
+        assert_eq!(
+            reloaded.settings().signaling_base_url,
+            DEFAULT_SIGNALING_BASE_URL
+        );
+        // A custom URL (dev server) is never touched.
+        let mut custom = reloaded.settings().clone();
+        custom.signaling_base_url = "http://127.0.0.1:38013".to_owned();
+        reloaded.update_settings(custom).unwrap();
+        let after = LocalStore::load(&dir).unwrap();
+        assert_eq!(
+            after.settings().signaling_base_url,
+            "http://127.0.0.1:38013"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

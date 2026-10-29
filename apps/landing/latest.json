@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.10.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.0-x64-setup.exe",
-  "sha256_hex": "aa83979d5967027697e7409a94601617dd04a1dbd3aa77b4d386ff39a1e19f3a",
-  "size_bytes": 7584671,
-  "notes": "The simplification release: no accounts, no login \u2014 your machine's name is the only identity. The machine list is now one list of trusted machines (Always allow), names arrive automatically, and the Add form + family circle are gone. Chat, agent sessions, and everything else unchanged.",
+  "version": "0.10.1",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.1-x64-setup.exe",
+  "sha256_hex": "2ba95c6fcd74f7fd9ecbe97ea86adbafd2807795f7ca4824d10540a626f85389",
+  "size_bytes": 7592933,
+  "notes": "Fix: a machine with a blank signaling URL (a leftover from old installs) never came online after updating \u2014 the URL now heals itself to the default service on every launch. If a machine kept showing 'isn't online right now', update it to 0.10.1.",
   "published_at": "2026-10-29"
 }
