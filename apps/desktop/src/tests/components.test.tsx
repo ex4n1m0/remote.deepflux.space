@@ -277,7 +277,6 @@ describe("SettingsPanel", () => {
 describe("TrustedMachinesSection (ADR-009: the machine list)", () => {
   const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
     code: "abcdef0123456789",
-    secret_hex: "s",
     created_ms: 1,
     pending_ack: false,
     role: "host",

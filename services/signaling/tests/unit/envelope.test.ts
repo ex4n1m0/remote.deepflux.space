@@ -76,3 +76,16 @@ test('v1 rejects the v0 numeric sdp_mid shape loudly', () => {
   const v1Shape = { ...v0Shape, sdp_mid: '0' };
   assert.equal(signalingEnvelopeSchema.safeParse(v1Shape).success, true);
 });
+
+// 0.10.2 security review: the advisory name fields (requester_name,
+// host_name) must reject invisible format characters — visual spoofing
+// of the consent prompt's name line.
+import { displayNameSchema } from '../../lib/account-schema.ts';
+
+test('displayName rejects invisible format characters', () => {
+  const bad = ['bad\u202ename', 'zero\u200bwidth', 'bom\ufeff', 'lrm\u200e'];
+  for (const name of bad) {
+    assert.equal(displayNameSchema.safeParse(name).success, false, JSON.stringify(name));
+  }
+  assert.equal(displayNameSchema.safeParse("Mom's PC").success, true);
+});

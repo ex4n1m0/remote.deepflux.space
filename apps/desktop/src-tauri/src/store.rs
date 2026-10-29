@@ -32,8 +32,8 @@ pub struct AppSettings {
     /// never logged, never synced).
     #[serde(default = "new_token")]
     pub device_token: String,
-    /// ADR-006 always-ready: launch at Windows login (drives the autostart
-    /// plugin; the family build turns it on once at first run).
+    /// Always-ready: launch at Windows login (drives the autostart plugin;
+    /// applied once at first run, reversible in Settings).
     #[serde(default)]
     pub launch_at_login: bool,
     /// ADR-009: answer connection requests (host presence at launch).
@@ -153,7 +153,7 @@ impl core::fmt::Debug for AnchorDoc {
 
 /// User-facing copy for a rejected code (the Add form and the roster add
 /// path surface it as-is).
-pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's the 16-character code shown on the other machine's \"This machine\" card (or in its Share prompt).";
+pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's 16 letters and numbers, shown on the other machine's \"This machine\" card. Check it for typos and try again.";
 
 const SETTINGS_FILE: &str = "settings.json";
 
@@ -470,6 +470,32 @@ mod tests {
         assert_eq!(
             after.settings().signaling_base_url,
             "http://127.0.0.1:38013"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn whitespace_only_url_heals_too() {
+        // The heal condition is trim()-based; pin the whitespace-only
+        // case so a refactor dropping .trim() cannot pass the suite.
+        let dir = temp_dir("url-heal-space");
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            serde_json::json!({
+                "device_id": "0123456789abcdef",
+                "device_name": "space url",
+                "signaling_base_url": "   ",
+                "default_quality": "balanced",
+                "default_viewer_scale": "fit",
+                "device_token": "aabb",
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let store = LocalStore::load(&dir).unwrap();
+        assert_eq!(
+            store.settings().signaling_base_url,
+            DEFAULT_SIGNALING_BASE_URL
         );
         std::fs::remove_dir_all(&dir).ok();
     }

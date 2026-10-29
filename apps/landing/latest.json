@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.10.1",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.1-x64-setup.exe",
-  "sha256_hex": "2ba95c6fcd74f7fd9ecbe97ea86adbafd2807795f7ca4824d10540a626f85389",
-  "size_bytes": 7592933,
-  "notes": "Fix: a machine with a blank signaling URL (a leftover from old installs) never came online after updating \u2014 the URL now heals itself to the default service on every launch. If a machine kept showing 'isn't online right now', update it to 0.10.1.",
+  "version": "0.10.2",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.2-x64-setup.exe",
+  "sha256_hex": "73a7a35988faa7be8b9dc4049126708628eba4de3ff645fa41944edc1b097095",
+  "size_bytes": 7586797,
+  "notes": "Review-hardening release. A mistyped connection code is now caught immediately with a clear message (it used to be misreported as the other machine being offline). Clearer, honest wording for declined/unreachable connections, the consent prompt shows the machine code on its own line, your own machine's name + copyable code on the This-machine card, name-length protections, and assorted dead-code cleanup.",
   "published_at": "2026-10-29"
 }

@@ -260,6 +260,7 @@ export default function App() {
         <MachinesRail
           machines={machines}
           thisCode={engine.identity?.connection_code ?? "…"}
+          thisName={engine.identity?.device_name ?? null}
           hostState={ui.hostState}
           sharing={sharing}
           onPick={(code) => setSelectedCode(code)}
@@ -292,7 +293,7 @@ export default function App() {
           {controller.view === "connecting" || controller.view === "session" ? (
             <SessionCard
               controllerState={ui.controllerState}
-              machineName={sessionRow?.name ?? sessionCode}
+              machineName={sessionRow?.name ?? null}
               monitors={ui.peerMonitors}
               activeMonitor={ui.activeMonitor}
               quality={ui.quality}

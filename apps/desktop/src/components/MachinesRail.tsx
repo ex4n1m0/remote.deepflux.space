@@ -7,7 +7,16 @@
  * Also home to the pinned "This machine" card (host role). */
 import { useState } from "react";
 import { hostView } from "../state/mapping";
+import { CopyButton } from "./Common";
 import type { HostStateName, PairingInfo } from "../types";
+
+/** A connection code is exactly 16 hex characters (the peer's device id). */
+export function looksLikeCode(value: string): boolean {
+  return /^[0-9a-f]{16}$/.test(value.trim().toLowerCase());
+}
+
+export const BAD_CODE_HINT =
+  "That doesn't look like a connection code — it's 16 letters and numbers, on the other machine's \"This machine\" card.";
 
 export interface MachineRow {
   id: string;
@@ -63,7 +72,9 @@ export function RemoveMachineButton({
   }
   return (
     <span className="machine-remove-confirm" role="alertdialog" aria-label="Remove machine">
-      <span className="hint">Remove {name}?</span>
+      <span className="hint">
+        Remove {name} from your list? It asks for approval again next time.
+      </span>
       <button
         type="button"
         className="danger small"
@@ -93,6 +104,7 @@ export function filterMachines(rows: MachineRow[], query: string): MachineRow[] 
 export function MachinesRail({
   machines,
   thisCode,
+  thisName,
   hostState,
   sharing,
   onPick,
@@ -102,6 +114,8 @@ export function MachinesRail({
 }: {
   machines: MachineRow[];
   thisCode: string;
+  /** ADR-009: this machine's display name — the identity family sees. */
+  thisName: string | null;
   hostState: HostStateName;
   sharing: boolean;
   onPick: (code: string) => void;
@@ -110,12 +124,20 @@ export function MachinesRail({
   onStopShare: () => void;
 }) {
   const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const host = hostView(hostState);
 
   const dial = (agent: boolean) => {
     const c = code.trim().toLowerCase();
     if (!c) return;
+    // 0.10.2 UX review: catch typos HERE — a bad shape used to reach the
+    // service and come back as a wrong "machine isn't online" diagnosis.
+    if (!looksLikeCode(c)) {
+      setCodeError(BAD_CODE_HINT);
+      return;
+    }
+    setCodeError(null);
     setCode("");
     onConnect(c, agent);
   };
@@ -136,8 +158,12 @@ export function MachinesRail({
         <input
           value={code}
           placeholder="connection code"
-          onChange={(e) => setCode(e.target.value)}
           aria-label="Connection code"
+          aria-invalid={codeError ? true : undefined}
+          onChange={(e) => {
+            setCode(e.target.value);
+            setCodeError(null);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") dial(false);
           }}
@@ -162,7 +188,13 @@ export function MachinesRail({
             Agent
           </button>
         </div>
-        <p className="hint">the code is on the other machine's "This machine" card</p>
+        {codeError ? (
+          <p className="form-error" role="alert">
+            {codeError}
+          </p>
+        ) : (
+          <p className="hint">the code is on the other machine's "This machine" card</p>
+        )}
       </div>
 
       <input
@@ -206,8 +238,13 @@ export function MachinesRail({
           <span>This machine</span>
           <span className={`dot ${sharing ? "on" : "off"}`} aria-hidden="true" />
         </div>
+        {thisName ? <strong>{thisName}</strong> : null}{" "}
         <span className="chip chip-neutral">{host.status}</span>
-        <code className="code">{thisCode}</code>
+        <div className="row">
+          <code className="code">{thisCode}</code>
+          <CopyButton value={thisCode} label="code" />
+        </div>
+        <p className="hint">family enter this code to reach you</p>
         {host.can.start ? (
           <button type="button" className="primary small" onClick={onShare}>
             Share this machine

@@ -325,10 +325,47 @@ fn record_pairing_in_doc(
     true
 }
 
+/// Control (Cc) AND invisible-format (Cf) characters — zero-width spaces,
+/// bidi overrides (U+202E etc.), BOM — the visual-spoofing class the
+/// service schema rejects on the wire and local names must match.
+pub(crate) fn is_invisible_char(c: char) -> bool {
+    if c.is_control() {
+        return true;
+    }
+    matches!(c as u32,
+        0x00AD            // soft hyphen
+        | 0x200B..=0x200F // zero-width + LRM/RLM
+        | 0x2028..=0x202E // line/para sep + bidi overrides
+        | 0x2060..=0x206F // word joiner + invisible operators
+        | 0xFEFF          // BOM
+        | 0xFFF9..=0xFFFB // interlinear annotation
+    )
+}
+
+/// Validate a LOCAL display name (rename paths) against the same rule
+/// the signaling service enforces on wire names: trimmed, 1-64 chars, no
+/// control characters (0.10.2 security review — an unbounded local name
+/// could bloat pairings.json and stretch the UI). Returns the trimmed,
+/// accepted form.
+pub fn sanitize_local_name(raw: &str) -> Option<String> {
+    // Strict (matches the service): a name CONTAINING an invisible
+    // character is rejected outright, not cleaned — silent rewriting of
+    // what the user typed hides the problem.
+    if raw.chars().any(is_invisible_char) {
+        return None;
+    }
+    let trimmed = raw.trim();
+    let count = trimmed.chars().count();
+    if count == 0 || count > 64 {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
+
 /// ADR-009: cache a display name onto the pairing row for `code` (any
-/// role, pending or established). Empty names and missing rows are no-ops
-/// — the name is a convenience label, never load-bearing. Overwrites only
-/// when the new name is non-empty; first name wins over later empties.
+/// role, pending or established). Invalid names (empty, over 64 chars,
+/// control characters) and missing rows are no-ops — the name is a
+/// convenience label, never load-bearing.
 pub fn set_pairing_name(app: &AppHandle, code: &str, name: &str) {
     let mut doc = read_pairings(app);
     if set_pairing_name_in_doc(&mut doc, code, name) {
@@ -339,14 +376,13 @@ pub fn set_pairing_name(app: &AppHandle, code: &str, name: &str) {
 /// Pure core of [`set_pairing_name`]: false = nothing changed (no row,
 /// empty name, or the same name already cached).
 fn set_pairing_name_in_doc(doc: &mut PairingsDoc, code: &str, name: &str) -> bool {
-    let name = name.trim();
-    if name.is_empty() {
+    let Some(name) = sanitize_local_name(name) else {
         return false;
-    }
+    };
     let code = code.trim().to_lowercase();
     match doc.pairings.iter_mut().find(|p| p.code == code) {
-        Some(p) if p.name.as_deref() != Some(name) => {
-            p.name = Some(name.to_owned());
+        Some(p) if p.name.as_deref() != Some(name.as_str()) => {
+            p.name = Some(name);
             true
         }
         _ => false,
@@ -843,8 +879,25 @@ mod tests {
         // Empty never overwrites a learned name.
         assert!(!set_pairing_name_in_doc(&mut d, "abcdef0123456789", "   "));
         assert_eq!(d.pairings[0].name.as_deref(), Some("MOMS-PC"));
-        // Unknown code → no-op.
+        // Unknown code \u2192 no-op.
         assert!(!set_pairing_name_in_doc(&mut d, "1111111111111111", "Lab"));
+        // 0.10.2 security review: oversized and control-character names
+        // are rejected outright (service wire rule), never stored.
+        assert!(!set_pairing_name_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            &"x".repeat(65)
+        ));
+        assert!(!set_pairing_name_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            "bad\u{202e}name"
+        ));
+        assert!(!set_pairing_name_in_doc(
+            &mut d,
+            "abcdef0123456789",
+            "bad\u{0007}name"
+        ));
         // Round trip: None stays absent, Some serializes.
         let json = serde_json::to_string(&d).unwrap();
         assert!(json.contains("MOMS-PC"));

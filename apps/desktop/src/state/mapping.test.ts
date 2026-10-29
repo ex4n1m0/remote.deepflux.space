@@ -156,8 +156,8 @@ describe("disconnect copy (every DisconnectCause code)", () => {
   });
 
   it("explains direct-only limits on timeout and transport errors", () => {
-    expect(disconnectCopy("timeout").hint).toContain("direct connections only");
-    expect(disconnectCopy("transport_error").hint).toContain("direct connections only");
+    expect(disconnectCopy("timeout").hint).toContain("couldn't reach each other directly");
+    expect(disconnectCopy("transport_error").hint).toContain("couldn't reach each other directly");
     expect(disconnectCopy("user_disconnect").hint).toBeNull();
   });
 
@@ -170,7 +170,7 @@ describe("disconnect copy: reject reasons split by cause", () => {
   // The code collapses every RejectReason into "rejected"; the engine's
   // `cause` Debug string ("Rejected(Declined)", ...) carries the reason.
   it.each([
-    ["Rejected(Declined)", "They clicked Reject on the other machine."],
+    ["Rejected(Declined)", "The other machine declined or isn't answering right now — wait a minute and try again."],
     ["Rejected(Timeout)", "No one answered on the other machine — try calling them first."],
     ["Rejected(Busy)", "That machine is already in a session — try again in a few minutes."],
     ["Rejected(Unavailable)", "That machine isn't accepting connections right now."],
@@ -180,11 +180,11 @@ describe("disconnect copy: reject reasons split by cause", () => {
   });
 
   it("without a cause, rejected degrades to the declined copy", () => {
-    expect(disconnectCopy("rejected").title).toBe("They clicked Reject on the other machine.");
+    expect(disconnectCopy("rejected").title).toBe("The other machine declined or isn't answering right now — wait a minute and try again.");
   });
 
   it("the session-level timeout keeps its direct-only hint (distinct cause)", () => {
-    expect(disconnectCopy("timeout", "Timeout").hint).toContain("direct connections only");
+    expect(disconnectCopy("timeout", "Timeout").hint).toContain("couldn't reach each other directly");
     expect(disconnectCopy("timeout", "Timeout").title).not.toContain("No one answered");
   });
 });
@@ -194,17 +194,17 @@ describe("disconnect copy: offline peer (unknown_target)", () => {
     const copy = disconnectCopy("unknown_target");
     expect(copy.title).toBe("That machine isn't online");
     expect(copy.hint).not.toBeNull();
-    expect(copy.hint).not.toContain("direct connections only");
+    expect(copy.hint).not.toContain("couldn't reach each other directly");
     expect(copy.hint).toContain("open DeepFlux");
     // Same classification when the reason rides along in the cause text.
     const viaCause = disconnectCopy("transport_error", "signaling: unknown_target");
     expect(viaCause.title).toBe("That machine isn't online");
-    expect(viaCause.hint).not.toContain("direct connections only");
+    expect(viaCause.hint).not.toContain("couldn't reach each other directly");
   });
 
   it("transport errors without the offline marker keep the direct-only hint", () => {
     const copy = disconnectCopy("transport_error", "peer connection failed");
-    expect(copy.hint).toContain("direct connections only");
+    expect(copy.hint).toContain("couldn't reach each other directly");
   });
 });
 
@@ -213,7 +213,7 @@ describe("engineErrorCopy (ErrorBanner mapping)", () => {
     const copy = engineErrorCopy({
       code: "transport_failure",
       message: "signaling: unknown_target",
-      hint: "This build supports direct connections only (no relay). …",
+      hint: "The two computers couldn't reach each other directly — …",
     });
     expect(copy.title).toBe("That machine isn't online");
     expect(copy.message).toContain("open DeepFlux");

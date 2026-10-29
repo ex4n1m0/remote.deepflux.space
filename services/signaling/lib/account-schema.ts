@@ -65,7 +65,15 @@ export const displayNameSchema = z
     message: `must be at most ${DISPLAY_NAME_MAX_CHARS} characters`,
   })
   .refine((v) => v === v.trim(), 'must be the trimmed form (clients trim before sending)')
-  .refine((v) => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'control characters are not allowed');
+  .refine((v) => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'control characters are not allowed')
+  // 0.10.2 security review: invisible FORMAT characters (Cf — zero-width
+  // spaces, bidi overrides like U+202E, BOM) can visually spoof a consent
+  // prompt's "name (code)" line; reject them like control characters.
+  // Mirrors the client's is_invisible_char denylist.
+  .refine(
+    (v) => !/[\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/u.test(v),
+    'invisible characters are not allowed',
+  );
 
 /**
  * Username rules: 3-32 chars of [a-z0-9._-], starting with a letter or digit.

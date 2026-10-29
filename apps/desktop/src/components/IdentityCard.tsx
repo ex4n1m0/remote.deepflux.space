@@ -1,41 +1,11 @@
-/** This machine: identity + connection code + local settings. */
+/** This machine's local settings (the identity + connection code live in
+ * the rail's This-machine card, ADR-009). */
 import { useState } from "react";
-import { CopyButton, Section } from "./Common";
+import { Section } from "./Common";
 import { QUALITY_LABELS, SCALE_LABELS } from "../state/mapping";
 import { normalizeCode } from "../ipc";
-import type { Identity, Settings } from "../types";
+import type { Settings } from "../types";
 import { QUALITY_PRESETS, SCALE_MODES } from "../types";
-
-export function IdentityCard({ identity }: { identity: Identity | null }) {
-  if (!identity) {
-    return (
-      <Section title="This machine">
-        <p className="muted">Loading identity…</p>
-      </Section>
-    );
-  }
-  return (
-    <Section title="This machine">
-      <dl className="identity">
-        <div>
-          <dt>Name</dt>
-          <dd>{identity.device_name}</dd>
-        </div>
-        <div>
-          <dt>Connection code</dt>
-          <dd>
-            <code className="code">{identity.connection_code}</code>
-            <CopyButton value={identity.connection_code} label="connection code" />
-          </dd>
-        </div>
-      </dl>
-      <p className="muted">
-        Share this code with someone you trust. They enter it on their machine to request
-        control; you approve every session.
-      </p>
-    </Section>
-  );
-}
 
 export function SettingsPanel({
   settings,
@@ -122,6 +92,11 @@ export function SettingsPanel({
           }}
         >
           <label>
+            This machine's display name
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Office PC" maxLength={64} />
+            <span className="hint">the name family members see when you connect or message them — e.g. "Mom's laptop"</span>
+          </label>
+          <label>
             Signaling service URL
             <input
               value={url}
@@ -166,8 +141,8 @@ export function SettingsPanel({
               checked={hostSharing}
               onChange={(event) => setHostSharing(event.target.checked)}
             />
-            Answer connection requests (reachable as a host; every new
-            machine still needs your approval — applies at next launch)
+            Let family connect to this computer — each new machine still
+            needs your approval (takes effect the next time DeepFlux starts)
           </label>
           <label className="settings-check">
             <input
@@ -177,10 +152,6 @@ export function SettingsPanel({
             />
             Check for updates automatically (Help menu works either way;
             installing is always your press)
-          </label>
-          <label>
-            This machine's display name
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Office PC" />
           </label>
           <label>
             Default quality

@@ -20,7 +20,6 @@ afterEach(cleanup);
 describe("machinesFromPairings (the trusted-host list, ADR-009)", () => {
   const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
     code: "abcdef0123456789",
-    secret_hex: "s",
     created_ms: 1,
     pending_ack: false,
     role: "host",
@@ -58,6 +57,7 @@ describe("machinesFromPairings (the trusted-host list, ADR-009)", () => {
 describe("MachinesRail", () => {
   const base = {
     thisCode: "abcd1234efgh5678",
+    thisName: "Office PC",
     hostState: "Idle" as const,
     sharing: false,
     onPick: vi.fn(),
@@ -92,16 +92,40 @@ describe("MachinesRail", () => {
   it("connect box: Control and Agent dial the entered code (ADR-009)", () => {
     render(<MachinesRail {...base} machines={[]} />);
     const input = screen.getByLabelText("Connection code");
-    fireEvent.change(input, { target: { value: "CCCCDDDD" } });
+    fireEvent.change(input, { target: { value: "ccccdddd11112222" } });
     fireEvent.click(screen.getByRole("button", { name: "Agent" }));
-    expect(base.onConnect).toHaveBeenCalledWith("ccccdddd", true);
-    fireEvent.change(input, { target: { value: "EEEEFFFF" } });
+    expect(base.onConnect).toHaveBeenCalledWith("ccccdddd11112222", true);
+    fireEvent.change(input, { target: { value: "eeeeffff33334444" } });
     fireEvent.click(screen.getByRole("button", { name: "Control" }));
-    expect(base.onConnect).toHaveBeenCalledWith("eeeeffff", false);
+    expect(base.onConnect).toHaveBeenCalledWith("eeeeffff33334444", false);
     // Enter in the box is the visual verb.
-    fireEvent.change(input, { target: { value: "AAAABBBB" } });
+    fireEvent.change(input, { target: { value: "aaaabbbb55556666" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(base.onConnect).toHaveBeenLastCalledWith("aaaabbbb", false);
+    expect(base.onConnect).toHaveBeenLastCalledWith("aaaabbbb55556666", false);
+  });
+
+  it("connect box: a mistyped code is caught HERE, not blamed on the other machine (0.10.2)", () => {
+    const onConnect = vi.fn();
+    render(<MachinesRail {...base} onConnect={onConnect} machines={[]} />);
+    const input = screen.getByLabelText("Connection code");
+    fireEvent.change(input, { target: { value: "moms pc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Control" }));
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "doesn't look like a connection code",
+    );
+    // A corrected code clears the error and dials.
+    fireEvent.change(input, { target: { value: "ccccdddd11112222" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Control" }));
+    expect(onConnect).toHaveBeenCalledWith("ccccdddd11112222", false);
+  });
+
+  it("This-machine card shows this machine's name, the code, and a copy button", () => {
+    render(<MachinesRail {...base} machines={[]} />);
+    expect(screen.getByText("Office PC")).toBeTruthy();
+    expect(screen.getByText(/family enter this code to reach you/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy();
   });
 
   it("pending rows sit under the waiting hint; trusted rows carry the shield", () => {

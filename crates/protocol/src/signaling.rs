@@ -153,12 +153,11 @@ pub enum SignalingBody {
     /// behavior). Absent on first contact and on 0.4 controllers; hosts
     /// that predate the field ignore it.
     ///
-    /// `requester_name` (ADR-007, additive-optional within version 1) is
-    /// the controller's machine display name, shown beside the device id in
-    /// the host's consent prompt. Advisory only — `from_device_id` stays
-    /// the identity. Absent on pre-0.8 controllers (our 0.8 client refuses
-    /// to send a control request without one); hosts fall back to the
-    /// circle nickname, then the bare device id.
+    /// `requester_name` (ADR-007, re-scoped by ADR-009; additive-optional
+    /// within version 1) is the controller's machine display name, shown
+    /// beside the device id in the host's consent prompt. Advisory only —
+    /// `from_device_id` stays the identity. Absent on pre-0.8 controllers;
+    /// hosts fall back to the bare device id.
     ConnectRequest {
         capabilities: Capabilities,
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -499,7 +499,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     let _ = app.emit(
                         events::INFO,
                         Some(serde_json::json!({ "message": format!(
-                            "Pairing key mismatch with {controller_device_id} - remove it in Settings, Trusted machines, to re-pair."
+                            "Couldn't re-trust {controller_device_id} — remove it in Config → Trusted machines, then connect again to re-pair."
                         ) })),
                     );
                 }
@@ -540,10 +540,28 @@ pub fn get_identity(app: AppHandle) -> CmdResult<Identity> {
 
 pub(crate) fn display_name(settings: &AppSettings) -> String {
     if settings.device_name.trim().is_empty() {
-        hostname()
-    } else {
-        settings.device_name.trim().to_owned()
+        return hostname();
     }
+    // 0.10.2 (security review): the name rides signaling envelopes that
+    // the service validates (1-64 chars, no control characters) — a
+    // nonconforming local name would get every outbound connect/accept
+    // REJECTED. Clamp to the wire rule instead of failing later.
+    wire_safe_name(&settings.device_name).unwrap_or_else(hostname)
+}
+
+/// Clamp a display name to the signaling wire rule: trimmed, control
+/// characters stripped, at most 64 chars. `None` when nothing usable
+/// remains (caller falls back).
+pub(crate) fn wire_safe_name(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| !crate::chat::is_invisible_char(*c))
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(64).collect())
 }
 
 fn hostname() -> String {
@@ -676,9 +694,16 @@ pub fn quit_app(app: AppHandle) {
 
 #[tauri::command]
 pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
-    let code = args.code.trim().to_owned();
+    let code = args.code.trim().to_lowercase();
     if code.is_empty() {
         return Err("Enter the host machine's connection code.".into());
+    }
+    // UX review 0.10.2: a mistyped code used to sail through to the
+    // service and come back as "machine isn't online" — a wrong-but-
+    // confident diagnosis. Validate the shape here (defense; the rail
+    // validates client-side for instant feedback).
+    if !crate::store::is_machine_code(&code) {
+        return Err(crate::store::BAD_CODE_COPY.to_owned());
     }
     // ADR-009: the connect_request carries this machine's display name so
     // the host's prompt says who is asking. The name is advisory — the
@@ -932,12 +957,13 @@ pub fn pairing_remove(app: AppHandle, code: String) -> CmdResult<()> {
 /// ADR-009: rename a trusted-host row (the label is local-only).
 #[tauri::command]
 pub fn pairing_rename(app: AppHandle, code: String, name: String) -> CmdResult<()> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err("Enter a name for this machine.".into());
+    match crate::chat::sanitize_local_name(&name) {
+        Some(name) => {
+            crate::chat::set_pairing_name(&app, &code, &name);
+            Ok(())
+        }
+        None => Err("Enter a name up to 64 characters (letters, numbers, spaces).".into()),
     }
-    crate::chat::set_pairing_name(&app, &code, name);
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------

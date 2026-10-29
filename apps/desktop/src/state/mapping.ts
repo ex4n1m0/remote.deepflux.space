@@ -255,7 +255,10 @@ function rejectCopy(cause?: string | null): string {
   if (cause?.includes("Unavailable")) {
     return "That machine isn't accepting connections right now.";
   }
-  return "They clicked Reject on the other machine.";
+  // 0.10.2 UX review: this cause ALSO fires for the prompt-flood
+  // auto-reject (an unanswered prompt + 60 s cooldown) — nobody clicked
+  // anything. Never accuse a human of a click that didn't happen.
+  return "The other machine declined or isn't answering right now — wait a minute and try again.";
 }
 
 export const OFFLINE_PEER_TITLE = "That machine isn't online";
@@ -277,13 +280,29 @@ export function engineErrorCopy(event: {
   if (`${event.code} ${event.message}`.includes("unknown_target")) {
     return { title: OFFLINE_PEER_TITLE, message: OFFLINE_PEER_DETAIL, hint: null };
   }
+  // 0.10.2 UX review: never show dev-voiced engine strings as the fix.
+  const raw = `${event.code} ${event.message}`;
+  if (raw.includes("engine not started")) {
+    return {
+      title: "DeepFlux is still starting up",
+      message: "Wait a few seconds and try again — it restarts itself automatically.",
+      hint: null,
+    };
+  }
+  if (raw.includes("No signaling server configured") || raw.includes("signaling")) {
+    return {
+      title: "DeepFlux couldn't reach its connection service",
+      message: "Check the internet and restart the app. If it keeps happening, the service address is in Settings.",
+      hint: null,
+    };
+  }
   return { title: "Something went wrong", message: event.message, hint: event.hint };
 }
 
 export const DIRECT_ONLY_HINT =
-  "This build supports direct connections only (no relay). If both machines are behind " +
-  "symmetric NAT or UDP is blocked, the connection cannot be established until TURN is " +
-  "added (deferred by the MVP plan).";
+  "The two computers couldn't reach each other directly — this can happen on hotel, " +
+  "workplace, or school networks. Try again from a home network, or have the other " +
+  "side connect to you instead.";
 
 /** Which machine-state transition triggers correspond to which UI action. */
 export const TRANSITION_TRIGGERS = {

@@ -41,8 +41,7 @@ native-tls = { workspace = true }
 ureq = { workspace = true }
 getrandom = { workspace = true }
 
-# Post-MVP accounts & encrypted roster (client-side crypto + /api/account
-# client; see docs/adr/ADR-003-accounts-and-roster.md).
+# Hex codec for pairing secrets and proofs.
 hex = { workspace = true }
 # ADR-006: pairing-proof HMAC + circle-id SHA-256 derivation
 # (node-runtime::{pairing_proof, directory_remote}).

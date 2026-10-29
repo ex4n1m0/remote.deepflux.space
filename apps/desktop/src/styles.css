@@ -256,33 +256,9 @@ input:focus {
   color: var(--text);
 }
 
-.favorites-form,
 .settings-form {
   display: flex;
   flex-direction: column;
-}
-
-.favorites {
-  list-style: none;
-  padding: 0;
-  margin: 8px 0 0;
-}
-
-.favorite {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-top: 1px solid var(--line);
-  flex-wrap: wrap;
-}
-
-.favorite-name {
-  min-width: 90px;
-}
-
-.favorite-code {
-  font-size: 12px;
 }
 
 .dot {
@@ -449,73 +425,6 @@ legend {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
-}
-
-/* ---- accounts phase: onboarding card + roster chrome ---- */
-
-.onboarding-loading {
-  text-align: center;
-  padding: 48px 0;
-}
-
-.onboarding-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 8vh 16px 0;
-}
-
-.onboarding-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 22px 24px;
-  width: min(400px, 100%);
-}
-
-.onboarding-card h1 {
-  font-size: 20px;
-  margin: 0 0 8px;
-}
-
-.onboarding-tabs {
-  display: flex;
-  gap: 6px;
-  margin: 10px 0 4px;
-}
-
-.onboarding-tabs .tab-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.onboarding-form {
-  display: flex;
-  flex-direction: column;
-  margin-top: 6px;
-}
-
-.onboarding-form button {
-  align-self: flex-start;
-  margin-top: 10px;
-}
-
-.onboarding-skip {
-  margin-top: 14px;
-  color: var(--muted);
-}
-
-.account-chip {
-  cursor: default;
-}
-
-.badge {
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 11px;
-  flex: none;
 }
 
 /* ── Agent-first workspace (ADR-005): rail · center · assistant ─────── */
@@ -1236,47 +1145,10 @@ legend {
 }
 
 /* ADR-006 §5 notice as a passive toast (0.8.0: no OK button). */
-.circle-toast {
-  margin: 12px 0 0;
-  animation: toast-fade 12s ease-in forwards;
-}
 
 @keyframes toast-fade {
   0%, 80% { opacity: 1; }
   100% { opacity: 0; }
-}
-
-/* ADR-007 add-your-name card (legacy accounts, one time). */
-.name-prompt {
-  margin-bottom: 12px;
-  border-color: var(--accent);
-}
-
-.name-prompt h3 {
-  margin: 0 0 6px;
-}
-
-.name-prompt form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.name-prompt label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.name-prompt input {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 7px 9px;
-  font: inherit;
 }
 
 /* Inline text link (assistant setup pointer). */

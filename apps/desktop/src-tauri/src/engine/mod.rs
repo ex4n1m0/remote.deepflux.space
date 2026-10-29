@@ -56,9 +56,9 @@ pub use quality::{plan_for, preset_from_name, preset_name};
 
 /// Copy shown when a direct connection fails (M5 documents the
 /// expected-failure classes; TURN is explicitly deferred).
-pub const DIRECT_ONLY_HINT: &str = "This build supports direct connections only (no relay). \
-     If both machines are behind symmetric NAT or UDP is blocked, the connection cannot be \
-     established until TURN is added (deferred by the MVP plan).";
+pub const DIRECT_ONLY_HINT: &str = "The two computers couldn't reach each other directly — \
+     this can happen on hotel, workplace, or school networks. Try again from a home \
+     network, or have the other side connect to you instead.";
 
 /// Bounded command/event queues (invariant 3).
 const CMD_QUEUE: usize = 64;

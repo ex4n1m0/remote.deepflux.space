@@ -437,9 +437,9 @@ impl Node {
     /// `Send` action in place. The secret itself never appears in any
     /// envelope or log.
     ///
-    /// `requester_name` (ADR-007): the caller's machine display name,
-    /// stamped the same way. Our 0.8 app refuses to connect without one;
-    /// `None` keeps the field absent for older/test callers.
+    /// `requester_name` (ADR-007, re-scoped by ADR-009): the caller's
+    /// machine display name, stamped the same way; the app always sends
+    /// one, `None` keeps the field absent for older/test callers.
     pub fn controller_connect(
         &mut self,
         host_device_id: &str,

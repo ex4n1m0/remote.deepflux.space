@@ -22,8 +22,11 @@ export function consentCopy(consent: {
   const who = consent.requester_name
     ? consent.requester_name
     : consent.controller_device_id;
-  // The device id is ALWAYS shown beside the name — names are advisory;
-  // the code is the identity that cannot be impersonated inside the prompt.
+  // The device id is ALWAYS shown — names are advisory; the code is the
+  // identity that cannot be impersonated inside the prompt. `title`
+  // (with the code) is for the screen-reader announcement; the dialog
+  // renders the name and the code as SEPARATE lines so a crafted name
+  // cannot visually masquerade as the code (0.10.2 security review).
   const whoWithCode = consent.requester_name
     ? `${consent.requester_name} (${consent.controller_device_id})`
     : consent.controller_device_id;
@@ -36,7 +39,7 @@ export function consentCopy(consent: {
       who: whoWithCode,
       title: aiTitle,
       detail:
-        "It will see the screen and drive the mouse and keyboard to help. Your family can watch and take over at any time; it cannot type your passwords.",
+        "It will see the screen and drive the mouse and keyboard to help. Your family can watch and take over at any time; it's instructed never to type passwords — if a screen asks for one, it stops.",
       alwaysHint:
         "Always allow means that machine's AI assistant can connect without asking, whenever it is on.",
     };
@@ -72,8 +75,13 @@ export function ConsentDialog({
       </p>
       <div className="consent center-card" role="dialog" aria-label="Connection request">
         <p>
-          <strong>{copy.title}</strong>
+          <strong>{copy.who === consent.controller_device_id ? copy.who : `${copy.who} asks to control this computer.`}</strong>
         </p>
+        {copy.who !== consent.controller_device_id ? (
+          <p className="muted">
+            machine code <code className="code">{consent.controller_device_id}</code>
+          </p>
+        ) : null}
         {consent.paired && !consent.pairing_proof_ok ? (
           <p className="hint" role="note">
             This machine claims to be trusted but could not prove it — treat it
@@ -105,14 +113,15 @@ export function TrustedConnectCard({
 }: {
   consent: ConsentEvent;
 }) {
-  const who = consent.requester_name
-    ? `${consent.requester_name} (${consent.controller_device_id})`
-    : consent.controller_device_id;
+  const who = consent.requester_name ?? consent.controller_device_id;
   return (
     <div className="center-card" role="status">
       <p>
         <strong>{who}</strong> is connecting — remembered machine, no approval
         needed.
+      </p>
+      <p className="muted">
+        machine code <code className="code">{consent.controller_device_id}</code>
       </p>
     </div>
   );

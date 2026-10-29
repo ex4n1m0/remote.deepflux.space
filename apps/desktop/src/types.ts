@@ -199,7 +199,7 @@ export interface ConsentEvent {
   /** ADR-006: the claimed pairing proof verified (silent accept requires
    * it; `paired && !pairing_proof_ok` renders the warning copy). */
   pairing_proof_ok: boolean;
-  /** ADR-006: the requester's self-chosen circle nickname, when known —
+  /** ADR-006: the requester's machine display name from the wire, when known —
    * advisory only; the device code beside it is the identity. */
   requester_name: string | null;
 }
@@ -236,13 +236,12 @@ export interface InfoEvent {
   message: string;
 }
 
-// ---- family circle / machine directory (ADR-006) ----
+// ---- trusted machines (ADR-009: the machine list) ----
 
 
 
 export interface PairingInfo {
   code: string;
-  secret_hex: string;
   created_ms: number;
   pending_ack: boolean;
   /** host | controller | legacy (ADR-006). */
