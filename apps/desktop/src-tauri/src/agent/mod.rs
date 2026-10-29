@@ -9,6 +9,8 @@
 //! Windows Credential Manager (`agent-api-key`).
 
 pub mod apps;
+pub mod schedule;
+pub mod winctl;
 pub mod tools;
 
 use std::collections::VecDeque;
@@ -108,6 +110,10 @@ pub struct AssistantState {
 pub enum AssistantInput {
     User(String),
     PeerAgent { peer: String, body: String },
+    /// ADR-012 release B: a scheduled task fired — same authority as a
+    /// user turn, and the final answer is reported to every paired
+    /// machine by chat (the unattended-action trail).
+    Scheduled { name: String, body: String },
 }
 
 impl Default for AssistantState {
@@ -349,8 +355,8 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
     while let Ok(input) = rx.recv() {
         // Peer-agent instructions arrive as machine-chat turns and are
         // reported in the panel so their execution is always visible.
-        let (user_text, reply_to) = match input {
-            AssistantInput::User(text) => (text, None),
+        let (user_text, reply_to, scheduled) = match input {
+            AssistantInput::User(text) => (text, None, None),
             AssistantInput::PeerAgent { peer, body } => {
                 let text = format!(
                     "[INSTRUCTION FROM PAIRED MACHINE {peer} — sent by its user or its assistant] \
@@ -369,7 +375,21 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                         content: format!("from {peer}'s assistant: {body}"),
                     },
                 );
-                (text, Some(peer))
+                (text, Some(peer), None)
+            }
+            AssistantInput::Scheduled { name, body } => {
+                let text = format!(
+                    "[SCHEDULED TASK {name} — a standing instruction your user set up in advance]                      {body}
+                     Execute it now with your tools on this machine. Your final answer is                      reported to every paired machine automatically — do NOT call chat_send                      yourself for it. If the task no longer makes sense (the situation                      changed), say so briefly and take no action."
+                );
+                emit(
+                    &app,
+                    AssistantEvent::Message {
+                        role: "scheduled".into(),
+                        content: format!("scheduled {name}: {body}"),
+                    },
+                );
+                (text, None, Some(name))
             }
         };
         if api_key(&app).is_none() {
@@ -421,6 +441,14 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 {
                     eprintln!("[assistant] reply to {peer} failed: {err}");
                 }
+                // Scheduled turn (ADR-012 B): record the result and
+                // broadcast the report to every paired machine — the
+                // unattended-action trail. Best-effort per peer, bounded
+                // by the pairings list itself.
+                if let Some(name) = scheduled {
+                    schedule::mark_fired(&app, &name, Some(final_text.clone()));
+                    broadcast_scheduled_report(&app, &name, &final_text);
+                }
                 emit(&app, AssistantEvent::Done { ok: true });
             }
             Err(err) => {
@@ -434,6 +462,57 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
             log.drain(..drop);
         }
     }
+}
+
+/// Send the scheduled-run report to every paired machine (sealed inbox,
+/// plain sender — the recipient's chat shows it; the agent bit would wake
+/// THEIR assistant, which is not what a report is for). Best-effort per
+/// peer; capped at the first 16 pairings for safety.
+fn broadcast_scheduled_report(app: &AppHandle, name: &str, text: &str) {
+    let report = format!("[scheduled {name}] {text}");
+    let (base_url, token, me) = {
+        let services = app.state::<crate::commands::AppServices>();
+        let store = services.store.lock().expect("store");
+        let s = store.settings().clone();
+        (s.signaling_base_url, s.device_token, s.device_id)
+    };
+    for pair in crate::chat::pairings(app).into_iter().take(16) {
+        crate::chat::record_outgoing(app, &pair.code, "agent", &report);
+        let _ = crate::chat::inbox_send(app, &base_url, &token, &me, &pair.code, &report);
+    }
+}
+
+/// The scheduler thread (ADR-012 release B): every 30 s, fire every
+/// enabled task whose trigger is due and that the assistant can take
+/// (busy = retry next tick — never queue a backlog).
+pub fn spawn_scheduler(app: AppHandle) {
+    std::thread::Builder::new()
+        .name("agent-scheduler".into())
+        .spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            let services = app.state::<crate::commands::AppServices>();
+            if *services.assistant.busy.lock().expect("assistant busy") {
+                continue; // a turn is running — try the next tick
+            }
+            let now_ms = schedule::now_ms();
+            let now = schedule::LocalStamp::now();
+            for task in schedule::read_doc(&app).tasks {
+                if !schedule::is_due(&task, now_ms, &now) {
+                    continue;
+                }
+                // Mark the fire BEFORE delivering: a crash mid-turn must
+                // not refire the task every 30 s (the report notes the
+                // missing result instead).
+                schedule::mark_fired(&app, &task.name, None);
+                let _ = services
+                    .assistant
+                    .deliver(AssistantInput::Scheduled {
+                        name: task.name.clone(),
+                        body: task.instruction.clone(),
+                    });
+            }
+        })
+        .expect("spawn agent scheduler");
 }
 
 /// Deliver the assistant's final answer to the machine that asked:
