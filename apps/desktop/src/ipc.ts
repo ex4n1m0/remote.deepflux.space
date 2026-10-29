@@ -43,7 +43,18 @@ export const CHAT_EVENT = "engine://chat";
 export const UPDATE_EVENT = "update://state";
 
 export interface UpdateState {
-  status: "idle" | "checking" | "available" | "none" | "downloading" | "ready" | "installing" | "error";
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "none"
+    | "downloading"
+    | "ready"
+    | "installing"
+    | "error"
+    /** 0.15.0: one-shot post-update states (see updater.rs). */
+    | "updated"
+    | "pending-restart";
   /** Which step an error belongs to: check | download | install (empty
    * outside errors) — words the failure for the banner. */
   stage: "check" | "download" | "install" | "";

@@ -129,6 +129,41 @@ export function UpdateBanner({ state, sessionLive, onUpdate, onInstall, onRetry,
       </div>
     );
   }
+  if (state.status === "updated") {
+    // One-shot post-update confirmation (the 0.11.0 "it said failed but
+    // it worked" report): the relaunched app says what happened.
+    return (
+      <div className="banner banner-info update-banner" role="status">
+        <p>
+          <strong>DeepFlux was updated to {state.latest_version}.</strong>{" "}
+          Everything is up to date.
+        </p>
+        <div className="row">
+          <button type="button" className="ghost" onClick={onDismiss}>
+            OK
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (state.status === "pending-restart") {
+    // The relaunch raced the installer's final writes (slow disk): the
+    // running process is still the old one — one more restart finishes it.
+    return (
+      <div className="banner banner-info update-banner" role="status">
+        <p>
+          <strong>Almost there — restart DeepFlux once more.</strong> The
+          update to {state.latest_version} finished installing while the app
+          was opening; closing and reopening DeepFlux completes it.
+        </p>
+        <div className="row">
+          <button type="button" className="ghost" onClick={onDismiss}>
+            OK
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (state.status === "error") {
     return (
       <div className="banner banner-error update-banner" role="alert">

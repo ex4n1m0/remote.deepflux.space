@@ -124,14 +124,28 @@ fn full_session_state_flow_through_the_command_layer() {
         collect(&ctrl_events, &mut ctrl_log);
         host.status().host_state == "Connected" && ctrl.status().controller_state == "Connected"
     });
-    assert!(host_log.iter().any(|event| matches!(
-        event,
-        EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
-    )));
-    assert!(ctrl_log.iter().any(|event| matches!(
-        event,
-        EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
-    )));
+    // Wait for the ESTABLISHED EVENTS, not just the status: the shared
+    // state flips a beat before the event is forwarded under load, and a
+    // bare assert after the status wait raced that gap (flaked twice
+    // under parallel-suite load — fixed 0.15.0).
+    wait_for("host SessionEstablished", deadline, || {
+        collect(&host_events, &mut host_log);
+        host_log.iter().any(|event| {
+            matches!(
+                event,
+                EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
+            )
+        })
+    });
+    wait_for("ctrl SessionEstablished", deadline, || {
+        collect(&ctrl_events, &mut ctrl_log);
+        ctrl_log.iter().any(|event| {
+            matches!(
+                event,
+                EngineEvent::SessionEstablished { session_id, .. } if *session_id == consent_session
+            )
+        })
+    });
     // ADR-009: the accept carried the host's display name — the
     // controller's SessionEstablished reports it as peer_name (the app
     // layer caches it into the trusted-host row); the host side learned

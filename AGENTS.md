@@ -244,7 +244,8 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
   `apps/desktop` is **not** a blanket unsafe-free zone —
   `engine/displays.rs` (monitor enumeration; CR-3, still open), the
   `bin/e2e_child.rs` test binary, and (ADR-012) `agent/apps.rs`
-  (Uninstall-hive registry reads) still contain reviewed Win32 unsafe.
+  (Uninstall-hive registry reads) and `agent/startup.rs` (Run-key
+  enumerate/disable/restore) still contain reviewed Win32 unsafe.
   The placement split is documented in `input-windows/src/capture.rs`'s
   module docs.
 

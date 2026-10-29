@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
-use crate::agent::{schedule, winctl};
+use crate::agent::{schedule, startup, winctl};
 use crate::engine::{self, AgentInput};
 use crate::store::AppSettings;
 use schedule::Trigger;
@@ -167,6 +167,57 @@ pub fn tool_specs() -> Vec<Value> {
                 "type": "object",
                 "properties": { "delta_v": { "type": "integer" } },
                 "required": ["delta_v"]
+            }),
+        ),
+        f(
+            "windows_update_check",
+            "Search Windows Update for available updates (built-in COM API — no \
+             module installs). Returns titles and sizes; may take a minute or two.",
+            json!({ "type": "object", "properties": {}, "required": [] }),
+        ),
+        f(
+            "windows_update_install",
+            "Download and install all pending Windows Update updates (built-in COM \
+             API; up to 15 minutes). Reports the result code and whether a restart \
+             is required — use the power tool to restart when it says so.",
+            json!({ "type": "object", "properties": {}, "required": [] }),
+        ),
+        f(
+            "startup_list",
+            "List programs that start with Windows: registry Run entries (machine \
+             and user) and Startup-folder shortcuts, each marked enabled or \
+             disabled-by-this-agent.",
+            json!({ "type": "object", "properties": {}, "required": [] }),
+        ),
+        f(
+            "startup_toggle",
+            "Disable or re-enable a startup entry by name (from startup_list). \
+             Disabling BACKS the entry up (restorable by enabling again); nothing \
+             is lost while DeepFlux is installed.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "enable": { "type": "boolean", "description": "false = disable (default), true = restore" }
+                },
+                "required": ["name"]
+            }),
+        ),
+        f(
+            "fleet_run",
+            "Run the same instruction on several paired machines at once: connects \
+             to each (chat-only agent session, silent via pairing), sends the \
+             instruction to that machine's assistant, waits for its answer, and \
+             returns a collected report. Machines default to all paired (max 4 \
+             per call for bounded runtime); each has a 2-minute answer window. \
+             The hosts' agents act with their own powers.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "instruction": { "type": "string" },
+                    "machines": { "type": "array", "items": { "type": "string" }, "description": "Connection codes (default: every paired machine, capped)" }
+                },
+                "required": ["instruction"]
             }),
         ),
         f(
@@ -777,6 +828,62 @@ pub fn execute(
                 Ok(()) => ToolOutput::text(format!("scrolled {delta_v}")),
                 Err(e) => ToolOutput::text(format!("scroll failed: {e}")),
             }
+        }
+        "windows_update_check" => ToolOutput::text(windows_update(
+            WindowsUpdateVerb::Check,
+            Duration::from_secs(300),
+        )),
+        "windows_update_install" => ToolOutput::text(windows_update(
+            WindowsUpdateVerb::Install,
+            Duration::from_secs(900),
+        )),
+        "startup_list" => ToolOutput::text(startup::list_entries(app)),
+        "startup_toggle" => {
+            let Some(name) = args.get("name").and_then(|v| v.as_str()) else {
+                return ToolOutput::text("startup_toggle requires name");
+            };
+            let enable = args
+                .get("enable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let result = if enable {
+                startup::enable_entry(app, name)
+            } else {
+                startup::disable_entry(app, name)
+            };
+            match result {
+                Ok(text) => ToolOutput::text(text),
+                Err(err) => ToolOutput::text(format!("startup_toggle failed: {err}")),
+            }
+        }
+        "fleet_run" => {
+            let Some(instruction) = args.get("instruction").and_then(|v| v.as_str()) else {
+                return ToolOutput::text("fleet_run requires instruction");
+            };
+            let mut targets: Vec<String> = args
+                .get("machines")
+                .and_then(|v| v.as_array())
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|m| m.as_str())
+                        .map(|m| m.trim().to_lowercase())
+                        .filter(|m| !m.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            if targets.is_empty() {
+                // Default: every ESTABLISHED pairing, bounded.
+                targets = crate::chat::pairings(app)
+                    .into_iter()
+                    .filter(|p| !p.pending_ack)
+                    .map(|p| p.code)
+                    .collect();
+            }
+            if targets.is_empty() {
+                return ToolOutput::text("no paired machines to run on — pair at least one first");
+            }
+            targets.truncate(FLEET_MAX_MACHINES);
+            ToolOutput::text(fleet_run(app, instruction, &targets))
         }
         "schedule" => {
             let (Some(name), Some(instruction)) = (
@@ -1871,6 +1978,160 @@ fn kill_process(pid: u64) -> Result<String, String> {
     Ok(text.trim().to_owned())
 }
 
+// -- ADR-012 next tier: Windows Update, fleet, (startup lives in its
+// module) ---------------------------------------------------------------
+
+/// Per-machine cap for one fleet_run call (bounded runtime: each machine
+/// can hold the wire for its whole answer window).
+const FLEET_MAX_MACHINES: usize = 4;
+/// Wait for each machine to connect.
+const FLEET_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+/// Wait for each machine's answer after sending the instruction.
+const FLEET_ANSWER_TIMEOUT: Duration = Duration::from_secs(120);
+/// Whole-call deadline — exceeded machines report as timed out.
+const FLEET_TOTAL_TIMEOUT: Duration = Duration::from_secs(600);
+
+enum WindowsUpdateVerb {
+    Check,
+    Install,
+}
+
+/// Windows Update through the built-in Microsoft.Update.Session COM API
+/// (no module installs, works on every Windows 10/11 box). Spawned as a
+/// DIRECT PowerShell argv vector — no cmd.exe, no quoting surface; the
+/// script text is a compile-time constant.
+fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
+    let script = match verb {
+        WindowsUpdateVerb::Check => {
+            // One update per line: title<TAB>size. Count rides the header.
+            r#"$ErrorActionPreference='Stop'; try { $s=New-Object -ComObject Microsoft.Update.Session; $u=$s.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0"); "pending updates: $($u.Count)"; foreach($x in $u.Updates){ "$($x.Title)`t$([math]::Round($x.MaxDownloadSize/1MB,1))MB" } } catch { "search failed: $($_.Exception.Message)" }"#
+        }
+        WindowsUpdateVerb::Install => {
+            // Download then install everything pending; report the COM
+            // result code (2 ok, 3 ok-with-errors, 4 failed, 5 aborted)
+            // and whether a restart is required.
+            r#"$ErrorActionPreference='Stop'; try { $s=New-Object -ComObject Microsoft.Update.Session; $u=$s.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0"); if($u.Count -eq 0){ "nothing to install"; exit 0 }; $d=$s.CreateUpdateDownloader(); $d.Updates=$u.Updates; $null=$d.Download(); $i=$s.CreateUpdateInstaller(); $i.Updates=$u.Updates; $r=$i.Install(); "install result code: $($r.ResultCode) (2=ok, 3=ok with errors, 4=failed, 5=aborted)"; "restart required: $($i.RebootRequired)" } catch { "install failed: $($_.Exception.Message)" }"#
+        }
+    };
+    let mut cmd = std::process::Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+    ]);
+    run_command(&mut cmd, timeout).unwrap_or_else(|e| format!("windows update failed: {e}"))
+}
+
+/// Run one instruction across `targets` sequentially: agent-connect to
+/// each (silent via pairing), send the instruction to its assistant,
+/// wait for its answer, disconnect. The collected report names what each
+/// machine's agent answered. Whole-call deadline bounded.
+fn fleet_run(app: &AppHandle, instruction: &str, targets: &[String]) -> String {
+    let started = std::time::Instant::now();
+    let mut report = Vec::new();
+    for code in targets {
+        if started.elapsed() >= FLEET_TOTAL_TIMEOUT {
+            report.push(format!("{code}: SKIPPED — fleet deadline reached"));
+            continue;
+        }
+        report.push(format!(
+            "{code}: {}",
+            fleet_one(app, code, instruction, started)
+        ));
+        // Always drop the session before moving on — one at a time.
+        let _ = with_engine(app, |handle| handle.send(engine::EngineCmd::Disconnect));
+    }
+    report.join("\n")
+}
+
+fn fleet_one(
+    app: &AppHandle,
+    code: &str,
+    instruction: &str,
+    started: std::time::Instant,
+) -> String {
+    // 1. Connect (chat-only agent session; pairing makes it silent).
+    let requester_name = {
+        let services = app.state::<crate::AppServices>();
+        let store = services.store.lock().expect("store");
+        crate::commands::display_name(store.settings())
+    };
+    let pairing_secret =
+        crate::chat::pairing_for(app, code).map(|p| crate::chat::PairingSecret(p.secret_hex));
+    let connect = crate::commands::start_engine(app).and_then(|_| {
+        with_engine(app, |handle| {
+            handle
+                .send(engine::EngineCmd::ControllerStart)
+                .map_err(|e| e.to_string())?;
+            handle
+                .send(engine::EngineCmd::Connect {
+                    code: code.to_owned(),
+                    pairing_secret,
+                    requester_name: Some(requester_name),
+                    agent: true,
+                })
+                .map_err(|e| e.to_string())
+        })
+    });
+    if let Err(err) = connect {
+        return format!("connect failed: {err}");
+    }
+    // 2. Wait for Connected.
+    let deadline = std::time::Instant::now() + FLEET_CONNECT_TIMEOUT;
+    loop {
+        if std::time::Instant::now() >= deadline || started.elapsed() >= FLEET_TOTAL_TIMEOUT {
+            return "timed out connecting (host offline or prompt unanswered?)".into();
+        }
+        let connected = with_engine(app, |handle| {
+            let s = handle.status();
+            Ok(s.controller_state == "Connected")
+        })
+        .unwrap_or(false);
+        if connected {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    // 3. Send the instruction to that machine's assistant (agent bit).
+    let sent_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    if let Err(err) = with_engine(app, |handle| {
+        handle.send(engine::EngineCmd::ChatSend {
+            body: instruction.to_owned(),
+            agent: true,
+        })
+    }) {
+        return format!("send failed: {err}");
+    }
+    crate::chat::record_outgoing(app, code, "to-agent", instruction);
+    // 4. Wait for the machine's assistant answer (a new peer-agent line).
+    let deadline = std::time::Instant::now() + FLEET_ANSWER_TIMEOUT;
+    loop {
+        if std::time::Instant::now() >= deadline || started.elapsed() >= FLEET_TOTAL_TIMEOUT {
+            return "no answer within the window (its assistant may be busy)".into();
+        }
+        let answered = crate::chat::history(app, code)
+            .iter()
+            .any(|l| l.sender == "peer-agent" && l.ts_ms >= sent_at && !l.body.is_empty());
+        if answered {
+            let answer = crate::chat::history(app, code)
+                .iter()
+                .rev()
+                .find(|l| l.sender == "peer-agent" && l.ts_ms >= sent_at)
+                .map(|l| l.body.clone())
+                .unwrap_or_default();
+            let clipped: String = answer.chars().take(600).collect();
+            return format!("answered: {clipped}");
+        }
+        std::thread::sleep(Duration::from_millis(1000));
+    }
+}
+
 fn title_arg(args: &Value) -> Result<&str, String> {
     args.get("title")
         .and_then(|v| v.as_str())
@@ -2165,7 +2426,11 @@ one), the filesystem (fs_list, fs_read, fs_write, fs_delete on any path; search 
 name or content), processes (ps, kill), open windows (windows_list, window_focus, \
 window_minimize, window_close), recurring maintenance (schedule, schedule_list, \
 schedule_remove — a scheduled task fires as a full turn while nobody watches and \
-reports to every paired machine by chat), and run_shell for any cmd.exe command \
+reports to every paired machine by chat), Windows itself (windows_update_check,
+windows_update_install — when it reports a restart is required, use power to
+restart), what starts at login (startup_list, startup_toggle), the whole
+family fleet (fleet_run sends one instruction to every paired machine's
+assistant and collects their answers), and run_shell for any cmd.exe command
 without a dedicated tool (services, registry, network config, git, anything).\n\
 {admin_line}\n\
 You also run the remote-desktop side of the app: save machines, change settings, share this \
@@ -2284,6 +2549,23 @@ mod tests {
         assert!(none.contains("no processes match"));
         // taskkill on a reserved/invalid pid fails with the tool's error.
         assert!(kill_process(4).is_err() || kill_process(4).is_ok());
+    }
+
+    #[test]
+    fn windows_update_scripts_use_the_builtin_com_api() {
+        // Direct argv spawn; the script text is compile-time constant —
+        // the pin is that powershell itself runs (a broken script would
+        // report a spawn failure).
+        let check = windows_update(WindowsUpdateVerb::Check, Duration::from_secs(300));
+        assert!(
+            !check.starts_with("windows update failed: spawn"),
+            "{check}"
+        );
+        let install = windows_update(WindowsUpdateVerb::Install, Duration::from_secs(900));
+        assert!(
+            !install.starts_with("windows update failed: spawn"),
+            "{install}"
+        );
     }
 
     #[test]

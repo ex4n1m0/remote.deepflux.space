@@ -44,6 +44,18 @@ describe("UpdateBanner (ADR-008)", () => {
     expect(container.childElementCount).toBe(0);
   });
 
+  it("updated: the one-shot post-update confirmation names the version", () => {
+    banner(state({ status: "updated", latest_version: "0.15.0" }));
+    expect(screen.getByText(/DeepFlux was updated to 0\.15\.0/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "OK" })).toBeTruthy();
+  });
+
+  it("pending-restart: the install-race card tells the user to restart once more", () => {
+    banner(state({ status: "pending-restart", latest_version: "0.15.0" }));
+    expect(screen.getByText(/restart DeepFlux once more/)).toBeTruthy();
+    expect(screen.getByText(/0\.15\.0/)).toBeTruthy();
+  });
+
   it("checking and none (up to date) render a passive line", () => {
     banner(state({ status: "checking" }));
     expect(screen.getByText(/Checking for updates…/)).toBeTruthy();

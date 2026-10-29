@@ -63,7 +63,9 @@ const PROGRESS_POLL: Duration = Duration::from_millis(400);
 /// Event channel (updater → UI); payload = [`UpdateUiState`], metadata only.
 pub const EVENT: &str = "update://state";
 /// Slack after the installer exits before the wrapper relaunches the app.
-const INSTALLER_SETTLE_PINGS: u32 = 4;
+/// Doubled (0.15.0): the 0.11.0 field trace showed the relaunch beating
+/// the installer's final writes on slow disks; 8 pings ≈ 7 s of settle.
+const INSTALLER_SETTLE_PINGS: u32 = 8;
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -278,10 +280,13 @@ impl UpdateEngine {
     }
 
     /// Surface a failure as the error state (an explicit press must never
-    /// fail silently). `stage` words the banner title; the detail goes to
-    /// stderr for field debugging — the user-facing string stays plain.
+    /// fail silently). `stage` words the banner title; the detail is
+    /// appended to `updates.log` in the app data dir for field debugging
+    /// (a GUI-subsystem process has NO stderr — eprintln alone made real
+    /// failures undiagnosable) — the user-facing string stays plain.
     fn fail(&self, app: &AppHandle, stage: &str, user_copy: &str, detail: &str) {
         eprintln!("[update] {stage} failure: {detail}");
+        log_update(app, &format!("{stage} failure: {detail}"));
         self.mutate(app, |s| {
             s.status = "error".into();
             s.stage = stage.into();
@@ -295,12 +300,148 @@ fn manifest_url() -> String {
     std::env::var("DEEPFLUX_UPDATE_MANIFEST").unwrap_or_else(|_| DEFAULT_MANIFEST_URL.into())
 }
 
+/// Append one timestamped line to `<app data>/updates.log` (bounded by
+/// truncation to the last 512 KiB on each write — a log that can never
+/// grow unbounded). Best-effort: logging must never break the updater.
+pub fn log_update(app: &AppHandle, line: &str) {
+    let Ok(dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let path = dir.join("updates.log");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut text = format!("[{stamp}] {line}\n");
+    if let Ok(existing) = std::fs::read_to_string(&path)
+        && existing.len() > 512 * 1024
+    {
+        // Keep the tail; prepend nothing (the stamp ordering survives).
+        let tail: String = existing
+            .chars()
+            .rev()
+            .take(256 * 1024)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        text = format!("{tail}\n[{stamp}] (log truncated)\n{text}");
+    }
+    let _ = std::fs::write(&path, text);
+}
+
+/// The one-shot post-update marker (`<app data>/update-marker.json`):
+/// written just before the installer runs, consumed on the next launch.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct UpdateMarker {
+    pub from: String,
+    pub to: String,
+    pub ts_ms: u64,
+}
+
+fn marker_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("update-marker.json"))
+}
+
+fn write_update_marker(app: &AppHandle, from: &str, to: &str) {
+    let Some(path) = marker_path(app) else { return };
+    let marker = UpdateMarker {
+        from: from.to_owned(),
+        to: to.to_owned(),
+        ts_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+    };
+    if let Ok(text) = serde_json::to_string(&marker) {
+        let _ = std::fs::write(&path, text);
+    }
+}
+
+/// One-shot post-update confirmation, called once at app startup. The
+/// 0.11.0 field report: the update SUCCEEDED but looked like a failure —
+/// the app quits for the hidden install, relaunches with no word, and
+/// the banner idles. Now: if this launch's version equals the marker's
+/// `to`, the banner says "Updated to X"; if it does NOT, the wrapper's
+/// relaunch beat the installer (slow-disk race) and the banner says to
+/// restart once more. Either way the marker is consumed (shows once).
+pub fn note_post_update(app: &AppHandle) {
+    let Some(path) = marker_path(app) else { return };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let _ = std::fs::remove_file(&path); // consumed: one-shot, both arms
+    let Ok(marker) = serde_json::from_str::<UpdateMarker>(&text) else {
+        log_update(app, "post-update marker was corrupt — ignored");
+        return;
+    };
+    let current = env!("CARGO_PKG_VERSION");
+    let engine = &app.state::<crate::commands::AppServices>().update;
+    if marker.to == current {
+        log_update(
+            app,
+            &format!("update {} -> {} confirmed", marker.from, marker.to),
+        );
+        engine.mutate(app, |s| {
+            s.status = "updated".into();
+            s.stage = "done".into();
+            s.latest_version = marker.to.clone();
+            s.current_version = current.into();
+            s.error.clear();
+        });
+    } else {
+        // The relaunched process predates the installer's final writes
+        // (the `start /wait` race) — say what to do instead of idling.
+        log_update(
+            app,
+            &format!(
+                "post-update race: marker wants {}, running {} — restart to finish",
+                marker.to, current
+            ),
+        );
+        engine.mutate(app, |s| {
+            s.status = "pending-restart".into();
+            s.stage = "install".into();
+            s.latest_version = marker.to.clone();
+            s.current_version = current.into();
+            s.error.clear();
+        });
+    }
+}
+
 /// Where staged installers live (`<app data>/updates`).
 fn staging_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|dir| dir.join("updates"))
         .map_err(|e| format!("no app data dir: {e}"))
+}
+
+/// The version encoded in a staged installer's filename
+/// (`update-<version>-setup.exe`).
+fn staged_version(staged: &Path) -> String {
+    // Work on the RAW file name: file_stem treats any dot as an
+    // extension boundary and mangles dotted versions without .exe
+    // ("update-9.9.9-setup" -> stem "update-9.9").
+    let name = staged
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let Some(stripped) = name.strip_prefix("update-") else {
+        return "the new version".to_owned();
+    };
+    let version = stripped
+        .strip_suffix("-setup.exe")
+        .or_else(|| stripped.strip_suffix("-setup"))
+        .unwrap_or(stripped);
+    if version.is_empty() {
+        "the new version".to_owned()
+    } else {
+        version.to_owned()
+    }
 }
 
 fn human_size(bytes: u64) -> String {
@@ -372,6 +513,10 @@ fn run_check(app: &AppHandle, forced: bool) {
             if status == "available" {
                 // Keep the offer; log the transient failure only.
                 eprintln!("[update] re-check failed under a standing offer: {err}");
+                log_update(
+                    app,
+                    &format!("re-check failed under a standing offer: {err}"),
+                );
                 return;
             }
             if forced {
@@ -388,6 +533,7 @@ fn run_check(app: &AppHandle, forced: bool) {
                     s.error.clear();
                 });
                 eprintln!("[update] background check failed: {err}");
+                log_update(app, &format!("background check failed: {err}"));
             }
             return;
         }
@@ -522,6 +668,7 @@ fn run_download(app: AppHandle, manifest: UpdateManifest, dir: PathBuf) {
     };
     let fail = |user_copy: &str, detail: &str| {
         eprintln!("[update] download failure: {detail}");
+        log_update(&app, &format!("download failure: {detail}"));
         finish("error", user_copy);
     };
     let filename = crate::dl::safe_filename(&format!("update-{}-setup.exe", manifest.version));
@@ -750,6 +897,9 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         s.stage = "install".into();
         s.error.clear();
     });
+    // Confirmation marker (0.15.0): the relaunch reads this and says
+    // "Updated to X" — the silent-success gap from the 0.11.0 report.
+    write_update_marker(&app, env!("CARGO_PKG_VERSION"), &staged_version(&staged));
     let app_exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => return Err(bail(&format!("couldn't locate the app program: {e}"))),
@@ -792,6 +942,21 @@ fn detached_flags() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn staged_version_parses_the_installer_filename() {
+        use std::path::Path;
+        assert_eq!(
+            staged_version(Path::new(r"C:\tmp\update-0.15.0-setup.exe")),
+            "0.15.0"
+        );
+        assert_eq!(staged_version(Path::new("update-9.9.9-setup")), "9.9.9");
+        // Unknown shapes degrade to a friendly label, never panic.
+        assert_eq!(
+            staged_version(Path::new("something-else.exe")),
+            "the new version"
+        );
+    }
 
     #[test]
     fn version_comparison_table() {

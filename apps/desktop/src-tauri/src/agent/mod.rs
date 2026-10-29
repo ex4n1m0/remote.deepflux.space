@@ -10,6 +10,7 @@
 
 pub mod apps;
 pub mod schedule;
+pub mod startup;
 pub mod tools;
 pub mod winctl;
 

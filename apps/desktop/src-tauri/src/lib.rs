@@ -153,6 +153,9 @@ pub fn run() {
             // launch.
             chat::purge_dead_data(app.handle());
             chat::spawn_poller(app.handle().clone());
+            // 0.15.0: one-shot post-update confirmation ("Updated to X"
+            // or the restart-to-finish race note) — before the poller.
+            updater::note_post_update(app.handle());
             // ADR-008 update poller: first check ~20 s after launch (past
             // the engine's own startup), then daily; Help → Check for
             // updates forces one anytime.
