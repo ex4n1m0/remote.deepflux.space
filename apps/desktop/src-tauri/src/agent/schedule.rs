@@ -95,17 +95,20 @@ pub fn valid_hh_mm(value: &str) -> bool {
 /// same format, so strict calendar validation is a nicety, not a
 /// correctness need).
 pub fn valid_once_at(value: &str) -> bool {
+    // Shape-check on BYTES before any str slicing — a multibyte char at
+    // the 10/11 boundary used to panic the slice (security review: the
+    // once_at tool arg made this reachable; e.g. a straddling accent).
     let bytes = value.as_bytes();
-    valid_hh_mm(&value[11.min(value.len())..]) && bytes.len() == 16 && bytes[10] == b' ' && {
-        let date = &value[..10];
-        let d = date.as_bytes();
-        d.len() == 10
-            && d[4] == b'-'
-            && d[7] == b'-'
-            && d.iter()
-                .enumerate()
-                .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
-    }
+    bytes.len() == 16
+        && bytes.iter().all(|b| b.is_ascii())
+        && bytes[10] == b' '
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[..10]
+            .iter()
+            .enumerate()
+            .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
+        && valid_hh_mm(&value[11..])
 }
 
 pub fn valid_trigger(trigger: &Trigger) -> bool {
@@ -431,6 +434,12 @@ mod tests {
         assert!(!valid_hh_mm("2:00"));
         assert!(!valid_hh_mm("12:60"));
         assert!(valid_once_at("2026-10-30 14:00"));
+        // Multibyte straddling the 10/11 boundary must be REJECTED,
+        // never panic (security review follow-up).
+        assert!(!valid_once_at("2026-10-30\u{e9}14:0"));
+        assert!(!valid_once_at(
+            "\u{4e16}\u{754c}\u{4e16}\u{754c}\u{4e16}\u{754c}\u{4e16} 14"
+        ));
         assert!(!valid_once_at("2026-10-30T14:00"));
         assert!(!valid_once_at("2026-10-30 14:0"));
         assert!(valid_trigger(&Trigger::EveryMinutes { minutes: 1 }));

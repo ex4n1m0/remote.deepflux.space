@@ -385,8 +385,13 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
             }
             AssistantInput::Scheduled { name, body } => {
                 let text = format!(
-                    "[SCHEDULED TASK {name} — a standing instruction your user set up in advance]                      {body}
-                     Execute it now with your tools on this machine. Your final answer is                      reported to every paired machine automatically — do NOT call chat_send                      yourself for it. If the task no longer makes sense (the situation                      changed), say so briefly and take no action."
+                    "[SCHEDULED TASK {name} 
+                     a standing instruction your user set up in advance] 
+                    {body}
+                    Execute it now with your tools on this machine. Your final answer is 
+                    reported to every paired machine automatically 
+                    — do NOT call chat_send yourself for it. If the task no longer makes 
+                    sense (the situation changed), say so briefly and take no action."
                 );
                 emit(
                     &app,
@@ -539,6 +544,12 @@ pub fn spawn_scheduler(app: AppHandle) {
                 let services = app.state::<crate::commands::AppServices>();
                 if *services.assistant.busy.lock().expect("assistant busy") {
                     continue; // a turn is running — try the next tick
+                }
+                // No API key configured: firing would burn the run (the worker
+                // errors before any reply arm) — hold the task as due so it
+                // catch-up-fires when a key returns (code reviewer residual 1).
+                if !services.assistant.is_configured(&app) {
+                    continue;
                 }
                 let now_ms = schedule::now_ms();
                 let now = schedule::LocalStamp::now();
