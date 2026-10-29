@@ -59,8 +59,8 @@ ureq = { version = "=2.12.1", default-features = false, features = ["native-tls"
 # Device-token entropy for the signaling client (safe API; keeps the
 # node-runtime free of new `unsafe` beyond the AGENTS.md sanctioned list).
 getrandom = "=0.3.3"
-# AES-256-GCM envelope crypto (chat sealing + the directory client, both
-# RustCrypto leaf crates, pure-safe, no extra build tooling).
+# AES-256-GCM envelope crypto (chat sealing; RustCrypto leaf crate,
+# pure-safe, no extra build tooling).
 aes-gcm = "0.10"
 hex = "0.4"
 # ADR-006: pairing-proof HMAC (node-runtime::pairing_proof) and the

@@ -57,6 +57,7 @@ export function SettingsPanel({
   const [quality, setQuality] = useState("balanced");
   const [scale, setScale] = useState("fit");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [hostSharing, setHostSharing] = useState(true);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [domains, setDomains] = useState("");
   const [saving, setSaving] = useState(false);
@@ -69,6 +70,7 @@ export function SettingsPanel({
     setQuality(settings.default_quality);
     setScale(settings.default_viewer_scale);
     setLaunchAtLogin(settings.launch_at_login);
+    setHostSharing(settings.host_sharing);
     setAutoUpdate(settings.auto_update);
     setDomains((settings.agent_download_domains ?? []).join(", "));
   }
@@ -109,6 +111,7 @@ export function SettingsPanel({
               default_quality: quality,
               default_viewer_scale: scale,
               launch_at_login: launchAtLogin,
+              host_sharing: hostSharing,
               auto_update: autoUpdate,
               agent_download_domains: domains
                 .split(",")
@@ -156,6 +159,15 @@ export function SettingsPanel({
               onChange={(event) => setLaunchAtLogin(event.target.checked)}
             />
             Launch at Windows login (stay reachable in the tray)
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={hostSharing}
+              onChange={(event) => setHostSharing(event.target.checked)}
+            />
+            Answer connection requests (reachable as a host; every new
+            machine still needs your approval — applies at next launch)
           </label>
           <label className="settings-check">
             <input

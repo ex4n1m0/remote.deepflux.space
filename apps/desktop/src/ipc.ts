@@ -5,10 +5,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CircleStatus,
-  DirectoryMachine,
   EngineStatus,
-  Favorite,
   Identity,
   MonitorInfo,
   PairingInfo,
@@ -77,13 +74,6 @@ export const api = {
   getIdentity: (): Promise<Identity> => invoke("get_identity"),
   getSettings: (): Promise<Settings> => invoke("get_settings"),
   setSettings: (patch: Settings): Promise<Settings> => invoke("set_settings", { patch }),
-  listFavorites: (): Promise<Favorite[]> => invoke("list_favorites"),
-  addFavorite: (name: string, code: string): Promise<Favorite> =>
-    invoke("add_favorite", { args: { name, code } }),
-  removeFavorite: (id: string): Promise<Favorite[]> =>
-    invoke("remove_favorite", { args: { id } }),
-  renameFavorite: (id: string, name: string): Promise<Favorite> =>
-    invoke("rename_favorite", { args: { id, name } }),
 
   engineStart: (): Promise<EngineStatus> => invoke("engine_start"),
   engineStatus: (): Promise<EngineStatus> => invoke("engine_status"),
@@ -105,17 +95,6 @@ export const api = {
 
   consentAccept: (remember: boolean): Promise<void> => invoke("consent_accept", { remember }),
   consentReject: (): Promise<void> => invoke("consent_reject"),
-
-  // Family circle / machine directory (ADR-006).
-  circleStatus: (): Promise<CircleStatus> => invoke("circle_status"),
-  circleJoin: (invite: string): Promise<CircleStatus> =>
-    invoke("circle_join", { args: { invite } }),
-  circleCreate: (): Promise<CircleStatus> => invoke("circle_create"),
-  circleInvite: (): Promise<string> => invoke("circle_invite"),
-  circleLeave: (): Promise<CircleStatus> => invoke("circle_leave"),
-  circleSetShared: (share: boolean): Promise<CircleStatus> =>
-    invoke("circle_set_shared", { args: { share } }),
-  directoryRefresh: (): Promise<DirectoryMachine[]> => invoke("directory_refresh"),
 
   // Trusted machines (ADR-005 §5 revocation, wired by ADR-006; names +
   // rename per ADR-009 — this list IS the machine list).

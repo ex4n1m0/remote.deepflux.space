@@ -17,8 +17,7 @@ export interface MenuItemDef {
 
 export interface MenuBarProps {
   version: string | null;
-  onAddMachine: () => void;
-  onOpenConfig: (section: "settings" | "circle" | "trusted" | "assistant") => void;
+  onOpenConfig: (section: "settings" | "trusted" | "assistant") => void;
   onAbout: () => void;
   onDiagnostics: () => void;
   /** ADR-008: force an update check now (Help menu). */
@@ -30,7 +29,6 @@ const WEBSITE_URL = "https://remote.deepflux.space";
 
 export function MenuBar({
   version,
-  onAddMachine,
   onOpenConfig,
   onAbout,
   onDiagnostics,
@@ -93,13 +91,9 @@ export function MenuBar({
 
   return (
     <div className="menu-bar" ref={barRef} role="menubar" aria-label="Application menu">
-      {menu("file", "File", [
-        { id: "add", label: "Add machine…", onPick: onAddMachine },
-        { id: "quit", label: "Quit DeepFlux", onPick: onQuit },
-      ])}
+      {menu("file", "File", [{ id: "quit", label: "Quit DeepFlux", onPick: onQuit }])}
       {menu("config", "Config", [
         { id: "settings", label: "Settings…", onPick: () => onOpenConfig("settings") },
-        { id: "circle", label: "Family circle…", onPick: () => onOpenConfig("circle") },
         { id: "trusted", label: "Trusted machines…", onPick: () => onOpenConfig("trusted") },
         { id: "assistant", label: "Assistant…", onPick: () => onOpenConfig("assistant") },
       ])}

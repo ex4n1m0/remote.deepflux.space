@@ -50,24 +50,12 @@ pub fn tool_specs() -> Vec<Value> {
         ),
         f(
             "machines_list",
-            "Saved remote machines (name + connection code + presence when signed in).",
+            "Trusted machines — the saved list (pairings): name + code + trust state.",
             no_props(),
         ),
         f(
-            "machine_add",
-            "Save a remote machine for one-click access later.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "name": { "type": "string", "description": "Display name, e.g. \"Mom's PC\"" },
-                    "code": { "type": "string", "description": "The machine's connection code (16 hex chars)" }
-                },
-                "required": ["name", "code"]
-            }),
-        ),
-        f(
             "machine_remove",
-            "Remove a saved machine by its code.",
+            "Forget a trusted machine by its code (its next connect asks for approval again).",
             json!({
                 "type": "object",
                 "properties": { "code": { "type": "string" } },
@@ -76,7 +64,7 @@ pub fn tool_specs() -> Vec<Value> {
         ),
         f(
             "machine_rename",
-            "Rename a saved machine.",
+            "Rename a trusted machine (local label).",
             json!({
                 "type": "object",
                 "properties": { "code": { "type": "string" }, "name": { "type": "string" } },
@@ -325,7 +313,6 @@ pub fn execute(
             }
         }
         "machines_list" => machines_list(app),
-        "machine_add" => machine_add(app, args),
         "machine_remove" => machine_remove(app, args),
         "machine_rename" => machine_rename(app, args),
         "settings_get" => {
@@ -876,54 +863,27 @@ fn with_engine<T>(
 }
 
 fn machines_list(app: &AppHandle) -> ToolOutput {
-    let services = app.state::<crate::commands::AppServices>();
-    let store = services.store.lock().expect("store");
-    ToolOutput::text(
-        serde_json::to_string_pretty(&store.favorites()).unwrap_or_else(|_| "[]".into()),
-    )
-}
-
-fn machine_add(app: &AppHandle, args: &Value) -> ToolOutput {
-    let (Some(name), Some(code)) = (
-        args.get("name").and_then(|v| v.as_str()),
-        args.get("code").and_then(|v| v.as_str()),
-    ) else {
-        return ToolOutput::text("machine_add requires name and code");
-    };
-    let result = (|| -> Result<(), String> {
-        let services = app.state::<crate::commands::AppServices>();
-        let mut store = services.store.lock().expect("store");
-        let code = code.trim().to_lowercase();
-        store
-            .add_favorite(name.trim(), &code)
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    match result {
-        Ok(()) => ToolOutput::text(format!("saved machine \"{name}\" ({code})")),
-        Err(e) => ToolOutput::text(format!("machine_add failed: {e}")),
-    }
+    // ADR-009: the trusted-host list (pairings) IS the machine list.
+    let rows: Vec<Value> = crate::chat::pairings(app)
+        .into_iter()
+        .map(|p| {
+            serde_json::json!({
+                "code": p.code,
+                "name": p.name,
+                "trusted": !p.pending_ack,
+                "waiting_for_approval": p.pending_ack,
+            })
+        })
+        .collect();
+    ToolOutput::text(serde_json::to_string_pretty(&rows).unwrap_or_else(|_| "[]".into()))
 }
 
 fn machine_remove(app: &AppHandle, args: &Value) -> ToolOutput {
     let Some(code) = args.get("code").and_then(|v| v.as_str()) else {
         return ToolOutput::text("machine_remove requires code");
     };
-    let result = (|| -> Result<(), String> {
-        let services = app.state::<crate::commands::AppServices>();
-        let mut store = services.store.lock().expect("store");
-        let code = code.trim().to_lowercase();
-        let favorites = store.favorites();
-        let Some(fav) = favorites.iter().find(|f| f.code == code) else {
-            return Err(format!("no saved machine with code {code}"));
-        };
-        let id = fav.id.clone();
-        store.remove_favorite(&id).map_err(|e| e.to_string())
-    })();
-    match result {
-        Ok(()) => ToolOutput::text("machine removed"),
-        Err(e) => ToolOutput::text(format!("machine_remove failed: {e}")),
-    }
+    crate::chat::remove_pairing(app, code.trim().to_lowercase().as_str());
+    ToolOutput::text("machine removed — its next connect asks for approval again")
 }
 
 fn machine_rename(app: &AppHandle, args: &Value) -> ToolOutput {
@@ -933,24 +893,12 @@ fn machine_rename(app: &AppHandle, args: &Value) -> ToolOutput {
     ) else {
         return ToolOutput::text("machine_rename requires code and name");
     };
-    let result = (|| -> Result<(), String> {
-        let services = app.state::<crate::commands::AppServices>();
-        let mut store = services.store.lock().expect("store");
-        let code = code.trim().to_lowercase();
-        let favorites = store.favorites();
-        let Some(fav) = favorites.iter().find(|f| f.code == code) else {
-            return Err(format!("no saved machine with code {code}"));
-        };
-        let id = fav.id.clone();
-        store
-            .rename_favorite(&id, name.trim())
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-    match result {
-        Ok(()) => ToolOutput::text("machine renamed"),
-        Err(e) => ToolOutput::text(format!("machine_rename failed: {e}")),
+    let name = name.trim();
+    if name.is_empty() {
+        return ToolOutput::text("machine_rename requires a non-empty name");
     }
+    crate::chat::set_pairing_name(app, code.trim().to_lowercase().as_str(), name);
+    ToolOutput::text("machine renamed")
 }
 
 fn settings_set(app: &AppHandle, args: &Value) -> ToolOutput {
@@ -1026,10 +974,22 @@ pub fn system_prompt(app: &AppHandle) -> String {
             signaling_base_url: store.settings().signaling_base_url.clone(),
             ..store.settings().clone()
         };
-        let machines = store
-            .favorites()
-            .iter()
-            .map(|f| format!("  - {} (code {})", f.name, f.code))
+        drop(store);
+        // ADR-009: the trusted-host list (pairings) IS the machine list.
+        let machines = crate::chat::pairings(app)
+            .into_iter()
+            .map(|pair| {
+                format!(
+                    "  - {} (code {}{})",
+                    pair.name.as_deref().unwrap_or("unnamed"),
+                    pair.code,
+                    if pair.pending_ack {
+                        ", waiting for their approval"
+                    } else {
+                        ""
+                    }
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         (settings_summary, String::new(), machines)

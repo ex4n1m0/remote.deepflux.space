@@ -1323,3 +1323,39 @@ button.link {
   background: linear-gradient(90deg, var(--accent, #5b8cff), var(--progress, #818cf8));
   transition: width 0.3s ease;
 }
+
+/* ADR-009 rail additions: the connect box's verb row, the pending-pairing
+ * hint, the trusted shield, and the two-part row (open + Control). */
+.rail-add .row {
+  display: flex;
+  gap: 6px;
+}
+
+.rail-group-hint {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 10px 8px 2px;
+  cursor: default;
+  user-select: none;
+}
+
+.trusted-shield {
+  color: var(--good);
+  font-size: 12px;
+  flex: none;
+}
+
+.rail-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rail-row-wrap .rail-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-row-wrap.pending .rail-name {
+  color: var(--muted);
+}

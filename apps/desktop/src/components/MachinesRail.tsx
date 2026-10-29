@@ -1,16 +1,13 @@
-/** Machines rail (ADR-005 / study §4.1, widened by ADR-006): the IM-style
- * left column. ONE merged contact list — the ADR-003 union (local
- * favorites + signed-in roster computers) plus the family-circle
- * directory, union-by-code with name precedence roster > favorite >
- * circle nickname. Same list for messaging AND remote control (the
- * simplify pass made that explicit): open a row for its page, or hit
- * Control for one-step remote control. Search filters by name and code
- * client-side; trusted (paired) rows carry the shield badge; circle-only
- * rows carry the circle tag. Also home to the pinned "This machine" card
- * (host role). */
-import { useEffect, useState } from "react";
+/** Machines rail (ADR-005, simplified by ADR-009): the IM-style left
+ * column and THE machine list — the trusted-host list (pairings), nothing
+ * else. Every row is both a chat and a remote-control target; machines
+ * enter the list through the one-time connection code + the host's
+ * "Always allow". The connect box under the header is the only discovery
+ * mechanism: enter a code, press Control (visual) or Agent (chat-only).
+ * Also home to the pinned "This machine" card (host role). */
+import { useState } from "react";
 import { hostView } from "../state/mapping";
-import type { DirectoryMachine, Favorite, HostStateName } from "../types";
+import type { HostStateName, PairingInfo } from "../types";
 
 export interface MachineRow {
   id: string;
@@ -18,71 +15,33 @@ export interface MachineRow {
   code: string;
   online: boolean | null;
   active: boolean;
-  /** ADR-006: proven pairing — connects without asking again. */
+  /** Established pairing — connects without asking again. */
   trusted: boolean;
-  /** ADR-006: surfaced by the circle directory (not a saved machine). */
-  fromCircle: boolean;
+  /** Controller-side offer sent, host has not acked yet. */
+  pending: boolean;
 }
 
-/** Saved favorites merged with the ADR-006 circle directory (the roster
- * leg died with accounts, ADR-009). Circle rows that are not saved
- * machines appear with the circle tag; a circle nickname beats a
- * favorite whose name is just the bare code (the auto-favorite
- * placeholder) but never a real favorite name. */
-export function unifiedMachines(
-  favorites: Favorite[],
+/** The trusted-host list as rail rows: name cached from the wire (or the
+ * bare code), online only while a session with the machine is live
+ * (ADR-009: no roster/directory presence — honest and minimal). */
+export function machinesFromPairings(
+  pairings: PairingInfo[],
   peerOnline: Record<string, boolean>,
   selectedCode: string | null,
-  directory: DirectoryMachine[] | null = null,
-  trustedCodes: ReadonlySet<string> = new Set(),
 ): MachineRow[] {
-  const seen = new Set<string>();
-  const rows: MachineRow[] = [];
-  const push = (row: Omit<MachineRow, "trusted" | "active">) => {
-    seen.add(row.code);
-    rows.push({
-      ...row,
-      trusted: trustedCodes.has(row.code),
-      active: selectedCode === row.code,
-    });
-  };
-  for (const f of favorites) {
-    if (seen.has(f.code)) continue;
-    push({
-      id: f.id,
-      name: f.name,
-      code: f.code,
-      online: peerOnline[f.code] ?? null,
-      fromCircle: false,
-    });
-  }
-  if (directory) {
-    for (const d of directory) {
-      if (seen.has(d.device)) {
-        // Saved machine with a placeholder name (the bare code — the
-        // auto-favorite path): the circle nickname is the better label.
-        const row = rows.find((r) => r.code === d.device);
-        if (row && row.name === d.device && d.name) {
-          row.name = d.name;
-        }
-        continue;
-      }
-      push({
-        id: `circle:${d.device}`,
-        name: d.name || d.device,
-        code: d.device,
-        online: d.online,
-        fromCircle: true,
-      });
-    }
-  }
-  return rows;
+  return pairings.map((p) => ({
+    id: p.code,
+    name: p.name ?? p.code,
+    code: p.code,
+    online: peerOnline[p.code] ?? null,
+    active: selectedCode === p.code,
+    trusted: !p.pending_ack,
+    pending: p.pending_ack,
+  }));
 }
 
-/** Machine-page removal (user request, 2026-10-26): two-step confirm —
- * machines you added (or that are waiting on approval) leave your list
- * and their trust is forgotten. Circle-only machines aren't removable
- * here (the App doesn't render this button for them). */
+/** Machine-page removal (ADR-009): two-step confirm — forgetting a
+ * machine brings back its approval request. */
 export function RemoveMachineButton({
   name,
   onRemove,
@@ -122,18 +81,7 @@ export function RemoveMachineButton({
   );
 }
 
-/** Self is not a contact: directory rows for THIS machine never reach the
- * merged list (the pinned "This machine" card represents self). Matches by
- * the backend's `is_self` flag and, belt-and-braces, by device id. */
-export function excludeSelf(
-  machines: DirectoryMachine[],
-  thisDevice: string | null,
-): DirectoryMachine[] {
-  return machines.filter((m) => !m.is_self && m.device !== thisDevice);
-}
-
-/** Client-side search over the merged list: case-insensitive name or code
- * substring. Empty query returns everything. */
+/** Client-side search: case-insensitive name or code substring. */
 export function filterMachines(rows: MachineRow[], query: string): MachineRow[] {
   const q = query.trim().toLowerCase();
   if (!q) return rows;
@@ -142,57 +90,13 @@ export function filterMachines(rows: MachineRow[], query: string): MachineRow[] 
   );
 }
 
-/** Where-am-I grouping (user request, 2026-10-26): the rail splits into
- * three plain sections so the trust state is readable at a glance —
- *
- * - accepted: added AND accepted — Control connects, no prompt
- * - awaiting: added but not yet accepted — they'll get one request
- * - unadded:  circle machines not in your list yet (Control works anyway)
- *
- * "Added" = saved machine (favorite/roster); "accepted" = an established
- * pairing (the shield). Trusted circle rows land in `accepted` (pairing
- * auto-saves the machine, so this is the rare-but-correct edge). */
-export interface MachineGroups {
-  accepted: MachineRow[];
-  awaiting: MachineRow[];
-  unadded: MachineRow[];
-}
-
-export const GROUP_LABELS: Record<keyof MachineGroups, string> = {
-  accepted: "Accepted",
-  awaiting: "Added — awaiting their approval",
-  unadded: "Not added yet",
-};
-
-export const GROUP_HINTS: Record<keyof MachineGroups, string> = {
-  accepted: "They allow you without asking — Control connects right away",
-  awaiting: "In your list, but they haven't accepted you yet — they'll get one request when you control",
-  unadded: "In the family circle but not in your list — Control works anyway, or open to chat",
-};
-
-export function groupMachines(rows: MachineRow[]): MachineGroups {
-  const groups: MachineGroups = { accepted: [], awaiting: [], unadded: [] };
-  for (const row of rows) {
-    if (row.trusted) {
-      groups.accepted.push(row);
-    } else if (row.fromCircle) {
-      groups.unadded.push(row);
-    } else {
-      groups.awaiting.push(row);
-    }
-  }
-  return groups;
-}
-
 export function MachinesRail({
   machines,
   thisCode,
   hostState,
   sharing,
-  addSignal,
   onPick,
   onConnect,
-  onAdd,
   onShare,
   onStopShare,
 }: {
@@ -200,58 +104,66 @@ export function MachinesRail({
   thisCode: string;
   hostState: HostStateName;
   sharing: boolean;
-  /** Increments when File → Add machine… is picked (opens the add form). */
-  addSignal: number;
   onPick: (code: string) => void;
-  onConnect: (code: string) => void;
-  onAdd: (name: string, code: string) => Promise<void>;
+  onConnect: (code: string, agent: boolean) => void;
   onShare: () => void;
   onStopShare: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const host = hostView(hostState);
 
-  useEffect(() => {
-    if (addSignal > 0) setAdding(true);
-  }, [addSignal]);
-
-  const submitAdd = async (thenControl: boolean) => {
+  const dial = (agent: boolean) => {
     const c = code.trim().toLowerCase();
     if (!c) return;
-    setError(null);
-    try {
-      await onAdd(name.trim() || c, c);
-      setName("");
-      setCode("");
-      setAdding(false);
-      if (thenControl) {
-        onConnect(c);
-      }
-    } catch (err) {
-      setError(String(err));
-    }
+    setCode("");
+    onConnect(c, agent);
   };
 
   const visible = filterMachines(machines, query);
   const filtering = query.trim().length > 0;
+  const trusted = visible.filter((m) => m.trusted);
+  const pending = visible.filter((m) => !m.trusted);
 
   return (
     <nav className="rail" aria-label="Machines">
       <div className="rail-head">
         <span>Machines</span>
-        <button
-          type="button"
-          className="ghost small"
-          onClick={() => setAdding((v) => !v)}
-          aria-expanded={adding}
-        >
-          + Add
-        </button>
       </div>
       <p className="rail-sub muted">message or control — same list</p>
+
+      <div className="rail-add">
+        <input
+          value={code}
+          placeholder="connection code"
+          onChange={(e) => setCode(e.target.value)}
+          aria-label="Connection code"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") dial(false);
+          }}
+        />
+        <div className="row">
+          <button
+            type="button"
+            className="primary small"
+            disabled={!code.trim()}
+            onClick={() => dial(false)}
+            title="Ask to control this machine — its user allows it once"
+          >
+            Control
+          </button>
+          <button
+            type="button"
+            className="ghost small"
+            disabled={!code.trim()}
+            onClick={() => dial(true)}
+            title="Connect chat-only: give this machine's assistant instructions without opening the screen"
+          >
+            Agent
+          </button>
+        </div>
+        <p className="hint">the code is on the other machine's "This machine" card</p>
+      </div>
 
       <input
         type="search"
@@ -270,119 +182,84 @@ export function MachinesRail({
         </p>
       ) : null}
 
-      {adding ? (
-        <div className="rail-add">
-          <input
-            value={name}
-            placeholder={'Name (e.g. "Mom\'s PC")'}
-            onChange={(e) => setName(e.target.value)}
-            aria-label="Machine name"
-          />
-          <input
-            value={code}
-            placeholder="connection code"
-            onChange={(e) => setCode(e.target.value)}
-            aria-label="Connection code"
-          />
-          {error ? <p className="hint" role="alert">{error}</p> : null}
-          <div className="row">
-            <button
-              type="button"
-              className="primary small"
-              onClick={() => void submitAdd(true)}
-            >
-              Save &amp; control
-            </button>
-            <button type="button" className="small" onClick={() => void submitAdd(false)}>
-              Save
-            </button>
-            <button type="button" className="ghost small" onClick={() => setAdding(false)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       <ul className="rail-list">
-        {visible.length === 0 ? (
-          <li className="rail-empty muted">
-            {filtering
-              ? "No machines match that search."
-              : "No machines yet. This one list is for messaging and remote control — add a machine with its connection code, join a family circle in Config → Family circle, or ask the assistant."}
-          </li>
-        ) : (
-          (() => {
-            const groups = groupMachines(visible);
-            const renderRow = (m: MachineRow) => (
-              /* One interactive element per row (a11y): select and control are
-               * sibling buttons, never nested. */
-              <li key={m.id} className="rail-item">
-                <button
-                  type="button"
-                  className={`rail-row${m.active ? " active" : ""}`}
-                  onClick={() => onPick(m.code)}
-                  aria-current={m.active || undefined}
-                >
-                  <span
-                    className={`dot ${m.online === true ? "on" : m.online === false ? "off" : "unknown"}`}
-                    aria-hidden="true"
-                    title={m.online === true ? "online" : m.online === false ? "offline" : "unknown"}
-                  />
-                  <span className="rail-name">{m.name}</span>
-                  {m.trusted ? (
-                    <span className="chip chip-good rail-badge" title="Trusted — connects without asking again">
-                      ✓
-                    </span>
-                  ) : null}
-                  {m.fromCircle && !m.trusted ? <span className="rail-circle-tag muted">circle</span> : null}
-                </button>
-                <button
-                  type="button"
-                  className="ghost small rail-connect"
-                  aria-label={`Control ${m.name}${m.online === false ? " (offline)" : ""}`}
-                  title={
-                    m.online === false
-                      ? "Offline — the app isn't running there; you can still try"
-                      : "Ask to control this machine"
-                  }
-                  onClick={() => onConnect(m.code)}
-                >
-                  Control
-                </button>
-              </li>
-            );
-            return (Object.keys(groups) as Array<keyof MachineGroups>)
-              .filter((key) => groups[key].length > 0)
-              .flatMap((key) => [
-                <li key={`group-${key}`} className="rail-group muted">
-                  <span title={GROUP_HINTS[key]}>
-                    {GROUP_LABELS[key]} ({groups[key].length})
-                  </span>
-                </li>,
-                ...groups[key].map(renderRow),
-              ]);
-          })()
-        )}
+        {trusted.map((m) => (
+          <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
+        ))}
+        {pending.length > 0 ? (
+          <li className="rail-group-hint">Waiting for their approval</li>
+        ) : null}
+        {pending.map((m) => (
+          <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
+        ))}
       </ul>
+      {machines.length === 0 ? (
+        <p className="rail-empty muted">
+          No machines yet — one list is for messaging and remote control.
+          Enter a connection code above; its user answers{" "}
+          {"\""}Always allow{"\""} once and it stays in this list.
+        </p>
+      ) : null}
 
       <div className="rail-this">
         <div className="rail-head">
           <span>This machine</span>
-          <span className="chip chip-neutral">{hostView(hostState).status}</span>
+          <span className={`dot ${sharing ? "on" : "off"}`} aria-hidden="true" />
         </div>
-        <p className="muted">
-          code <code className="code">{thisCode}</code>
-        </p>
-        {sharing ? (
-          <button type="button" className="danger small" onClick={onStopShare}>
-            Stop sharing
-          </button>
-        ) : (
+        <span className="chip chip-neutral">{host.status}</span>
+        <code className="code">{thisCode}</code>
+        {host.can.start ? (
           <button type="button" className="primary small" onClick={onShare}>
             Share this machine
           </button>
-        )}
+        ) : null}
+        {host.can.stop ? (
+          <button type="button" className="danger small" onClick={onStopShare}>
+            Stop sharing
+          </button>
+        ) : null}
       </div>
     </nav>
+  );
+}
+
+function MachineRowView({
+  row,
+  onPick,
+  onConnect,
+}: {
+  row: MachineRow;
+  onPick: (code: string) => void;
+  onConnect: (code: string, agent: boolean) => void;
+}) {
+  return (
+    <li className={`rail-row-wrap${row.pending ? " pending" : ""}`}>
+      <button
+        type="button"
+        className={`rail-row${row.active ? " active" : ""}`}
+        onClick={() => onPick(row.code)}
+        title={row.pending ? "Waiting for their approval" : "Open this machine"}
+      >
+        <span
+          className={`dot ${row.online === true ? "on" : row.online === false ? "off" : "unknown"}`}
+          aria-hidden="true"
+        />
+        <span className="rail-name">{row.name}</span>
+        {row.trusted ? (
+          <span className="trusted-shield" title="Trusted — connects without asking again">
+            ✓
+          </span>
+        ) : null}
+      </button>
+      <button
+        type="button"
+        className="ghost small rail-connect"
+        onClick={() => onConnect(row.code, false)}
+        title={row.trusted ? "Trusted machine — connects without asking again" : "They'll be asked to allow it"}
+        aria-label={`Control ${row.name}${row.online === false ? " (offline)" : ""}`}
+      >
+        Control
+      </button>
+    </li>
   );
 }

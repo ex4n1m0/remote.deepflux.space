@@ -26,19 +26,12 @@
 //!   ADR-005), folded in from `apps/desktop` by ADR-006 so every surface is
 //!   owned here.
 //!
-//! * [`directory`] — the circle-directory API (`POST /api/directory`,
-//!   ADR-006): the family-circle machine directory. Entries are AES-256-GCM
-//!   sealed under the client-held circle key; the server sees device ids,
-//!   ciphertext, server-minted timestamps, and online flags only.
-//!
 //! ## Versioning policy (AGENTS.md invariant 5)
 //!
 //! * Signaling `protocol_version` is currently `1` ([`signaling::SIGNALING_PROTOCOL_VERSION`];
 //!   bumped 0→1 in the M0 QA patch for the `sdp_mid` string change — see the
 //!   constant's history note).
 //! * Chat envelope version is currently `1` ([`chat::CHAT_PROTOCOL_VERSION`]).
-//! * Directory API `protocol_version` is currently `1`
-//!   ([`directory::DIRECTORY_PROTOCOL_VERSION`]).
 //! * Binary wire version is currently `1` ([`wire::WIRE_VERSION`]; bumped
 //!   0→1 by ADR-005 for the chat channel + pairing handshake).
 //! * A version bump is an explicit, reviewed contract change and must ship
@@ -48,6 +41,5 @@
 
 pub mod capabilities;
 pub mod chat;
-pub mod directory;
 pub mod signaling;
 pub mod wire;

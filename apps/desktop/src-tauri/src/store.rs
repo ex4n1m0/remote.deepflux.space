@@ -1,6 +1,6 @@
 //! Local persistence. Small JSON files under the app data dir, written
 //! atomically (tmp + rename), read defensively: a corrupt file logs-and-
-//! defaults instead of failing startup. Favorites remain local-only; the
+//! defaults instead of failing startup.
 //! post-MVP accounts phase adds `account.json` (key material, no secrets)
 //! and `roster.json` (an AES-GCM-encrypted cache of the server-synced
 //! computer list — plaintext roster data never touches disk). The session
@@ -36,6 +36,11 @@ pub struct AppSettings {
     /// plugin; the family build turns it on once at first run).
     #[serde(default)]
     pub launch_at_login: bool,
+    /// ADR-009: answer connection requests (host presence at launch).
+    /// Replaces the circle visibility toggle; defaults ON — the consent
+    /// prompt still gates every untrusted session.
+    #[serde(default = "default_true")]
+    pub host_sharing: bool,
     /// One-shot: the family-build autostart default has been applied —
     /// persisted so leave/rejoin never re-enables a login setting the
     /// user deliberately turned off.
@@ -95,6 +100,7 @@ impl Default for AppSettings {
             default_viewer_scale: "fit".to_owned(),
             device_token: new_token(),
             launch_at_login: false,
+            host_sharing: true,
             autostart_default_applied: false,
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
@@ -102,31 +108,6 @@ impl Default for AppSettings {
             auto_update: true,
         }
     }
-}
-
-/// One saved remote machine.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Favorite {
-    /// Stable local id (8 hex chars).
-    pub id: String,
-    /// User-chosen display name.
-    pub name: String,
-    /// The host's connection code (= its device id).
-    pub code: String,
-    /// ADR-006: how the row was saved — "manual" (typed a code) or
-    /// "directory" (saved when the owner's approval paired the machine).
-    /// Local format only, never a wire field.
-    #[serde(default = "manual_source")]
-    pub source: String,
-}
-
-fn manual_source() -> String {
-    "manual".to_owned()
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct FavoritesDoc {
-    pub favorites: Vec<Favorite>,
 }
 
 /// A machine's connection code IS its device id: 16 hex chars
@@ -175,7 +156,6 @@ impl core::fmt::Debug for AnchorDoc {
 pub const BAD_CODE_COPY: &str = "That doesn't look like a connection code — it's the 16-character code shown on the other machine's \"This machine\" card (or in its Share prompt).";
 
 const SETTINGS_FILE: &str = "settings.json";
-const FAVORITES_FILE: &str = "favorites.json";
 
 /// Errors are strings: they cross IPC as user-facing copy.
 pub type StoreResult<T> = Result<T, String>;
@@ -205,11 +185,10 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> StoreResult<()> {
     std::fs::rename(&tmp, path).map_err(|err| format!("rename {}: {err}", path.display()))
 }
 
-/// Local JSON store for settings + favorites.
+/// Local JSON store for settings.
 pub struct LocalStore {
     dir: PathBuf,
     settings: AppSettings,
-    favorites: FavoritesDoc,
     /// True when this load minted an identity (no settings file / empty
     /// ids) — the app-startup [`LocalStore::adopt_identity_anchor`] uses
     /// it to restore a surviving identity instead.
@@ -245,7 +224,7 @@ impl LocalStore {
         // old files parsed without those keys — the missing-file case is
         // `!had_settings`. Either way the minted identity must be PERSISTED
         // here: until a settings change writes the file, every launch would
-        // otherwise regenerate the connection code (favorites and pairing
+        // otherwise regenerate the connection code (pairings
         // key on it staying stable).
         let mut fresh_identity = !had_settings; // default() mints ids already
         if settings.device_id.trim().is_empty() {
@@ -259,46 +238,24 @@ impl LocalStore {
         if fresh_identity || !had_settings || healed_url {
             write_json_atomic(&settings_path, &settings)?;
         }
-        let mut favorites =
-            read_json::<FavoritesDoc>(&dir.join(FAVORITES_FILE))?.unwrap_or_default();
-        // Dead-row purge (2026-10-27): drop favorites whose code isn't a
-        // device id and normalize the survivors to canonical lowercase —
-        // both so the merged machine list can dedupe against the circle
-        // directory (same machine = same code = one row).
-        let mut purged_dead_favorites = false;
-        {
-            let before = favorites.favorites.len();
-            favorites.favorites = favorites
-                .favorites
-                .iter()
-                .filter(|f| is_machine_code(&f.code))
-                .map(|f| {
-                    let mut f = f.clone();
-                    f.code = normalize_machine_code(&f.code);
-                    f
-                })
-                .collect();
-            if favorites.favorites.len() != before {
-                purged_dead_favorites = true;
-                eprintln!(
-                    "[store] dropped {} favorite(s) with a non-device-id code",
-                    before - favorites.favorites.len()
-                );
-            }
-        }
-        if purged_dead_favorites {
-            write_json_atomic(&dir.join(FAVORITES_FILE), &favorites)?;
-        }
+        // ADR-009 cleanup: `account.json` / `roster.json` (accounts
+        // phase) and `favorites.json` / `circle.json` (favorites + circle
+        // phase) belong to retired systems — delete them instead of
+        // orphaning them (the machine list is pairings.json, untouched).
         // ADR-009 cleanup: `account.json` / `roster.json` belong to the
         // retired accounts phase — delete them instead of orphaning them
         // (the trusted-host list is pairings.json, which is untouched).
-        for legacy in ["account.json", "roster.json"] {
+        for legacy in [
+            "account.json",
+            "roster.json",
+            "favorites.json",
+            "circle.json",
+        ] {
             let _ = std::fs::remove_file(dir.join(legacy));
         }
         Ok(Self {
             dir: dir.to_owned(),
             settings,
-            favorites,
             fresh_identity,
         })
     }
@@ -358,102 +315,14 @@ impl LocalStore {
         &self.settings
     }
 
-    pub fn favorites(&self) -> &[Favorite] {
-        &self.favorites.favorites
-    }
-
-    /// Replace the favorites wholesale (the roster write-back path: the
-    /// logged-out UI and e2e flows stay coherent with the account list).
-    pub fn replace_favorites(&mut self, favorites: Vec<Favorite>) -> StoreResult<()> {
-        self.favorites = FavoritesDoc { favorites };
-        self.save_favorites()
-    }
-
-    /// ADR-006: save a favorite recording its provenance; existing rows
-    /// for the code are left alone (idempotent auto-save).
-    pub fn add_favorite_sourced(
-        &mut self,
-        name: &str,
-        code: &str,
-        source: &str,
-    ) -> StoreResult<Favorite> {
-        let code_norm = normalize_machine_code(code);
-        if !is_machine_code(&code_norm) {
-            return Err(BAD_CODE_COPY.to_owned());
-        }
-        if let Some(existing) = self
-            .favorites
-            .favorites
-            .iter()
-            .find(|f| f.code == code_norm)
-            .cloned()
-        {
-            return Ok(existing);
-        }
-        let favorite = Favorite {
-            id: crate::engine::ids::new_device_id()[..8].to_owned(),
-            name: name.trim().to_owned(),
-            code: code_norm,
-            source: source.to_owned(),
-        };
-        self.favorites.favorites.push(favorite.clone());
-        self.save_favorites()?;
-        Ok(favorite)
-    }
-
     pub fn update_settings(&mut self, patch: AppSettings) -> StoreResult<()> {
-        // Identity is immutable from the UI side (it would strand favorites
+        // Identity is immutable from the UI side (it would strand pairings
         // and signaling presence); the token rotates only on regeneration.
         let mut next = patch;
         next.device_id = self.settings.device_id.clone();
         next.device_token = self.settings.device_token.clone();
         self.settings = next.clone();
         write_json_atomic(&self.dir.join(SETTINGS_FILE), &next)
-    }
-
-    pub fn add_favorite(&mut self, name: &str, code: &str) -> StoreResult<Favorite> {
-        let code = normalize_machine_code(code);
-        if !is_machine_code(&code) {
-            return Err(BAD_CODE_COPY.to_owned());
-        }
-        if self.favorites.favorites.iter().any(|f| f.code == code) {
-            return Err("this code is already in favorites".to_owned());
-        }
-        let favorite = Favorite {
-            id: crate::engine::ids::new_device_id()[..8].to_owned(),
-            name: name.trim().to_owned(),
-            code,
-            source: "manual".to_owned(),
-        };
-        self.favorites.favorites.push(favorite.clone());
-        self.save_favorites()?;
-        Ok(favorite)
-    }
-
-    pub fn remove_favorite(&mut self, id: &str) -> StoreResult<()> {
-        let before = self.favorites.favorites.len();
-        self.favorites.favorites.retain(|f| f.id != id);
-        if self.favorites.favorites.len() == before {
-            return Err("favorite not found".to_owned());
-        }
-        self.save_favorites()
-    }
-
-    pub fn rename_favorite(&mut self, id: &str, name: &str) -> StoreResult<Favorite> {
-        let favorite = self
-            .favorites
-            .favorites
-            .iter_mut()
-            .find(|f| f.id == id)
-            .ok_or_else(|| "favorite not found".to_owned())?;
-        favorite.name = name.trim().to_owned();
-        let out = favorite.clone();
-        self.save_favorites()?;
-        Ok(out)
-    }
-
-    fn save_favorites(&self) -> StoreResult<()> {
-        write_json_atomic(&self.dir.join(FAVORITES_FILE), &self.favorites)
     }
 }
 
@@ -590,86 +459,6 @@ mod tests {
     }
 
     #[test]
-    fn favorites_add_remove_rename_and_dedupe() {
-        let dir = temp_dir("favorites");
-        let mut store = LocalStore::load(&dir).unwrap();
-        let a = store.add_favorite("Laptop", "aaaaaaaaaaaaaaaa").unwrap();
-        assert!(store.add_favorite("Again", "aaaaaaaaaaaaaaaa").is_err());
-        let b = store.add_favorite("", "bbbbbbbbbbbbbbbb").unwrap();
-        assert_eq!(b.name, "");
-        let renamed = store.rename_favorite(&a.id, "Work laptop").unwrap();
-        assert_eq!(renamed.name, "Work laptop");
-        store.remove_favorite(&b.id).unwrap();
-        assert!(store.remove_favorite(&b.id).is_err());
-        let reloaded = LocalStore::load(&dir).unwrap();
-        assert_eq!(reloaded.favorites().len(), 1);
-        assert_eq!(reloaded.favorites()[0].name, "Work laptop");
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn favorites_reject_non_device_id_codes() {
-        let dir = temp_dir("badcode");
-        let mut store = LocalStore::load(&dir).unwrap();
-        // The duplicate-list bug (2026-10-27): a short or mistyped code
-        // used to be accepted, then shadowed the same machine's live
-        // circle-directory row forever.
-        assert!(store.add_favorite("Old", "291452").is_err());
-        assert!(store.add_favorite("Words", "not-a-code").is_err());
-        assert!(store.add_favorite("Empty", "   ").is_err());
-        // Valid 16-hex codes are accepted and normalized to lowercase.
-        let f = store.add_favorite("Laptop", "  ED2B841DC442622E ").unwrap();
-        assert_eq!(f.code, "ed2b841dc442622e");
-        // The sourced path (pairing / directory auto-save) enforces the
-        // same shape.
-        assert!(store.add_favorite_sourced("X", "291452", "manual").is_err());
-        let s = store
-            .add_favorite_sourced("Y", "BBBBBBBBBBBBBBBB", "directory")
-            .unwrap();
-        assert_eq!(s.code, "bbbbbbbbbbbbbbbb");
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn load_purges_dead_favorites_and_normalizes_case() {
-        let dir = temp_dir("purge");
-        let doc = FavoritesDoc {
-            favorites: vec![
-                Favorite {
-                    id: "1".into(),
-                    name: "Dead".into(),
-                    code: "291452".into(),
-                    source: "manual".into(),
-                },
-                Favorite {
-                    id: "2".into(),
-                    name: "Live".into(),
-                    code: "ed2b841dc442622e".into(),
-                    source: "directory".into(),
-                },
-                Favorite {
-                    id: "3".into(),
-                    name: "Upper".into(),
-                    code: "AAAAAAAAAAAAAAAA".into(),
-                    source: "manual".into(),
-                },
-            ],
-        };
-        std::fs::write(
-            dir.join(FAVORITES_FILE),
-            serde_json::to_string(&doc).unwrap(),
-        )
-        .unwrap();
-        let store = LocalStore::load(&dir).unwrap();
-        let codes: Vec<&str> = store.favorites().iter().map(|f| f.code.as_str()).collect();
-        assert_eq!(codes, vec!["ed2b841dc442622e", "aaaaaaaaaaaaaaaa"]);
-        // The purge persists: a second load sees the cleaned file.
-        let reloaded = LocalStore::load(&dir).unwrap();
-        assert_eq!(reloaded.favorites().len(), 2);
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
     fn identity_anchor_restores_identity_after_appdata_wipe() {
         // The 2026-10-27 incident: a reinstall wipes appdata → a minted
         // new id registers a SECOND circle-directory row for the same
@@ -741,50 +530,26 @@ mod tests {
     fn corrupt_files_default_instead_of_failing() {
         let dir = temp_dir("corrupt");
         std::fs::write(dir.join(SETTINGS_FILE), "{not json").unwrap();
-        std::fs::write(dir.join(FAVORITES_FILE), "]]").unwrap();
         let store = LocalStore::load(&dir).unwrap();
         assert!(!store.settings().device_id.is_empty());
-        assert!(store.favorites().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
-    fn retired_account_files_are_cleaned_up_on_load() {
-        // ADR-009: account.json/roster.json from the accounts era must not
+    fn retired_files_are_cleaned_up_on_load() {
+        // ADR-009: account.json/roster.json (accounts era) and
+        // favorites.json/circle.json (favorites + circle era) must not
         // linger as dead data on upgraded machines.
-        let dir = temp_dir("legacy-account");
+        let dir = temp_dir("legacy-files");
         std::fs::write(dir.join("account.json"), "{\"v\":1}").unwrap();
         std::fs::write(dir.join("roster.json"), "{\"v\":1}").unwrap();
+        std::fs::write(dir.join("favorites.json"), "{\"favorites\":[]}").unwrap();
+        std::fs::write(dir.join("circle.json"), "{\"v\":1}").unwrap();
         let _ = LocalStore::load(&dir).unwrap();
         assert!(!dir.join("account.json").exists());
         assert!(!dir.join("roster.json").exists());
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn replace_favorites_overwrites_wholesale() {
-        let dir = temp_dir("replace");
-        let mut store = LocalStore::load(&dir).unwrap();
-        store.add_favorite("A", "aaaaaaaaaaaaaaaa").unwrap();
-        store
-            .replace_favorites(vec![
-                Favorite {
-                    id: "11111111".into(),
-                    name: "B".into(),
-                    code: "bbbbbbbbbbbbbbbb".into(),
-                    source: "manual".into(),
-                },
-                Favorite {
-                    id: "22222222".into(),
-                    name: "C".into(),
-                    code: "cccccccccccccccc".into(),
-                    source: "manual".into(),
-                },
-            ])
-            .unwrap();
-        let reloaded = LocalStore::load(&dir).unwrap();
-        assert_eq!(reloaded.favorites().len(), 2);
-        assert_eq!(reloaded.favorites()[0].name, "B");
+        assert!(!dir.join("favorites.json").exists());
+        assert!(!dir.join("circle.json").exists());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

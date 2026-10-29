@@ -10,7 +10,7 @@ import { SessionCard } from "../components/ControllerPanel";
 import { DiagnosticsOverlay } from "../components/DiagnosticsOverlay";
 import { ErrorBanner } from "../components/Common";
 import { SettingsPanel } from "../components/IdentityCard";
-import { TrustedMachinesSection } from "../components/CircleSettings";
+import { TrustedMachinesSection } from "../components/TrustedMachines";
 import { api } from "../ipc";
 import type { DiagSnapshot, PairingInfo } from "../types";
 
@@ -248,6 +248,7 @@ describe("SettingsPanel", () => {
     default_quality: "balanced",
     default_viewer_scale: "fit",
     device_token: "t",
+    host_sharing: true,
     agent_base_url: "https://api.deepseek.com/v1",
     agent_model: "deepseek-flash",
     launch_at_login: false,

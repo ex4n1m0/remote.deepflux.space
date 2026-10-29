@@ -37,8 +37,6 @@ pub struct AppServices {
     /// ADR-006 pairing-ceremony state: the in-memory pairing offer, the
     /// live prompt mark, and prompt-flood cooldowns.
     pub trust: Mutex<crate::chat::TrustState>,
-    /// ADR-006 circle-directory cache (single-flight, latest-wins).
-    pub directory: Mutex<crate::directory::DirectoryCache>,
     /// ADR-008 automatic updates: the UI state machine plus the last
     /// fetched manifest (input for the download step).
     pub update: crate::updater::UpdateEngine,
@@ -300,13 +298,10 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     "ai_session": ai_session,
                     "paired": paired,
                     "pairing_proof_ok": proof_ok,
-                    // ADR-007: the account name from the wire wins; the
-                    // circle nickname (self-chosen, advisory — the code
-                    // beside it in the prompt is the identity) is the
-                    // fallback for pre-0.8 controllers.
-                    "requester_name": requester_name.or_else(|| {
-                        crate::directory::nickname_for(app, &controller_device_id)
-                    }),
+                    // ADR-009: the machine display name from the wire
+                    // (advisory — the code beside it in the prompt is the
+                    // identity; pre-0.10 controllers send none).
+                    "requester_name": requester_name,
                 })),
             );
         }
@@ -516,29 +511,20 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         }
         EngineEvent::PairAckReceived { host_device_id } => {
             crate::chat::pairing_ack(app, &host_device_id);
-            // ADR-006: the ack means the owner accepted with "remember" —
-            // save the machine to favorites (circle nickname when known,
-            // the code as placeholder). The rail's name precedence
-            // backfills the display name from the directory later.
-            let name = crate::directory::nickname_for(app, &host_device_id)
-                .unwrap_or_else(|| host_device_id.clone());
-            {
-                let services = app.state::<AppServices>();
-                let mut store = services.store.lock().expect("store");
-                let _ = store.add_favorite_sourced(&name, &host_device_id, "directory");
-            }
+            // ADR-009: the host's display name was already cached onto the
+            // controller-role row at SessionEstablished (accept.host_name)
+            // — the pairing itself is the saved machine now.
             emit(
                 events::PAIRING,
                 Some(serde_json::json!({ "device_id": host_device_id, "paired": true })),
             );
-            let _ = app.emit("engine://favorites", serde_json::json!({}));
         }
     }
     true
 }
 
 // ---------------------------------------------------------------------------
-// Identity / settings / favorites (local persistence)
+// Identity / settings (local persistence)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -576,6 +562,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         default_quality: s.default_quality.clone(),
         default_viewer_scale: s.default_viewer_scale.clone(),
         launch_at_login: s.launch_at_login,
+        host_sharing: s.host_sharing,
         agent_download_domains: s.agent_download_domains.clone(),
         auto_update: s.auto_update,
     })
@@ -597,6 +584,9 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_viewer_scale: patch.default_viewer_scale,
         device_token: store.settings().device_token.clone(),
         launch_at_login: patch.launch_at_login,
+        // ADR-009: host presence follows this at the next engine start
+        // (the always-ready role replay reads it at launch).
+        host_sharing: patch.host_sharing,
         autostart_default_applied: store.settings().autostart_default_applied,
         // Assistant provider fields are managed via `agent_configure`,
         // not the settings patch — preserve them here.
@@ -614,63 +604,9 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         default_quality: s.default_quality,
         default_viewer_scale: s.default_viewer_scale,
         launch_at_login: s.launch_at_login,
+        host_sharing: s.host_sharing,
         agent_download_domains: s.agent_download_domains.clone(),
         auto_update: s.auto_update,
-    })
-}
-
-#[tauri::command]
-pub fn list_favorites(app: AppHandle) -> CmdResult<Vec<FavoriteDto>> {
-    let services = app.state::<AppServices>();
-    let store = services.store.lock().expect("store");
-    Ok(store
-        .favorites()
-        .iter()
-        .map(|f| FavoriteDto {
-            id: f.id.clone(),
-            name: f.name.clone(),
-            code: f.code.clone(),
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn add_favorite(app: AppHandle, args: AddFavoriteArgs) -> CmdResult<FavoriteDto> {
-    let services = app.state::<AppServices>();
-    let mut store = services.store.lock().expect("store");
-    let favorite = store.add_favorite(&args.name, &args.code)?;
-    Ok(FavoriteDto {
-        id: favorite.id,
-        name: favorite.name,
-        code: favorite.code,
-    })
-}
-
-#[tauri::command]
-pub fn remove_favorite(app: AppHandle, args: RemoveFavoriteArgs) -> CmdResult<Vec<FavoriteDto>> {
-    let services = app.state::<AppServices>();
-    let mut store = services.store.lock().expect("store");
-    store.remove_favorite(&args.id)?;
-    Ok(store
-        .favorites()
-        .iter()
-        .map(|f| FavoriteDto {
-            id: f.id.clone(),
-            name: f.name.clone(),
-            code: f.code.clone(),
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn rename_favorite(app: AppHandle, args: RenameFavoriteArgs) -> CmdResult<FavoriteDto> {
-    let services = app.state::<AppServices>();
-    let mut store = services.store.lock().expect("store");
-    let favorite = store.rename_favorite(&args.id, &args.name)?;
-    Ok(FavoriteDto {
-        id: favorite.id,
-        name: favorite.name,
-        code: favorite.code,
     })
 }
 
@@ -1005,86 +941,6 @@ pub fn pairing_rename(app: AppHandle, code: String, name: String) -> CmdResult<(
 }
 
 // ---------------------------------------------------------------------------
-// Family circle / machine directory (ADR-006)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct CircleStatusDto {
-    pub joined: bool,
-    pub circle_id: Option<String>,
-    pub share_in_circle: bool,
-    pub family_build: bool,
-    pub machines: Vec<crate::directory::DirectoryMachineDto>,
-    pub loaded: bool,
-}
-
-#[tauri::command]
-pub fn circle_status(app: AppHandle) -> CmdResult<CircleStatusDto> {
-    let doc = crate::directory::read_circle(&app);
-    let loaded = {
-        let services = app.state::<AppServices>();
-        services.directory.lock().expect("directory cache").loaded
-    };
-    Ok(CircleStatusDto {
-        joined: doc.is_some(),
-        circle_id: doc.as_ref().map(|d| d.circle_id.clone()),
-        share_in_circle: doc.as_ref().is_some_and(|d| d.share_in_circle),
-        family_build: doc.as_ref().is_some_and(|d| d.family_build),
-        machines: crate::directory::machines(&app),
-        loaded,
-    })
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct CircleJoinArgs {
-    pub invite: String,
-}
-
-#[tauri::command]
-pub fn circle_join(app: AppHandle, args: CircleJoinArgs) -> CmdResult<CircleStatusDto> {
-    crate::directory::join(&app, args.invite.trim(), false)?;
-    let _ = crate::directory::put_entry(&app); // presence may lag; poller retries
-    let _ = crate::directory::refresh(&app);
-    circle_status(app)
-}
-
-#[tauri::command]
-pub fn circle_create(app: AppHandle) -> CmdResult<CircleStatusDto> {
-    // The invite is returned once through the pairing DTO — the key lives
-    // in the Credential Manager; `circle_invite` re-exposes it on demand.
-    crate::directory::create(&app)?;
-    circle_status(app)
-}
-
-#[tauri::command]
-pub fn circle_invite(app: AppHandle) -> CmdResult<String> {
-    crate::directory::invite(&app)
-}
-
-#[tauri::command]
-pub fn circle_leave(app: AppHandle) -> CmdResult<CircleStatusDto> {
-    crate::directory::leave(&app)?;
-    circle_status(app)
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct CircleShareArgs {
-    pub share: bool,
-}
-
-#[tauri::command]
-pub fn circle_set_shared(app: AppHandle, args: CircleShareArgs) -> CmdResult<CircleStatusDto> {
-    crate::directory::set_shared(&app, args.share)?;
-    circle_status(app)
-}
-
-#[tauri::command]
-pub fn directory_refresh(app: AppHandle) -> CmdResult<Vec<crate::directory::DirectoryMachineDto>> {
-    crate::directory::refresh(&app)?;
-    Ok(crate::directory::machines(&app))
-}
-
-// ---------------------------------------------------------------------------
 // Automatic updates (ADR-008)
 // ---------------------------------------------------------------------------
 
@@ -1148,8 +1004,8 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
     Ok(())
 }
 
-/// One-time family-build default: the embedded-key first run turns login
-/// autostart on once (ADR-006: family machines are reachable at login).
+/// One-time first-run default: login autostart on once (always-ready —
+/// family machines are reachable at login; reversible in Settings).
 pub fn enable_autostart_default(app: &AppHandle) {
     let services = app.state::<AppServices>();
     let (already, applied) = {

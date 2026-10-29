@@ -10,13 +10,12 @@
  * display name is the only identity and it travels on the connect
  * request; the host's prompt shows it beside the device id. Everything
  * configurable lives in the top menu bar (File / Config / Help). */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
-import { useDirectory } from "./hooks/useDirectory";
-import { excludeSelf, MachinesRail, RemoveMachineButton, unifiedMachines } from "./components/MachinesRail";
+import { MachinesRail, RemoveMachineButton, machinesFromPairings } from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
@@ -36,18 +35,16 @@ export default function App() {
   const engine = useEngine();
   const [ui] = engine.ui;
   const assistant = useAssistant();
-  const directory = useDirectory();
-  const [directoryUi] = directory.ui;
   // ADR-008 update flow: banner states + the user verbs. Declared with
   // the other hooks (never conditional); jsdom keeps state null.
   const update = useUpdate();
-  // Trusted (paired) codes for the rail's shield badges — pulled at mount,
-  // after consent decisions, and whenever a pairing event lands.
-  const [trustedCodes, setTrustedCodes] = useState<Set<string>>(new Set());
-  const refreshTrusted = async () => {
+  // ADR-009: the trusted-host list (pairings) IS the machine list —
+  // pulled at mount, after consent decisions, and whenever a pairing
+  // event lands (offer minted / acked / removed / renamed).
+  const [pairings, setPairings] = useState<import("./types").PairingInfo[] | null>(null);
+  const refreshMachines = async () => {
     try {
-      const pairings = await api.pairingsList();
-      setTrustedCodes(new Set(pairings.filter((p) => !p.pending_ack).map((p) => p.code)));
+      setPairings(await api.pairingsList());
     } catch {
       /* engine-independent; the next event retries */
     }
@@ -57,29 +54,22 @@ export default function App() {
   // the top menu bar; About is its own small modal.
   const [configSection, setConfigSection] = useState<ConfigSection | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [addMachineSignal, setAddMachineSignal] = useState(0);
-  // ADR-006 §5 first-run circle notice: a PASSIVE toast now (0.8.0 — no
-  // OK button); it self-dismisses and visibility is managed in
-  // Config → Circle.
-  const [circleNoticeDismissed, setCircleNoticeDismissed] = useState(false);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   // The machine the current connect/session belongs to — the session card
   // stays labeled with it even when the user browses another machine.
   const [sessionCode, setSessionCode] = useState<string | null>(null);
   const chat = useChat(selectedCode);
   useEffect(() => {
-    void refreshTrusted();
+    void refreshMachines();
   }, []);
   useEffect(() => {
-    // engine://pairing — trusted-set changes; engine://favorites — the
-    // engine auto-favorited the controller-side machine on PairAck (the
-    // saved row appears without a restart).
+    // engine://pairing — a pairing was minted, acked, or removed; the
+    // trusted-host list re-reads without a restart.
     const stops: Array<() => void> = [];
     void (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        stops.push(await listen("engine://favorites", () => void engine.refreshFavorites()));
-        stops.push(await listen("engine://pairing", () => void refreshTrusted()));
+        stops.push(await listen("engine://pairing", () => void refreshMachines()));
       } catch {
         /* jsdom/tests */
       }
@@ -135,20 +125,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
 
-  // Machine list + selection. This machine's own directory row never
-  // becomes a connectable contact — the pinned "This machine" card
-  // already represents self.
-  const directoryRows =
-    directoryUi.joined && directoryUi.loaded
-      ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
-      : null;
-  const machines = unifiedMachines(
-    engine.favorites,
-    ui.peerOnline,
-    selectedCode,
-    directoryRows,
-    trustedCodes,
-  );
+  // Machine list + selection: the trusted-host list (pairings) only.
+  const machines = machinesFromPairings(pairings ?? [], ui.peerOnline, selectedCode);
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
   // Landing with machines but no selection: open the first one — the
   // center column should never be an empty "pick something" screen when
@@ -190,27 +168,12 @@ export default function App() {
     }
   };
 
-  // Remove a machine YOU added (or that's pending approval): drops the
-  // saved entry (favorite) and forgets the pairing — established or still
-  // pending — so trust goes back to asking. A circle machine merely falls
-  // back to "Not added yet". Each leg is independent best-effort: a
-  // machine can be any mix of favorite and pairing record.
+  // Forget a trusted machine: the pairing (established or pending) goes,
+  // so its next connect asks for approval again (ADR-009 — this list is
+  // the machine list; there is no separate saved entry anymore).
   const removeMachine = async (code: string) => {
-    const favorite = engine.favorites.find((f) => f.code === code);
-    if (favorite) {
-      await engine.run(async () => {
-        await api.removeFavorite(favorite.id);
-      });
-    }
-    // Pairing removal covers both established trust and pending offers;
-    // absence is not an error worth surfacing.
-    try {
-      await api.pairingRemove(code);
-    } catch {
-      /* no pairing row for this code */
-    }
-    await engine.refreshFavorites();
-    await refreshTrusted();
+    await engine.run(() => api.pairingRemove(code));
+    await refreshMachines();
     setSelectedCode((current) => (current === code ? null : current));
   };
 
@@ -237,7 +200,6 @@ export default function App() {
       <header className="app-head">
         <MenuBar
           version={appVersion}
-          onAddMachine={() => setAddMachineSignal((n) => n + 1)}
           onOpenConfig={(section) => setConfigSection(section)}
           onAbout={() => setAboutOpen(true)}
           onDiagnostics={() => setShowDiag((v) => !v)}
@@ -252,7 +214,6 @@ export default function App() {
           {appVersion ? (
             <span className="brand-version" title="App version">
               v{appVersion}
-              {directoryUi.familyBuild ? " family" : ""}
             </span>
           ) : null}
         </div>
@@ -277,12 +238,6 @@ export default function App() {
       ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
 
-      {/* ADR-006 §5 consent moment, passive since 0.8.0: a one-time notice
-       * that this PC is visible in the family circle. No OK press — it
-       * self-dismisses; visibility is managed in Config → Family circle. */}
-      {directoryUi.loaded && directoryUi.joined && !circleNoticeDismissed ? (
-        <CircleNoticeToast onDone={() => setCircleNoticeDismissed(true)} />
-      ) : null}
 
       {/* ADR-008 update flow: available / downloading / ready / installing
        * / error, plus the quiet "checking" and up-to-date answers to an
@@ -307,14 +262,8 @@ export default function App() {
           thisCode={engine.identity?.connection_code ?? "…"}
           hostState={ui.hostState}
           sharing={sharing}
-          addSignal={addMachineSignal}
           onPick={(code) => setSelectedCode(code)}
-          onConnect={(code) => void controlMachine(code)}
-          onAdd={async (name, code) => {
-            await api.addFavorite(name, code);
-            await engine.refreshFavorites();
-            setSelectedCode(code);
-          }}
+          onConnect={(code, agent) => void controlMachine(code, agent)}
           onShare={() => void share()}
           onStopShare={() => engine.run(() => api.hostStop())}
         />
@@ -331,7 +280,7 @@ export default function App() {
               <ConsentDialog
                 consent={ui.consent}
                 onAccept={(remember) =>
-                  engine.run(() => api.consentAccept(remember)).then(() => void refreshTrusted())
+                  engine.run(() => api.consentAccept(remember)).then(() => void refreshMachines())
                 }
                 onReject={() => engine.run(() => api.consentReject())}
               />
@@ -422,23 +371,20 @@ export default function App() {
                 >
                   Agent
                 </button>
-                {/* Circle-only machines aren't yours to remove — they leave
-                 * the list when their owner leaves the circle. */}
-                {selected.fromCircle ? null : (
-                  <RemoveMachineButton
-                    name={selected.name}
-                    onRemove={() => void removeMachine(selected.code)}
-                  />
-                )}
+                <RemoveMachineButton
+                  name={selected.name}
+                  onRemove={() => void removeMachine(selected.code)}
+                />
               </div>
             </div>
           ) : (
             <div className="machine-head">
               <h2>Your machines</h2>
               <p className="muted">
-                One list for messaging and remote control: pick a machine on
-                the left (or add one with + Add / ask the assistant), then
-                press Control. The other machine just allows it once.
+                One list for messaging and remote control: enter a
+                machine's connection code on the left (or ask the
+                assistant), then press Control. The other machine allows it
+                once with "Always allow" and it stays in this list.
               </p>
             </div>
           )}
@@ -478,9 +424,8 @@ export default function App() {
           settings={engine.settings}
           onSaveSettings={engine.saveSettings}
           version={appVersion}
-          directory={directory}
           assistant={assistant}
-          onRevokedTrusted={() => void refreshTrusted()}
+          onRevokedTrusted={() => void refreshMachines()}
           onClose={() => setConfigSection(null)}
         />
       ) : null}
@@ -504,10 +449,7 @@ export default function App() {
               Peer-to-peer remote desktop for the family — direct connection, no relay, video
               never leaves the two machines.
             </p>
-            <p className="muted">
-              Version {appVersion ?? "—"}
-              {directoryUi.familyBuild ? " (family build)" : ""}
-            </p>
+            <p className="muted">Version {appVersion ?? "—"}</p>
             <p className="muted small">
               Diagnostics: Ctrl+Shift+D · Website: remote.deepflux.space
             </p>
@@ -520,33 +462,4 @@ export default function App() {
   );
 }
 
-/** The ADR-006 §5 first-run circle notice as a passive toast: no buttons,
- * self-dismisses, click to dismiss. The timer holds the callback in a ref
- * with empty deps — App re-renders every poll tick (engine 1 Hz,
- * assistant 2 s) and a deps-bound timer would restart forever. */
-function CircleNoticeToast({ onDone }: { onDone: () => void }) {
-  const doneRef = useRef(onDone);
-  doneRef.current = onDone;
-  useEffect(() => {
-    const timer = setTimeout(() => doneRef.current(), 12_000);
-    return () => clearTimeout(timer);
-  }, []);
-  return (
-    <div
-      className="banner banner-info circle-toast"
-      role="status"
-      onClick={() => doneRef.current()}
-      title="Click to dismiss"
-    >
-      <p>
-        This PC now appears in your family circle — family can see it's online and ask to
-        connect. You control who connects: every new machine needs your approval. (Manage
-        visibility in Config → Family circle.)
-      </p>
-    </div>
-  );
-}
 
-// Exported for the toast-timer test (the self-dismiss depends on a stable
-// timer across the 1–2 s polls that re-render the shell).
-export { CircleNoticeToast };

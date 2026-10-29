@@ -72,18 +72,15 @@ export interface Settings {
   default_viewer_scale: string;
   /** ADR-006 always-ready: launch at Windows login (tray keeps it alive). */
   launch_at_login: boolean;
+  /** ADR-009: answer connection requests (host presence at launch). Was
+   * the circle visibility toggle; default on. */
+  host_sharing: boolean;
   /** Domains the local user allowed the assistant to download from
    * without asking again ("always allow" on the confirm card). */
   agent_download_domains: string[];
   /** ADR-008: automatic update checks (download/install stay explicit
    * presses). Settings toggle, default on. */
   auto_update: boolean;
-}
-
-export interface Favorite {
-  id: string;
-  name: string;
-  code: string;
 }
 
 export interface MonitorInfo {
@@ -241,22 +238,7 @@ export interface InfoEvent {
 
 // ---- family circle / machine directory (ADR-006) ----
 
-export interface DirectoryMachine {
-  device: string;
-  name: string;
-  online: boolean;
-  refreshed_ms: number;
-  is_self: boolean;
-}
 
-export interface CircleStatus {
-  joined: boolean;
-  circle_id: string | null;
-  share_in_circle: boolean;
-  family_build: boolean;
-  machines: DirectoryMachine[];
-  loaded: boolean;
-}
 
 export interface PairingInfo {
   code: string;

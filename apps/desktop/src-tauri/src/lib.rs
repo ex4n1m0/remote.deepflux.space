@@ -7,7 +7,6 @@ pub mod agent;
 pub mod chat;
 pub mod commands;
 pub mod credstore;
-mod directory;
 pub mod dl;
 pub mod engine;
 pub mod ipc;
@@ -92,8 +91,8 @@ pub fn run() {
             let mut store = store::LocalStore::load(&dir).map_err(|e| e.to_string())?;
             // Durable identity anchor: mirror/restore this machine's
             // identity via the Credential Manager so a reinstall (wiped
-            // appdata) keeps the same device id — one circle-directory
-            // entry per machine, pairings survive reinstalls.
+            // appdata) keeps the same device id — pairings survive
+            // reinstalls.
             store
                 .adopt_identity_anchor(&crate::credstore::WindowsCredStore)
                 .map_err(|e| e.to_string())?;
@@ -102,19 +101,12 @@ pub fn run() {
                 engine: Mutex::new(None),
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
-                directory: Mutex::new(directory::DirectoryCache::default()),
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
-            // ADR-006: family build auto-joins from the embedded key; the
-            // directory poller keeps the machine list fresh while online.
-            let family_first_run = directory::auto_join_embedded(app.handle());
-            directory::spawn_poller(app.handle().clone());
-            if family_first_run {
-                // The embedded key IS the consent moment for always-ready:
-                // turn on login autostart once (reversible in Settings).
-                commands::enable_autostart_default(app.handle());
-            }
+            // Always-ready first-run default: login autostart on once
+            // (idempotent — the flag persists; reversible in Settings).
+            commands::enable_autostart_default(app.handle());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -124,7 +116,7 @@ pub fn run() {
             // always available while the app runs. The purge first drops
             // pairing rows / chat threads keyed by a non-device-id code
             // (dead data from the pre-validation era) — one sweep per
-            // launch, alongside the favorite purge in LocalStore::load.
+            // launch.
             chat::purge_dead_data(app.handle());
             chat::spawn_poller(app.handle().clone());
             // ADR-008 update poller: first check ~20 s after launch (past
@@ -135,14 +127,20 @@ pub fn run() {
             // controller role start at launch for everyone — controlling
             // out is one press (Control) with no enable step, and the
             // engine defers the connect itself while the role registers.
-            // Host presence (being controllable) still follows the
-            // circle-visibility choice; every untrusted session still
+            // Host presence (being controllable) follows the
+            // "share this machine" setting (ADR-009: default ON — was the
+            // circle visibility toggle); every untrusted session still
             // hits the consent prompt, trusted machines connect silently
             // per their pairing. Deferred a beat so the window paints
             // first.
             {
-                let share_host =
-                    directory::read_circle(app.handle()).is_some_and(|d| d.share_in_circle);
+                let share_host = app
+                    .state::<AppServices>()
+                    .store
+                    .lock()
+                    .expect("store")
+                    .settings()
+                    .host_sharing;
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -160,7 +158,7 @@ pub fn run() {
                 });
             }
 
-            // ADR-006: tray icon with open/quit — close-to-tray keeps the
+            // Tray icon with open/quit — close-to-tray keeps the
             // app running (and reachable) when the window closes.
             setup_tray(app.handle().clone())?;
 
@@ -201,10 +199,6 @@ pub fn run() {
             commands::get_identity,
             commands::get_settings,
             commands::set_settings,
-            commands::list_favorites,
-            commands::add_favorite,
-            commands::remove_favorite,
-            commands::rename_favorite,
             commands::host_start,
             commands::host_stop,
             commands::controller_start,
@@ -232,13 +226,6 @@ pub fn run() {
             commands::pairings_list,
             commands::pairing_remove,
             commands::pairing_rename,
-            commands::circle_status,
-            commands::circle_join,
-            commands::circle_create,
-            commands::circle_invite,
-            commands::circle_leave,
-            commands::circle_set_shared,
-            commands::directory_refresh,
             commands::update_state,
             commands::update_check,
             commands::update_download,
@@ -280,6 +267,6 @@ fn setup_tray(app: tauri::AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(&app)?;
-    tray.set_tooltip(Some("DeepFlux — family circle host"))?;
+    tray.set_tooltip(Some("DeepFlux — remote desktop host"))?;
     Ok(())
 }

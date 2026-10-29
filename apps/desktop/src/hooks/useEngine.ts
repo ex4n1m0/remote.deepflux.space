@@ -1,7 +1,7 @@
 /**
  * useEngine: wires the reducer to Tauri events + a 1 Hz status poll (the
  * pull is authoritative; pushes are conveniences that may drop). Also owns
- * identity/settings/favorites loading.
+ * identity/settings loading.
  */
 
 import {
@@ -15,14 +15,12 @@ import {
 import { EVENT, api } from "../ipc";
 import { engineReducer, initialUiState } from "../state/reducer";
 import type { EngineUiState, UiAction } from "../state/reducer";
-import type { EngineStatus, Favorite, Identity, Settings } from "../types";
+import type { EngineStatus, Identity, Settings } from "../types";
 
 export interface EngineBinding {
   ui: [EngineUiState, Dispatch<UiAction>];
   identity: Identity | null;
   settings: Settings | null;
-  favorites: Favorite[];
-  refreshFavorites: () => Promise<void>;
   saveSettings: (patch: Settings) => Promise<Settings | null>;
   commandError: string | null;
   clearCommandError: () => void;
@@ -34,18 +32,9 @@ export function useEngine(): EngineBinding {
   const [ui, dispatch] = useReducer(engineReducer, undefined, initialUiState);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [commandError, setCommandError] = useState<string | null>(null);
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
-
-  const refreshFavorites = useCallback(async () => {
-    try {
-      setFavorites(await api.listFavorites());
-    } catch (err) {
-      setCommandError(String(err));
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +45,6 @@ export function useEngine(): EngineBinding {
           setIdentity(identity);
           setSettings(settings);
         }
-        await refreshFavorites();
       } catch (err) {
         if (!cancelled) {
           setCommandError(String(err));
@@ -66,7 +54,7 @@ export function useEngine(): EngineBinding {
     return () => {
       cancelled = true;
     };
-  }, [refreshFavorites]);
+  }, []);
 
   const saveSettings = useCallback(async (patch: Settings) => {
     try {
@@ -155,8 +143,6 @@ export function useEngine(): EngineBinding {
     ui: [ui, dispatch],
     identity,
     settings,
-    favorites,
-    refreshFavorites,
     saveSettings,
     commandError,
     clearCommandError: () => setCommandError(null),

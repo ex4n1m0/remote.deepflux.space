@@ -1,65 +1,82 @@
-/** Agent-first UI tests (ADR-005): machines unification + assistant panel. */
+/** Agent-first UI tests (ADR-005, simplified by ADR-009): the
+ * trusted-host rail (pairings + connect box) + assistant panel. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   MachinesRail,
   RemoveMachineButton,
-  excludeSelf,
   filterMachines,
-  groupMachines,
-  unifiedMachines,
+  machinesFromPairings,
 } from "../components/MachinesRail";
 import { AssistantPanel } from "../components/AssistantPanel";
 import { AgentChat } from "../components/AgentChat";
 import { Conversation } from "../components/Conversation";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import type { MachineRow } from "../components/MachinesRail";
+import type { PairingInfo } from "../types";
 
 afterEach(cleanup);
 
-describe("unifiedMachines (saved machines, ADR-009)", () => {
-  const favorites = [
-    { id: "f1", name: "Office", code: "aa" },
-    { id: "f2", name: "Laptop", code: "bb" },
-  ];
+describe("machinesFromPairings (the trusted-host list, ADR-009)", () => {
+  const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
+    code: "abcdef0123456789",
+    secret_hex: "s",
+    created_ms: 1,
+    pending_ack: false,
+    role: "host",
+    name: null,
+    ...over,
+  });
 
-  it("favorites with presence from session events", () => {
-    const rows = unifiedMachines(favorites, { bb: true }, "bb");
-    expect(rows.map((r) => r.code)).toEqual(["aa", "bb"]);
+  it("names rows from the cached wire name, falls back to the code", () => {
+    const rows = machinesFromPairings(
+      [
+        pairing({ name: "MOMS-PC", code: "aaaaaaaaaaaaaaaa" }),
+        pairing({ code: "bbbbbbbbbbbbbbbb" }),
+      ],
+      { bbbbbbbbbbbbbbbb: true },
+      "bbbbbbbbbbbbbbbb",
+    );
+    expect(rows.map((r) => r.name)).toEqual(["MOMS-PC", "bbbbbbbbbbbbbbbb"]);
+    // Online only while a session with the machine is live.
     expect(rows[0].online).toBeNull();
     expect(rows[1].online).toBe(true);
     expect(rows[1].active).toBe(true);
+  });
+
+  it("pending offers are untrusted and flagged", () => {
+    const rows = machinesFromPairings(
+      [pairing({ code: "cccccccccccccccc", pending_ack: true })],
+      {},
+      null,
+    );
+    expect(rows[0].trusted).toBe(false);
+    expect(rows[0].pending).toBe(true);
   });
 });
 
 describe("MachinesRail", () => {
   const base = {
-  addSignal: 0,
     thisCode: "abcd1234efgh5678",
     hostState: "Idle" as const,
     sharing: false,
     onPick: vi.fn(),
     onConnect: vi.fn(),
-    onAdd: vi.fn(async () => {}),
     onShare: vi.fn(),
     onStopShare: vi.fn(),
   };
+  const machines: MachineRow[] = [
+    { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: true, pending: false },
+    { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, pending: true },
+  ];
 
   it("lists machines, marks selection, exposes one-step per-row control", () => {
-    render(
-      <MachinesRail
-        {...base}
-        machines={[
-          { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: false, fromCircle: false },
-          { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, fromCircle: false },
-        ]}
-      />,
-    );
+    render(<MachinesRail {...base} machines={machines} />);
     expect(screen.getByText("Mom's PC")).toBeTruthy();
     expect(screen.getByText("This machine")).toBeTruthy();
     expect(screen.getByText("abcd1234efgh5678")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Control Mom's PC" }));
-    expect(base.onConnect).toHaveBeenCalledWith("aa");
+    expect(base.onConnect).toHaveBeenCalledWith("aa", false);
     expect(screen.getByRole("button", { name: "Share this machine" })).toBeTruthy();
   });
 
@@ -72,47 +89,29 @@ describe("MachinesRail", () => {
     ).toBeTruthy();
   });
 
-  it("add form offers Save & control (save then connect in one step)", async () => {
-    const onAdd = vi.fn(async () => {});
-    const onConnect = vi.fn();
-    render(<MachinesRail {...base} onAdd={onAdd} onConnect={onConnect} machines={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
-    fireEvent.change(screen.getByLabelText("Machine name"), {
-      target: { value: "Lab PC" },
-    });
-    fireEvent.change(screen.getByLabelText("Connection code"), {
-      target: { value: "CCCCDDDD" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save & control" }));
-    await vi.waitFor(() => {
-      expect(onAdd).toHaveBeenCalledWith("Lab PC", "ccccdddd");
-      expect(onConnect).toHaveBeenCalledWith("ccccdddd");
-    });
+  it("connect box: Control and Agent dial the entered code (ADR-009)", () => {
+    render(<MachinesRail {...base} machines={[]} />);
+    const input = screen.getByLabelText("Connection code");
+    fireEvent.change(input, { target: { value: "CCCCDDDD" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    expect(base.onConnect).toHaveBeenCalledWith("ccccdddd", true);
+    fireEvent.change(input, { target: { value: "EEEEFFFF" } });
+    fireEvent.click(screen.getByRole("button", { name: "Control" }));
+    expect(base.onConnect).toHaveBeenCalledWith("eeeeffff", false);
+    // Enter in the box is the visual verb.
+    fireEvent.change(input, { target: { value: "AAAABBBB" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(base.onConnect).toHaveBeenLastCalledWith("aaaabbbb", false);
   });
 
-  it("plain Save adds without connecting", async () => {
-    const onAdd = vi.fn(async () => {});
-    const onConnect = vi.fn();
-    render(<MachinesRail {...base} onAdd={onAdd} onConnect={onConnect} machines={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
-    fireEvent.change(screen.getByLabelText("Connection code"), {
-      target: { value: "ccccdddd" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await vi.waitFor(() => {
-      expect(onAdd).toHaveBeenCalledWith("ccccdddd", "ccccdddd");
-    });
-    expect(onConnect).not.toHaveBeenCalled();
+  it("pending rows sit under the waiting hint; trusted rows carry the shield", () => {
+    render(<MachinesRail {...base} machines={machines} />);
+    expect(screen.getByText(/Waiting for their approval/i)).toBeTruthy();
+    expect(screen.getByTitle("Trusted — connects without asking again")).toBeTruthy();
   });
 
   it("labels the This-machine chip with the friendly host status, not the state name", () => {
-    render(
-      <MachinesRail
-        {...base}
-        hostState="ConsentPrompted"
-        machines={[]}
-      />,
-    );
+    render(<MachinesRail {...base} hostState="ConsentPrompted" machines={[]} />);
     expect(screen.getByText("Connection request")).toBeTruthy();
     expect(screen.queryByText("ConsentPrompted")).toBeNull();
   });
@@ -120,29 +119,6 @@ describe("MachinesRail", () => {
   it("never claims connecting is unavailable (every Connect auto-starts)", () => {
     render(<MachinesRail {...base} machines={[]} />);
     expect(screen.queryByText(/connecting unavailable/i)).toBeNull();
-  });
-
-  it("empty state teaches the next action", () => {
-    render(<MachinesRail {...base} machines={[]} />);
-    expect(screen.getByText(/No machines yet/i)).toBeTruthy();
-  });
-});
-
-describe("excludeSelf (self is never a connectable contact)", () => {
-  const dir = [
-    { device: "aaaaaaaaaaaaaaaa", name: "Mom's PC", online: true, refreshed_ms: 1, is_self: false },
-    { device: "bbbbbbbbbbbbbbbb", name: "This PC", online: true, refreshed_ms: 1, is_self: true },
-    { device: "cccccccccccccccc", name: "Lab", online: false, refreshed_ms: 1, is_self: false },
-  ];
-
-  it("drops the own row by is_self and by device id", () => {
-    const rows = excludeSelf(dir, "cccccccccccccccc");
-    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa"]);
-  });
-
-  it("keeps peers when identity has not loaded yet (is_self still applies)", () => {
-    const rows = excludeSelf(dir, null);
-    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"]);
   });
 });
 
@@ -161,7 +137,7 @@ describe("AssistantPanel", () => {
 
   it("shows prompt starters when configured and idle", () => {
     render(<AssistantPanel assistant={makeAssistant()} onOpenConfig={() => {}} />);
-    expect(screen.getByText("Save a machine for me")).toBeTruthy();
+    expect(screen.getByText("Connect me to another machine")).toBeTruthy();
     expect(screen.getByPlaceholderText(/ask anything/i)).toBeTruthy();
   });
 
@@ -208,18 +184,18 @@ describe("AssistantPanel", () => {
       <AssistantPanel
         assistant={makeAssistant({
           messages: [
-            { kind: "user", content: "add mom's pc", id: 1 },
-            { kind: "tool", name: "machine_add", summary: "saved machine", id: 2 },
-            { kind: "assistant", content: "Saved it.", id: 3 },
+            { kind: "user", content: "list my machines", id: 1 },
+            { kind: "tool", name: "machines_list", summary: "1 trusted machine", id: 2 },
+            { kind: "assistant", content: "One: Mom's PC.", id: 3 },
             { kind: "error", message: "provider down", id: 4 },
           ],
         })}
         onOpenConfig={() => {}}
       />,
     );
-    expect(screen.getByText("add mom's pc")).toBeTruthy();
-    expect(screen.getByText("machine_add")).toBeTruthy();
-    expect(screen.getByText("Saved it.")).toBeTruthy();
+    expect(screen.getByText("list my machines")).toBeTruthy();
+    expect(screen.getByText("machines_list")).toBeTruthy();
+    expect(screen.getByText("One: Mom's PC.")).toBeTruthy();
     expect(screen.getByText("provider down")).toBeTruthy();
   });
 
@@ -238,126 +214,16 @@ describe("AssistantPanel", () => {
   });
 });
 
-// ---- ADR-006: circle merge, trust badges, search ----
-
-describe("unifiedMachines with the circle directory (ADR-006)", () => {
-  const favs = [{ id: "f1", name: "aaaaaaaaaaaaaaaa", code: "aaaaaaaaaaaaaaaa" }];
-  const dir = [
-    { device: "aaaaaaaaaaaaaaaa", name: "Mom's PC", online: true, refreshed_ms: 1, is_self: false },
-    { device: "cccccccccccccccc", name: "Lab", online: false, refreshed_ms: 1, is_self: false },
-  ];
-
-  it("merges circle rows by code; a real favorite name beats the nickname", () => {
-    const rows = unifiedMachines(favs, {}, "aaaaaaaaaaaaaaaa", dir, new Set());
-    const merged = rows.find((r) => r.code === "aaaaaaaaaaaaaaaa");
-    // The favorite's name IS the bare code here — the circle nickname wins
-    // over the placeholder (UI-review decision).
-    expect(merged?.name).toBe("Mom's PC");
-    expect(rows.find((r) => r.code === "cccccccccccccccc")?.fromCircle).toBe(true);
-    expect(merged?.fromCircle).toBe(false);
-  });
-
-  it("trusted codes produce the shield flag", () => {
-    const rows = unifiedMachines([], {}, null, dir, new Set(["cccccccccccccccc"]));
-    expect(rows.find((r) => r.code === "cccccccccccccccc")?.trusted).toBe(true);
-    expect(rows.find((r) => r.code === "aaaaaaaaaaaaaaaa")?.trusted).toBe(false);
-  });
-
-  it("directory=null keeps the old behavior", () => {
-    const rows = unifiedMachines(favs, {}, null, null, new Set());
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.trusted).toBe(false);
-  });
-});
-
-describe("filterMachines (ADR-006 search)", () => {
-  const rows = [
-    { id: "1", name: "Mom's PC", code: "aaaaaaaaaaaaaaaa", online: true, active: false, trusted: false, fromCircle: false },
-    { id: "2", name: "Lab", code: "bbbbbbbbbbbbbbbb", online: null, active: false, trusted: true, fromCircle: true },
+describe("filterMachines (search)", () => {
+  const rows: MachineRow[] = [
+    { id: "1", name: "Mom's PC", code: "aaaaaaaaaaaaaaaa", online: true, active: false, trusted: true, pending: false },
+    { id: "2", name: "Lab", code: "bbbbbbbbbbbbbbbb", online: null, active: false, trusted: false, pending: true },
   ];
   it("matches name case-insensitively, code substrings, and clears on empty", () => {
     expect(filterMachines(rows, "mom")).toHaveLength(1);
     expect(filterMachines(rows, "BBBB")).toHaveLength(1);
     expect(filterMachines(rows, "")).toHaveLength(2);
     expect(filterMachines(rows, "zzz")).toHaveLength(0);
-  });
-});
-
-// ---- Where-am-I grouping (user request, 2026-10-26) ----
-
-describe("groupMachines (three plain sections)", () => {
-  const row = (over: Partial<MachineRow>): MachineRow => ({
-    id: over.code ?? "x",
-    name: over.code ?? "x",
-    code: "x",
-    online: null,
-    active: false,
-    trusted: false,
-    fromCircle: false,
-    ...over,
-  });
-
-  it("splits into accepted / awaiting / unadded and keeps source order", () => {
-    const rows = [
-      row({ id: "1", code: "added", name: "Added, not accepted" }),
-      row({ id: "2", code: "ok", name: "Accepted", trusted: true }),
-      row({ id: "3", code: "circ", name: "Circle only", fromCircle: true }),
-      row({ id: "4", code: "okcirc", name: "Trusted circle", trusted: true, fromCircle: true }),
-    ];
-    const groups = groupMachines(rows);
-    expect(groups.accepted.map((r) => r.code)).toEqual(["ok", "okcirc"]);
-    expect(groups.awaiting.map((r) => r.code)).toEqual(["added"]);
-    expect(groups.unadded.map((r) => r.code)).toEqual(["circ"]);
-  });
-});
-
-describe("MachinesRail grouping render", () => {
-  const base = {
-  addSignal: 0,
-    thisCode: "abcd1234efgh5678",
-    hostState: "Idle" as const,
-    sharing: false,
-    onPick: vi.fn(),
-    onConnect: vi.fn(),
-    onAdd: vi.fn(async () => {}),
-    onShare: vi.fn(),
-    onStopShare: vi.fn(),
-  };
-  const machines = [
-    { id: "1", name: "Mom's PC", code: "aa", online: true, active: true, trusted: true, fromCircle: false },
-    { id: "2", name: "Office", code: "bb", online: null, active: false, trusted: false, fromCircle: false },
-    { id: "3", name: "Lab", code: "cc", online: true, active: false, trusted: false, fromCircle: true },
-  ];
-
-  it("renders the three section headers with counts, rows under the right one", () => {
-    const { container } = render(<MachinesRail {...base} machines={machines} />);
-    expect(screen.getByText("Accepted (1)")).toBeTruthy();
-    expect(screen.getByText("Added — awaiting their approval (1)")).toBeTruthy();
-    expect(screen.getByText("Not added yet (1)")).toBeTruthy();
-    // The whole rail list, top to bottom: group header, its rows, next.
-    const texts = Array.from(container.querySelectorAll("ul.rail-list > li")).map((li) =>
-      li.textContent?.replace(/\s+/g, " ").trim(),
-    );
-    expect(texts).toEqual([
-      "Accepted (1)",
-      "Mom's PC✓Control", // shield badge on trusted rows
-      "Added — awaiting their approval (1)",
-      "OfficeControl",
-      "Not added yet (1)",
-      "LabcircleControl", // circle tag on unsaved circle rows
-    ]);
-  });
-
-  it("omits empty sections entirely", () => {
-    render(
-      <MachinesRail
-        {...base}
-        machines={[{ ...machines[1] }]} // one awaiting row only
-      />,
-    );
-    expect(screen.getByText("Added — awaiting their approval (1)")).toBeTruthy();
-    expect(screen.queryByText(/Accepted \(/)).toBeNull();
-    expect(screen.queryByText(/Not added yet \(/)).toBeNull();
   });
 });
 

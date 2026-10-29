@@ -1,17 +1,15 @@
 /** Config modal (0.8.0 GUI restructure): everything configurable, one
  * place, opened from the Config menu. Reuses the existing sections
- * (SettingsPanel, CircleSection, TrustedMachinesSection) and adds the
- * Assistant section that finally exposes the provider base URL and model
- * (they lived in settings with no UI before). Esc and the backdrop close
- * it. */
+ * (SettingsPanel, TrustedMachinesSection) and adds the Assistant section
+ * that finally exposes the provider base URL and model (they lived in
+ * settings with no UI before). Esc and the backdrop close it. */
 import { useEffect, useRef, useState } from "react";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import { SettingsPanel } from "./IdentityCard";
-import { CircleSection, TrustedMachinesSection } from "./CircleSettings";
-import type { DirectoryBinding } from "../hooks/useDirectory";
+import { TrustedMachinesSection } from "./TrustedMachines";
 import type { Settings } from "../types";
 
-export type ConfigSection = "settings" | "circle" | "trusted" | "assistant";
+export type ConfigSection = "settings" | "trusted" | "assistant";
 
 export interface ConfigDialogProps {
   open: boolean;
@@ -19,7 +17,6 @@ export interface ConfigDialogProps {
   settings: Settings | null;
   onSaveSettings: (patch: Settings) => Promise<Settings | null>;
   version: string | null;
-  directory: DirectoryBinding;
   assistant: AssistantBinding;
   onRevokedTrusted: () => void;
   onClose: () => void;
@@ -27,7 +24,6 @@ export interface ConfigDialogProps {
 
 const SECTION_IDS: Array<{ id: ConfigSection; label: string }> = [
   { id: "settings", label: "Settings" },
-  { id: "circle", label: "Family circle" },
   { id: "trusted", label: "Trusted machines" },
   { id: "assistant", label: "Assistant" },
 ];
@@ -38,7 +34,6 @@ export function ConfigDialog({
   settings,
   onSaveSettings,
   version,
-  directory,
   assistant,
   onRevokedTrusted,
   onClose,
@@ -116,9 +111,6 @@ export function ConfigDialog({
               version={version}
               initiallyOpen
             />
-          </section>
-          <section id={sectionAnchor("circle")}>
-            <CircleSection directory={directory} />
           </section>
           <section id={sectionAnchor("trusted")}>
             <TrustedMachinesSection onRevoked={onRevokedTrusted} />

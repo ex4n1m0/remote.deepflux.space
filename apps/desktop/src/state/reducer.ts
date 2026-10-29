@@ -27,7 +27,7 @@ export interface EngineUiState {
   sessionPeer: string | null;
   consent: ConsentEvent | null;
   lastEnd: SessionEndedEvent | null;
-  /** device id → last known online flag (favorites indicator). */
+  /** device id → last known online flag (session indicator). */
   peerOnline: Record<string, boolean>;
   hostMonitors: MonitorInfo[];
   peerMonitors: MonitorInfo[];

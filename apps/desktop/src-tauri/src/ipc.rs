@@ -21,6 +21,9 @@ pub struct SettingsPatch {
     pub default_viewer_scale: String,
     #[serde(default)]
     pub launch_at_login: bool,
+    /// ADR-009: answer connection requests (host presence at launch).
+    #[serde(default = "default_true")]
+    pub host_sharing: bool,
     /// Domains allowed for assistant downloads without asking (Settings
     /// UI editable; `agent_download_domains` in the store).
     #[serde(default)]
@@ -33,23 +36,6 @@ pub struct SettingsPatch {
 
 fn default_true() -> bool {
     true
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AddFavoriteArgs {
-    pub name: String,
-    pub code: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RenameFavoriteArgs {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RemoveFavoriteArgs {
-    pub id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -94,18 +80,14 @@ pub struct SettingsDto {
     pub default_viewer_scale: String,
     #[serde(default)]
     pub launch_at_login: bool,
+    /// ADR-009: answer connection requests (host presence at launch).
+    #[serde(default = "default_true")]
+    pub host_sharing: bool,
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
     /// ADR-008: automatic update checks (Settings toggle).
     #[serde(default = "default_true")]
     pub auto_update: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FavoriteDto {
-    pub id: String,
-    pub name: String,
-    pub code: String,
 }
 
 /// One display the host can share.

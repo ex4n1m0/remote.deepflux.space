@@ -114,7 +114,7 @@ const CONTROLLER_VIEWS: Record<ControllerStateName, ControllerView> = {
     view: "idle",
     tone: "neutral",
     status: "Controller off",
-    detail: "Enter a connection code or pick a favorite to control a machine.",
+    detail: "Enter a connection code (or pick a trusted machine) to control it.",
     can: { start: true, stop: false, connect: false, cancel: false, disconnect: false, controls: false },
   },
   Registering: {

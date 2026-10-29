@@ -14,8 +14,7 @@
 
 use remote_desktop_app_lib::engine::{DiagSnapshot, EngineEvent, EngineStatus, disconnect_copy};
 use remote_desktop_app_lib::ipc::{
-    AddFavoriteArgs, ConnectArgs, MonitorDto, RemoveFavoriteArgs, RenameFavoriteArgs,
-    SelectMonitorArgs, SetQualityArgs, SettingsPatch,
+    ConnectArgs, MonitorDto, SelectMonitorArgs, SetQualityArgs, SettingsPatch,
 };
 use session::DisconnectCause;
 
@@ -289,41 +288,8 @@ fn command_argument_dtos_carry_metadata_only() {
                 default_quality: "balanced".into(),
                 default_viewer_scale: "fit".into(),
                 launch_at_login: false,
+                host_sharing: true,
                 auto_update: true,
-            })
-            .unwrap(),
-        ),
-        (
-            "AddFavoriteArgs",
-            serde_json::to_value(AddFavoriteArgs {
-                name: "Office".into(),
-                code: "0123456789abcdef".into(),
-            })
-            .unwrap(),
-        ),
-        (
-            "RenameFavoriteArgs",
-            serde_json::to_value(RenameFavoriteArgs {
-                id: "f1".into(),
-                name: "Workstation".into(),
-            })
-            .unwrap(),
-        ),
-        (
-            "RemoveFavoriteArgs",
-            serde_json::to_value(RemoveFavoriteArgs { id: "f1".into() }).unwrap(),
-        ),
-        (
-            "SelectMonitorArgs",
-            serde_json::to_value(SelectMonitorArgs {
-                monitor_id: "\\\\.\\DISPLAY2".into(),
-            })
-            .unwrap(),
-        ),
-        (
-            "SetQualityArgs",
-            serde_json::to_value(SetQualityArgs {
-                preset: "high".into(),
             })
             .unwrap(),
         ),
@@ -332,6 +298,20 @@ fn command_argument_dtos_carry_metadata_only() {
             serde_json::to_value(ConnectArgs {
                 code: "0123456789abcdef".into(),
                 agent: false,
+            })
+            .unwrap(),
+        ),
+        (
+            "SelectMonitorArgs",
+            serde_json::to_value(SelectMonitorArgs {
+                monitor_id: "\\\\.\\DISPLAY1".into(),
+            })
+            .unwrap(),
+        ),
+        (
+            "SetQualityArgs",
+            serde_json::to_value(SetQualityArgs {
+                preset: "high".into(),
             })
             .unwrap(),
         ),
