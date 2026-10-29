@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.13.0",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.13.0-x64-setup.exe",
-  "sha256_hex": "2544207f0852c48fd8c9f238963a6f4d02995e127d67f6791e5b1eae8df8c4c8",
-  "size_bytes": 7663067,
-  "notes": "0.13.0 \u2014 the claw manages your software and your files: it can now list, install, uninstall, and update applications (winget), restart or shut down the machine (with a cancel window), and search files by name or content across any folder. Reviewed by two independent agents before release.",
+  "version": "0.14.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.14.0-x64-setup.exe",
+  "sha256_hex": "e5763eb6fb54337bd68f3d0455628cf1aee1a771e495ffcf8aa108a119f19fe0",
+  "size_bytes": 7702123,
+  "notes": "0.14.0 \u2014 the claw keeps a diary and minds your windows: scheduled tasks run on their own (nightly cleanups, weekly updates) and report to every paired machine by chat; window tools list, focus, minimize, and close what is open. Reviewed by two independent agents, all findings fixed.",
   "published_at": "2026-10-29"
 }
