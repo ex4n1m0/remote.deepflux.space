@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.9.4",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.9.4-x64-setup.exe",
-  "sha256_hex": "b7c0470fcc3e3737626f7fcd2b6c327127e54141134021bf7197483600aac9f6",
-  "size_bytes": 7706334,
-  "notes": "Remote Desktop 0.9.4 \u2014 Agent sessions: a new Agent button connects chat-only (no screen window), the machine's assistant gets its own chat box during the session, and Show/Hide the screen lets you watch what it's doing without ending the session. Chat-only sessions no longer stream video from the host at all \u2014 huge bandwidth saving.",
+  "version": "0.10.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.10.0-x64-setup.exe",
+  "sha256_hex": "aa83979d5967027697e7409a94601617dd04a1dbd3aa77b4d386ff39a1e19f3a",
+  "size_bytes": 7584671,
+  "notes": "The simplification release: no accounts, no login \u2014 your machine's name is the only identity. The machine list is now one list of trusted machines (Always allow), names arrive automatically, and the Add form + family circle are gone. Chat, agent sessions, and everything else unchanged.",
   "published_at": "2026-10-29"
 }

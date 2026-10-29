@@ -6,7 +6,7 @@
 <title>Remote — peer-to-peer remote desktop by DeepFlux</title>
 <meta name="description" content="A P2P remote desktop for Windows. Your screen and input travel directly between your two machines — encrypted, GPU-fast, and never relayed through anyone's server.">
 <meta property="og:title" content="Remote — peer-to-peer remote desktop">
-<meta property="og:description" content="Direct and encrypted. Screen and input never touch a server. One list of your family's machines — chat or control them with a single press.">
+<meta property="og:description" content="Direct and encrypted. Screen and input never touch a server. No accounts — machine names and one trusted list, chat or control with a single press.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://remote.deepflux.space/">
 <meta property="og:image" content="https://remote.deepflux.space/assets/logo.png">
@@ -104,7 +104,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 <header class="hero">
   <div class="wrap">
     <img class="hero-logo" src="./assets/logo.png" width="1536" height="1024" alt="Remote by DeepFlux — interlocking blue and teal screens on midnight navy">
-    <div class="pill"><span class="dot"></span> v0.9.4 beta — Windows 10/11</div>
+    <div class="pill"><span class="dot"></span> v0.10.0 beta — Windows 10/11</div>
     <h1>Your screen. Your network.<br><em>Nobody in between.</em></h1>
     <p class="lede">
       Remote is a peer-to-peer remote desktop for Windows. After a short handshake, your
@@ -118,7 +118,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
       </a>
       <a class="btn btn-ghost" href="#why">How is this different?</a>
     </div>
-    <div class="meta">~7.3&nbsp;MB installer &middot; per-user install, no elevation &middot; unsigned beta build</div>
+    <div class="meta">~7.2&nbsp;MB installer &middot; per-user install, no elevation &middot; unsigned beta build</div>
 
     <figure class="diagram">
       <svg viewBox="0 0 760 240" role="img" aria-label="Two computers connected directly, with a crossed-out relay server between them">
@@ -181,8 +181,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
         <p>WebRTC&rsquo;s built-in DTLS/SRTP encryption covers every frame and every keystroke. Sessions are gated by a one-time consent prompt and a single-use secret.</p>
       </div>
       <div class="card">
-        <h3><span class="ico">👤</span> Your computers, one login</h3>
-        <p>Sign in with a username and your name to keep your machines in one saved list — encrypted locally and on the sync server, unlocked by a key only you hold. The name is what the other machine sees when you ask to control it, so controlling needs an account; machines without one can still be controlled and stay in the same list, and a short connection code still works, no email ever.</p>
+        <h3><span class="ico">👤</span> No accounts, ever</h3>
+        <p>A machine&rsquo;s name is its identity. When you ask to control another PC, your machine&rsquo;s name is what its user sees; machines you trust land in one list — your trusted machines — kept on your PC only. A short connection code is all anyone ever types. No login, no email, no server-side list of your computers.</p>
       </div>
     </div>
   </div>
@@ -194,8 +194,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <p class="sub">A native Rust engine does the work; the UI is a thin shell over it.</p>
     <div class="grid">
       <div class="card">
-        <h3><span class="ico">👥</span> One list, always ready</h3>
-        <p>Every machine you install joins the same family circle and appears in one list — chat and control side by side, online status included. The app sits in the tray from login, so the remote PC is reachable without anyone opening anything.</p>
+        <h3><span class="ico">👥</span> One list: trusted machines</h3>
+        <p>Type a machine&rsquo;s connection code once; when its user answers &ldquo;Always allow&rdquo;, it&rsquo;s in your list by its own name — chat and control side by side from there. The app sits in the tray from login, so the remote PC is reachable without anyone opening anything.</p>
       </div>
       <div class="card">
         <h3><span class="ico">💬</span> Message the machine</h3>
@@ -246,22 +246,21 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <h2>Three steps, one consent prompt</h2>
     <div class="steps">
       <div class="step">
-        <h3>Install — you&rsquo;re in the list</h3>
-        <p>The same small app on every machine. It joins your DeepFlux family circle, shows up in everyone&rsquo;s machine list, and stays ready in the tray from login.</p>
+        <h3>Install — it&rsquo;s ready</h3>
+        <p>The same small app on every machine. It sits in the tray from login, ready to be controlled or to control. Every machine has a short connection code on its &ldquo;This machine&rdquo; card.</p>
       </div>
       <div class="step">
-        <h3>Press Control</h3>
-        <p>Sign in once with your name, then pick a machine and press Control — one press, nothing to enable, no codes to exchange. Everything is already running.</p>
+        <h3>Type the code, press Control</h3>
+        <p>Read the code off the other machine (or say it on the phone), type it, press Control — one press, nothing to enable, no account to create.</p>
       </div>
       <div class="step">
         <h3>They allow it — once</h3>
-        <p>The controlled machine answers one request — the prompt shows who&rsquo;s asking, their name beside the machine code: <em>Allow once</em>, <em>Always allow this machine</em>, or <em>Decline</em>. Trusted machines reconnect silently afterwards.</p>
+        <p>The controlled machine answers one request — the prompt shows who&rsquo;s asking, the machine&rsquo;s name beside its code: <em>Allow once</em>, <em>Always allow this machine</em>, or <em>Decline</em>. Trusted machines reconnect silently afterwards and appear in your list by name.</p>
       </div>
     </div>
     <p class="sub" style="margin-top:28px">
-      Outside the circle? Machines can still be added with their connection code —
-      the classic code flow works too. And one session per machine at a time:
-      a PC being controlled can&rsquo;t control out until that session ends.
+      One session per machine at a time: a PC being controlled can&rsquo;t
+      control out until that session ends.
     </p>
   </div>
 </section>
@@ -271,21 +270,21 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
     <h2>Download</h2>
     <p class="sub">Windows 10/11, 64-bit. Per-user install — no admin prompt.</p>
     <div class="cta-row" style="margin-top:28px">
-      <a class="btn btn-primary" href="./download/Remote-Desktop-0.9.4-x64-setup.exe" download>
+      <a class="btn btn-primary" href="./download/Remote-Desktop-0.10.0-x64-setup.exe" download>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 20h16" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Remote-Desktop-0.9.4-x64-setup.exe
+        Remote-Desktop-0.10.0-x64-setup.exe
       </a>
     </div>
     <div class="kv">
-      <span>version</span><b>0.9.4 beta</b>
-      <span>size</span><b>~7.3 MB</b>
+      <span>version</span><b>0.10.0 beta</b>
+      <span>size</span><b>~7.2 MB</b>
       <span>installer</span><b>NSIS, per-user</b>
       <span>signature</span><b>unsigned (beta)</b>
     </div>
     <div class="fineprint">
       <b>Know what you&rsquo;re installing — beta limitations, stated plainly:</b>
       <ul>
-        <li>On first run the app joins the DeepFlux family circle — a shared machine directory that lists each other&rsquo;s PCs. You can hide your machine from it anytime (Config &rarr; Family circle). Joining grants no control on its own: connecting needs the owner&rsquo;s approval, and only machines someone explicitly trusted with &ldquo;Always allow&rdquo; reconnect without asking again.</li>
+        <li>No accounts and no shared directory: the app answers connection requests by default (you can switch that off in Settings), every new machine needs your explicit approval, and only machines you trusted with &ldquo;Always allow&rdquo; reconnect without asking again. Your trusted list lives on your machine only.</li>
         <li>Unsigned build: Windows SmartScreen will warn on first run. That&rsquo;s expected for a beta; code signing is on the roadmap.</li>
         <li>Direct connections only: on symmetric NAT or networks that block UDP, the session can&rsquo;t be established — the app will tell you plainly rather than fall back to a relay. Relaying is a deliberate non-feature.</li>
         <li>One controlled machine per session; Windows-to-Windows only for now.</li>
@@ -298,7 +297,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 <footer>
   <div class="wrap">
     <div>Remote — a DeepFlux project &middot; 2026</div>
-    <div>P2P, no relay &middot; optional encrypted sync &middot; <span style="font-family:var(--mono)">remote.deepflux.space</span></div>
+    <div>P2P, no relay &middot; no accounts &middot; <span style="font-family:var(--mono)">remote.deepflux.space</span></div>
   </div>
 </footer>
 
