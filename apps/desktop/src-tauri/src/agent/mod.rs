@@ -432,11 +432,10 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 "internal error: assistant turn panicked ({reason})"
             ))
         });
-        *app.state::<crate::commands::AppServices>()
-            .assistant
-            .busy
-            .lock()
-            .expect("assistant busy") = false;
+        // busy stays TRUE until the turn's bookkeeping is done: the
+        // scheduler checks it between the busy-clear and the post-turn
+        // mark_fired write, and a tick landing there would refire the
+        // task (security review finding 1).
         match reply {
             Ok(final_text) => {
                 log.push(ChatTurn {
@@ -479,10 +478,22 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 // the failure hit after tool results — providers reject
                 // that shape until history drains.
                 log.truncate(turn_mark.saturating_sub(1));
+                // A failed scheduled run still leaves its trail (review
+                // should-fix 6): record it and tell the paired machines.
+                if let Some(name) = scheduled {
+                    let line = format!("failed: {err}");
+                    schedule::mark_fired(&app, &name, Some(line.clone()));
+                    broadcast_scheduled_report(&app, &name, &line);
+                }
                 emit(&app, AssistantEvent::Error { message: err });
                 emit(&app, AssistantEvent::Done { ok: false });
             }
         }
+        *app.state::<crate::commands::AppServices>()
+            .assistant
+            .busy
+            .lock()
+            .expect("assistant busy") = false;
         if log.len() > HISTORY_CAP {
             let drop = log.len() - HISTORY_CAP;
             log.drain(..drop);
@@ -495,7 +506,15 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
 /// THEIR assistant, which is not what a report is for). Best-effort per
 /// peer; capped at the first 16 pairings for safety.
 fn broadcast_scheduled_report(app: &AppHandle, name: &str, text: &str) {
-    let report = format!("[scheduled {name}] {text}");
+    // Bounded broadcast (security review finding 4): at most 500 chars
+    // of the answer, and at most one broadcast per task per 5-minute
+    // window — fast-recurring tasks coalesce instead of flooding every
+    // paired machine and the signaling inbox.
+    if !schedule::note_reported(app, name) {
+        return;
+    }
+    let clipped: String = text.chars().take(500).collect();
+    let report = format!("[scheduled {name}] {clipped}");
     let (base_url, token, me) = {
         let services = app.state::<crate::commands::AppServices>();
         let store = services.store.lock().expect("store");
@@ -527,14 +546,24 @@ pub fn spawn_scheduler(app: AppHandle) {
                     if !schedule::is_due(&task, now_ms, &now) {
                         continue;
                     }
-                    // Mark the fire BEFORE delivering: a crash mid-turn must
-                    // not refire the task every 30 s (the report notes the
-                    // missing result instead).
-                    schedule::mark_fired(&app, &task.name, None);
-                    let _ = services.assistant.deliver(AssistantInput::Scheduled {
-                        name: task.name.clone(),
-                        body: task.instruction.clone(),
-                    });
+                    // Mark ONLY on successful delivery (review blocking
+                    // 2): deliver() is a bounded try_send and can refuse
+                    // (queue full — 5+ tasks due in one tick — or the
+                    // worker respawn); a pre-burned mark would silently
+                    // skip a day (or forever, for a Once task). The mark
+                    // still precedes turn execution, so the crash-refire
+                    // guarantee holds; a refused deliver stays is_due
+                    // and retries on the next tick.
+                    if services
+                        .assistant
+                        .deliver(AssistantInput::Scheduled {
+                            name: task.name.clone(),
+                            body: task.instruction.clone(),
+                        })
+                        .is_ok()
+                    {
+                        schedule::mark_fired(&app, &task.name, None);
+                    }
                 }
             }
         })

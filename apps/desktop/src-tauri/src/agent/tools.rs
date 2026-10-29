@@ -183,6 +183,7 @@ pub fn tool_specs() -> Vec<Value> {
                     "instruction": { "type": "string" },
                     "daily_at": { "type": "string", "description": "\"HH:MM\" 24h local — daily" },
                     "every_mins": { "type": "integer", "description": "1-1440 — repeating while the app runs" },
+                    "once_at": { "type": "string", "description": "\"YYYY-MM-DD HH:MM\" local — fires once" },
                     "disable": { "type": "boolean", "description": "Pause the task instead of removing it" }
                 },
                 "required": ["name", "instruction"]
@@ -790,14 +791,24 @@ pub fn execute(
                 .unwrap_or(false);
             let daily = args.get("daily_at").and_then(|v| v.as_str());
             let every = args.get("every_mins").and_then(|v| v.as_u64());
+            let once = args.get("once_at").and_then(|v| v.as_str());
             let trigger = if let Some(at) = daily {
                 Trigger::Daily { at: at.to_owned() }
             } else if let Some(mins) = every {
+                // Validate the u64 BEFORE the cast — `2^32+60 as u32` used
+                // to silently become a valid 60 (review nit 7).
+                if !(1..=1440).contains(&mins) {
+                    return ToolOutput::text("every_mins must be 1-1440");
+                }
                 Trigger::EveryMinutes {
                     minutes: mins as u32,
                 }
+            } else if let Some(at) = once {
+                Trigger::Once { at: at.to_owned() }
             } else {
-                return ToolOutput::text("schedule needs daily_at \"HH:MM\" or every_mins 1-1440");
+                return ToolOutput::text(
+                    "schedule needs daily_at \"HH:MM\", every_mins 1-1440, or once_at \"YYYY-MM-DD HH:MM\"",
+                );
             };
             let task = schedule::ScheduledTask {
                 name: name.to_owned(),
@@ -807,10 +818,11 @@ pub fn execute(
                 created_ms: schedule::now_ms(),
                 last_fire_ms: 0,
                 last_result: None,
+                last_report_ms: 0,
             };
             match schedule::upsert_task(app, task) {
                 Ok(doc) => ToolOutput::text(format!(
-                    "saved task {name:?} ({} tasks total) — the scheduler checks every 30 s while the app runs; results are reported by chat to paired machines",
+                    "saved task {name:?} ({} tasks total). The scheduler checks every 30 s while the app runs; every run reports by chat to paired machines. NOTE: a daily task first fires at its next due time — created AFTER today's time, it runs once right away as a catch-up. Tasks persist until schedule_remove.",
                     doc.tasks.len()
                 )),
                 Err(err) => ToolOutput::text(format!("schedule failed: {err}")),
@@ -875,18 +887,24 @@ pub fn execute(
                 .collect();
             ToolOutput::text(rows.join("\n"))
         }
-        "window_focus" => match winctl::focus_window(title_arg(args)) {
-            Ok(text) => ToolOutput::text(text),
-            Err(err) => ToolOutput::text(format!("window_focus failed: {err}")),
-        },
-        "window_minimize" => match winctl::minimize_window(title_arg(args)) {
+        "window_focus" => {
+            match title_arg(args).and_then(|t| winctl::focus_window(t).map_err(|e| e.to_string())) {
+                Ok(text) => ToolOutput::text(text),
+                Err(err) => ToolOutput::text(format!("window_focus failed: {err}")),
+            }
+        }
+        "window_minimize" => match title_arg(args)
+            .and_then(|t| winctl::minimize_window(t).map_err(|e| e.to_string()))
+        {
             Ok(text) => ToolOutput::text(text),
             Err(err) => ToolOutput::text(format!("window_minimize failed: {err}")),
         },
-        "window_close" => match winctl::close_window(title_arg(args)) {
-            Ok(text) => ToolOutput::text(text),
-            Err(err) => ToolOutput::text(format!("window_close failed: {err}")),
-        },
+        "window_close" => {
+            match title_arg(args).and_then(|t| winctl::close_window(t).map_err(|e| e.to_string())) {
+                Ok(text) => ToolOutput::text(text),
+                Err(err) => ToolOutput::text(format!("window_close failed: {err}")),
+            }
+        }
         "apps_list" => {
             let filter = args
                 .get("filter")
@@ -1853,8 +1871,11 @@ fn kill_process(pid: u64) -> Result<String, String> {
     Ok(text.trim().to_owned())
 }
 
-fn title_arg(args: &Value) -> &str {
-    args.get("title").and_then(|v| v.as_str()).unwrap_or("")
+fn title_arg(args: &Value) -> Result<&str, String> {
+    args.get("title")
+        .and_then(|v| v.as_str())
+        .filter(|t| !t.trim().is_empty())
+        .ok_or_else(|| "this tool requires a title substring".to_owned())
 }
 
 // -- ADR-012 release A: applications, power, search ----------------------

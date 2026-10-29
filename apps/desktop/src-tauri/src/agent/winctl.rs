@@ -94,9 +94,18 @@ pub fn focus_window(needle: &str) -> Result<String, String> {
         if win.minimized {
             let _ = ShowWindow(HWND(win.handle as _), SW_RESTORE);
         }
-        let _ = SetForegroundWindow(HWND(win.handle as _));
+        // Honest actuator state (review should-fix 4): Windows routinely
+        // refuses foreground activation from background processes; a
+        // false 'focused' makes the agent type into the wrong window.
+        if SetForegroundWindow(HWND(win.handle as _)).as_bool() {
+            Ok(format!("focused: {}", win.title))
+        } else {
+            Ok(format!(
+                "could NOT force-focus {:?} (Windows refused — common for a background app); it was restored — verify with a screenshot before typing",
+                win.title
+            ))
+        }
     }
-    Ok(format!("focused: {}", win.title))
 }
 
 pub fn minimize_window(needle: &str) -> Result<String, String> {

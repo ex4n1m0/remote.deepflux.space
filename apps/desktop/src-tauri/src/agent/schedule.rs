@@ -40,6 +40,10 @@ pub struct ScheduledTask {
     pub last_fire_ms: u64,
     /// Short tail of the last final answer (display/diagnostics).
     pub last_result: Option<String>,
+    /// Last report BROADCAST stamp (throttle; see note_reported).
+    /// Additive with default 0.
+    #[serde(default)]
+    pub last_report_ms: u64,
 }
 
 /// When a task fires. Local wall-clock times.
@@ -145,9 +149,11 @@ pub fn is_due(task: &ScheduledTask, now_ms: u64, now: &LocalStamp) -> bool {
                 return false; // not yet today
             }
             // Fire once per day: due when the last fire predates today's
-            // due time (never fired, or fired yesterday or earlier).
+            // due MINUTE — compared at minute granularity; a raw compare
+            // refires on any later tick with larger sub-minute seconds
+            // (review blocking finding 1).
             let today_due_ms = now_ms.saturating_sub(u64::from(now_hm - due_hm) * 60_000);
-            task.last_fire_ms < today_due_ms
+            (task.last_fire_ms / 60_000) < (today_due_ms / 60_000)
         }
         Trigger::EveryMinutes { minutes } => {
             let span = u64::from(*minutes) * 60_000;
@@ -173,25 +179,44 @@ fn split_hh_mm(value: &str) -> Option<(u32, u32)> {
 // store
 // ---------------------------------------------------------------------------
 
-fn doc_path(app: &AppHandle) -> PathBuf {
+/// Serializes every read-modify-write on scheduled.json. Two threads
+/// write it (the scheduler's fire marks and the worker executing
+/// schedule/schedule_remove tools mid-turn); an interleaved RMW loses an
+/// update — a removed task resurrects, or a delivered task refires
+/// (review blocking finding 3).
+static DOC_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn doc_path(app: &AppHandle) -> Option<PathBuf> {
     app.path()
         .app_data_dir()
-        .expect("app data dir")
-        .join("scheduled.json")
+        .ok()
+        .map(|dir| dir.join("scheduled.json"))
 }
 
 pub fn read_doc(app: &AppHandle) -> ScheduledDoc {
-    std::fs::read_to_string(doc_path(app))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or(ScheduledDoc {
-            v: DOC_VERSION,
-            tasks: Vec::new(),
-        })
+    let empty = || ScheduledDoc {
+        v: DOC_VERSION,
+        tasks: Vec::new(),
+    };
+    let Some(path) = doc_path(app) else {
+        return empty();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|err| {
+            // A corrupt file must not silently delete every task (review
+            // nit) — say it and start empty rather than die.
+            eprintln!(
+                "[schedule] corrupt {} — starting empty: {err}",
+                path.display()
+            );
+            empty()
+        }),
+        Err(_) => empty(),
+    }
 }
 
 pub fn write_doc(app: &AppHandle, doc: &ScheduledDoc) -> Result<(), String> {
-    let path = doc_path(app);
+    let path = doc_path(app).ok_or("no app data dir")?;
     let tmp = path.with_extension("tmp");
     let text = serde_json::to_string(doc).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
@@ -214,12 +239,26 @@ pub fn upsert_task(app: &AppHandle, task: ScheduledTask) -> Result<ScheduledDoc,
                 .to_owned(),
         );
     }
+    let _guard = DOC_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
     let mut doc = read_doc(app);
+    // Editing/unpausing must not look like a missed run (review
+    // should-fix 5): keep the fire history when the trigger is
+    // unchanged; a changed trigger legitimately resets it.
+    let displaced = doc.tasks.iter().find(|t| t.name == task.name).cloned();
     doc.tasks.retain(|t| t.name != task.name);
     if doc.tasks.len() >= MAX_TASKS {
         return Err(format!(
             "too many scheduled tasks (cap {MAX_TASKS}) — remove one first"
         ));
+    }
+    let mut task = task;
+    if let Some(prev) = displaced {
+        if prev.trigger == task.trigger {
+            task.last_fire_ms = prev.last_fire_ms;
+            task.last_result = prev.last_result;
+        } else {
+            task.last_fire_ms = 0;
+        }
     }
     doc.tasks.push(task);
     write_doc(app, &doc)?;
@@ -227,6 +266,7 @@ pub fn upsert_task(app: &AppHandle, task: ScheduledTask) -> Result<ScheduledDoc,
 }
 
 pub fn remove_task(app: &AppHandle, name: &str) -> Result<ScheduledDoc, String> {
+    let _guard = DOC_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
     let mut doc = read_doc(app);
     let before = doc.tasks.len();
     doc.tasks.retain(|t| t.name != name);
@@ -240,12 +280,33 @@ pub fn remove_task(app: &AppHandle, name: &str) -> Result<ScheduledDoc, String> 
 /// Mark a fire (delivery) — best-effort; the scheduler retries on the
 /// next tick if this fails.
 pub fn mark_fired(app: &AppHandle, name: &str, result: Option<String>) {
+    let _guard = DOC_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
     let mut doc = read_doc(app);
     if let Some(task) = doc.tasks.iter_mut().find(|t| t.name == name) {
         task.last_fire_ms = now_ms();
         task.last_result = result.map(|r| r.chars().take(200).collect());
     }
     let _ = write_doc(app, &doc);
+}
+
+/// At most one broadcast per task per window (coalesces fast tasks
+/// whose turns outrun their span — security review finding 4).
+pub const REPORT_THROTTLE_MS: u64 = 5 * 60 * 1000;
+
+/// True (and stamped) when a broadcast may go out for this task now.
+pub fn note_reported(app: &AppHandle, name: &str) -> bool {
+    let _guard = DOC_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut doc = read_doc(app);
+    let now = now_ms();
+    let Some(task) = doc.tasks.iter_mut().find(|t| t.name == name) else {
+        return false; // removed mid-run — nothing to report anyway
+    };
+    if now.saturating_sub(task.last_report_ms) < REPORT_THROTTLE_MS {
+        return false;
+    }
+    task.last_report_ms = now;
+    let _ = write_doc(app, &doc);
+    true
 }
 
 pub fn now_ms() -> u64 {
@@ -286,6 +347,7 @@ mod tests {
             created_ms: 0,
             last_fire_ms,
             last_result: None,
+            last_report_ms: 0,
         }
     }
 
@@ -313,6 +375,19 @@ mod tests {
         let mut off = fired.clone();
         off.enabled = false;
         assert!(!is_due(&off, fixed_ms(9, 0), &stamp(9, 0)));
+    }
+
+    #[test]
+    fn daily_does_not_refire_within_the_due_minute() {
+        // Review blocking 1: the fire mark carries sub-minute seconds; a
+        // raw compare refires on any later tick with larger seconds.
+        let base = 1_793_347_200_000; // 2026-10-30T00:00:00Z-ish
+        let fired = task(Trigger::Daily { at: "02:00".into() }, base + 5_200);
+        assert!(
+            !is_due(&fired, base + 35_400, &stamp(2, 0)),
+            "no second fire inside the same due minute"
+        );
+        assert!(!is_due(&fired, base + 65_000, &stamp(2, 1)));
     }
 
     #[test]
