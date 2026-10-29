@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.11.2",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.11.2-x64-setup.exe",
-  "sha256_hex": "5be27284104fae06794788a27abce9c9b435d48b28a4f1b0f66e84d8c47f2bec",
-  "size_bytes": 7648115,
-  "notes": "0.11.2 \u2014 showing the screen now means full control: the screen window takes mouse and keyboard focus the moment it opens, on both agent sessions and normal remote control. The button now says what it does. If the host machine ever blocks input (an elevated window or locked session), the app tells you on screen.",
+  "version": "0.12.0",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.12.0-x64-setup.exe",
+  "sha256_hex": "da88ac570af6e197fe41fd8cd992525931bc762e203a710a81d24ee55a68b1df",
+  "size_bytes": 7670019,
+  "notes": "0.12.0 \u2014 the agent gets real power: it can now run shell commands, read and write any file, and manage programs on this machine, and the app runs with administrator rights by default (Windows asks once at startup; logon stays prompt-free). Ask it to install software, clean up, fix settings \u2014 it acts instead of just watching. You can dial it back in Settings.",
   "published_at": "2026-10-29"
 }
