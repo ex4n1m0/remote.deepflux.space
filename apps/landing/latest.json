@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.15.1",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.15.1-x64-setup.exe",
-  "sha256_hex": "8e483f8691500386a58e644078aa326f076611a9e368df0ee82a8b8872405696",
-  "size_bytes": 7729547,
-  "notes": "0.15.1 \u2014 hotfix: right after updating, the app could crash at launch while the admin-relaunch UAC prompt was on screen (a startup-ordering race from 0.12.0 that today's update timing exposed). Launches are reliable again; no settings or data affected.",
+  "version": "0.15.2",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.15.2-x64-setup.exe",
+  "sha256_hex": "7efbc79f5993de3f2cb6fed017faf6368d9f4afcc82f743c1c17c0f05aab3590",
+  "size_bytes": 7731751,
+  "notes": "0.15.2 \u2014 the connection service now stays on until you close the app: after a network blip it keeps retrying on its own, registration recovers by itself (even when the app was opened offline), and the couldnt-reach-its-connection-service message clears itself the moment the service answers \u2014 no restart needed. Also fixes a reviewer-caught edge case where a manually stopped machine could re-register itself.",
   "published_at": "2026-10-30"
 }
