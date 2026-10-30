@@ -10,6 +10,7 @@ import {
   engineErrorCopy,
   formatMonitorLabel,
   hostView,
+  isSignalingError,
   TRANSITION_TRIGGERS,
 } from "./mapping";
 import { CONTROLLER_STATES, HOST_STATES } from "../types";
@@ -231,6 +232,34 @@ describe("engineErrorCopy (ErrorBanner mapping)", () => {
     expect(copy.title).toBe("Something went wrong");
     expect(copy.message).toBe("peer connection failed");
     expect(copy.hint).toBe("hint text");
+  });
+
+  it("never advises restarting for signaling outages (self-recovering)", () => {
+    const copy = engineErrorCopy({
+      code: "transport_failure",
+      message: "signaling: connect timeout",
+      hint: null,
+    });
+    expect(copy.title).toBe("DeepFlux lost its connection service");
+    expect(copy.message).toContain("keeps retrying on its own");
+    expect(copy.message).toContain("clears when the connection is back");
+    // It may say "no restart needed" — but must never instruct one.
+    expect(copy.message).not.toContain("restart the app");
+  });
+
+  it("classifies exactly the signaling-unreachable errors as self-clearing", () => {
+    expect(isSignalingError({ code: "transport_failure", message: "signaling: ws closed" })).toBe(
+      true,
+    );
+    expect(isSignalingError({ code: "engine", message: "No signaling server configured" })).toBe(
+      true,
+    );
+    // unknown_target rides the word "signaling" but is a machine-off
+    // classification (handled before the signaling branch) — never
+    // self-clearing.
+    expect(isSignalingError({ code: "x", message: "signaling: unknown_target" })).toBe(false);
+    expect(isSignalingError({ code: "transport_failure", message: "ice failed" })).toBe(false);
+    expect(isSignalingError({ code: "engine", message: "engine not started" })).toBe(false);
   });
 });
 

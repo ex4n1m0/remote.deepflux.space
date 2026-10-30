@@ -623,6 +623,11 @@ pub struct EngineStatus {
     /// Host side: the connected controller asked us not to stream video
     /// (`VIDEO_SUPPRESSED` in its `Hello`) — capture/encode stay down.
     pub streaming_suppressed: bool,
+    /// Signaling service reachable right now (WS up or a send acked
+    /// within the liveness grace) — the UI's recovery signal: a
+    /// "couldn't reach the connection service" banner clears itself
+    /// when this flips true. Refreshed by the engine thread.
+    pub signaling_online: bool,
     pub counters: EngineCounters,
     pub input: diag::InputStat,
 }
@@ -645,6 +650,7 @@ struct SharedInner {
     quality: String,
     encoder: Option<String>,
     viewer_scale: String,
+    signaling_online: bool,
     viewer_suppressed: bool,
     session_agent: bool,
     streaming_suppressed: bool,
@@ -701,9 +707,16 @@ impl EngineShared {
             viewer_suppressed: inner.viewer_suppressed,
             session_agent: inner.session_agent,
             streaming_suppressed: inner.streaming_suppressed,
+            signaling_online: inner.signaling_online,
             counters,
             input,
         }
+    }
+
+    /// Engine-thread refresh of the signaling liveness bit (polled by
+    /// `status`).
+    fn set_signaling_online(&self, online: bool) {
+        self.inner.lock().expect("engine shared").signaling_online = online;
     }
 
     fn set_state(&self, machine: MachineKind, state: &str) {
@@ -1031,6 +1044,19 @@ struct PendingConnect {
 /// underneath; this is the "service unreachable" horizon).
 const PENDING_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Role-recovery watchdog (always-on communication): a Register that
+/// never acked within this window is failed locally and re-driven —
+/// F27 leaves the machine in `Registering` on a failed/lost Register,
+/// and before the watchdog nothing in production ever raised
+/// `RegistrationFailed`, so launching offline dead-ended the role
+/// until a manual app restart.
+const REGISTER_STUCK_AFTER: Duration = Duration::from_secs(20);
+/// Fixed re-drive cadence while a role's user intent is on but the
+/// machine sits Idle (offline launch, flapping link): one Register
+/// attempt per cycle — bounded by construction, no growth. Explicit
+/// Stop clears the intent flag and the watchdog stands down.
+const ROLE_REDRIVE_AFTER: Duration = Duration::from_secs(10);
+
 struct Engine {
     real_input: bool,
     auto_reonline: bool,
@@ -1065,6 +1091,13 @@ struct Engine {
     controller_started: bool,
     host_reonline_at: Option<Instant>,
     ctrl_reonline_at: Option<Instant>,
+    /// Watchdog bookkeeping: when the host machine was first seen in
+    /// `Registering` (None = not registering). Seeds the stuck-register
+    /// decision; cleared whenever the state leaves `Registering`.
+    host_register_since: Option<Instant>,
+    /// Controller twin of `host_register_since`.
+    ctrl_register_since: Option<Instant>,
+    last_recovery_tick: Instant,
     /// One-press Control (0.6.3): a connect that arrived while the
     /// controller role was still coming online. Fired the moment the
     /// role reaches Online; dropped (with a clear error) if it never
@@ -1268,6 +1301,9 @@ fn run(
         last_stats_tick: Instant::now(),
         last_diag_tick: Instant::now(),
         last_status_tick: Instant::now(),
+        host_register_since: None,
+        ctrl_register_since: None,
+        last_recovery_tick: Instant::now(),
         last_keyframe_request: Instant::now() - Duration::from_secs(10),
         last_inject_errors: 0,
         last_uipi_emit: None,
@@ -1337,6 +1373,10 @@ fn run(
                 .events
                 .try_send(EngineEvent::Diagnostics { snapshot });
         }
+        if now.duration_since(engine.last_recovery_tick) >= Duration::from_secs(1) {
+            engine.last_recovery_tick = now;
+            engine.service_role_recovery();
+        }
         if engine.status_file.is_some()
             && now.duration_since(engine.last_status_tick) >= Duration::from_millis(200)
         {
@@ -1345,6 +1385,9 @@ fn run(
         }
         if now.duration_since(engine.last_status_tick) >= Duration::from_millis(200) {
             engine.last_status_tick = now;
+            engine
+                .shared
+                .set_signaling_online(engine.node.signaling_online());
             engine.publish_snapshot(&counters_arc, &viewer_arc, &input_arc);
         }
 
@@ -1381,12 +1424,14 @@ impl Engine {
             EngineCmd::HostStop => {
                 self.host_started = false;
                 self.host_reonline_at = None;
+                self.host_register_since = None;
                 self.node.host_stop(&mut self.observer);
             }
             EngineCmd::ControllerStart => self.cmd_controller_start(),
             EngineCmd::ControllerStop => {
                 self.controller_started = false;
                 self.ctrl_reonline_at = None;
+                self.ctrl_register_since = None;
                 self.pending_connect = None;
                 self.info("controller role will not re-register after the next session end");
             }
@@ -1999,9 +2044,15 @@ impl Engine {
             self.session_end_handled = false;
         }
 
+        // Idle is reachable only via RegistrationFailed (the watchdog's
+        // re-drive) — Disconnected is the session-end edge. Both accept
+        // Start, so one fire block serves both.
         if let Some(at) = self.host_reonline_at
             && Instant::now() >= at
-            && matches!(self.node.host_state(), HostState::Disconnected { .. })
+            && matches!(
+                self.node.host_state(),
+                HostState::Disconnected { .. } | HostState::Idle
+            )
         {
             self.host_reonline_at = None;
             let caps = self.caps_cache.clone().unwrap_or_else(host_caps_stub);
@@ -2012,7 +2063,7 @@ impl Engine {
             && Instant::now() >= at
             && matches!(
                 self.node.controller_state(),
-                ControllerState::Disconnected { .. }
+                ControllerState::Disconnected { .. } | ControllerState::Idle
             )
         {
             self.ctrl_reonline_at = None;
@@ -2861,6 +2912,87 @@ impl Engine {
     }
 
     /// F51: surface UIPI injection blocks to the user (rate-limited).
+    /// Always-on communication (1 s tick): while a role's user intent is
+    /// on, registration dead-ends are re-driven — the transport layer
+    /// already reconnects forever (WS backoff + HTTP fallback) and
+    /// heartbeats retry on their own cadence, but a Register whose ack
+    /// never arrives parks the machine in `Registering` (F27), and a
+    /// `RegistrationFailed` leaves it in `Idle`; before this watchdog
+    /// neither state ever self-recovered, so "restart the app" was the
+    /// only advice the UI could honestly give.
+    fn service_role_recovery(&mut self) {
+        let now = Instant::now();
+        // Seed/clear the register-since bookkeeping around the pure
+        // decision (the decision itself is unit-tested with synthetic
+        // instants, `role_recovery`).
+        if matches!(self.node.host_state(), HostState::Registering)
+            && self.host_register_since.is_none()
+        {
+            self.host_register_since = Some(now);
+        }
+        match role_recovery(
+            matches!(self.node.host_state(), HostState::Registering),
+            matches!(self.node.host_state(), HostState::Idle),
+            self.host_started,
+            self.host_register_since,
+            self.host_reonline_at,
+            now,
+        ) {
+            RoleRecovery::None => {
+                if !matches!(self.node.host_state(), HostState::Registering) {
+                    self.host_register_since = None;
+                }
+            }
+            RoleRecovery::FailRegistration { retry_at } => {
+                self.host_register_since = None;
+                self.host_reonline_at = Some(retry_at);
+                self.node.host_registration_failed(
+                    "signaling unreachable (watchdog)",
+                    &mut self.observer,
+                );
+                self.info(
+                    "couldn't reach the connection service — the app keeps retrying on its own",
+                );
+            }
+            RoleRecovery::ScheduleRedrive { retry_at } => {
+                self.host_reonline_at = Some(retry_at);
+            }
+        }
+        if matches!(self.node.controller_state(), ControllerState::Registering)
+            && self.ctrl_register_since.is_none()
+        {
+            self.ctrl_register_since = Some(now);
+        }
+        match role_recovery(
+            matches!(self.node.controller_state(), ControllerState::Registering),
+            matches!(self.node.controller_state(), ControllerState::Idle),
+            self.controller_started,
+            self.ctrl_register_since,
+            self.ctrl_reonline_at,
+            now,
+        ) {
+            RoleRecovery::None => {
+                if !matches!(self.node.controller_state(), ControllerState::Registering) {
+                    self.ctrl_register_since = None;
+                }
+            }
+            RoleRecovery::FailRegistration { retry_at } => {
+                self.ctrl_register_since = None;
+                self.ctrl_reonline_at = Some(retry_at);
+                self.node.controller_registration_failed(
+                    "signaling unreachable (watchdog)",
+                    &mut self.observer,
+                );
+                self.info(
+                    "couldn't reach the connection service — the app keeps retrying on its own",
+                );
+            }
+            RoleRecovery::ScheduleRedrive { retry_at } => {
+                self.ctrl_reonline_at = Some(retry_at);
+            }
+        }
+    }
+
     fn maybe_emit_uipi(&mut self, inject_errors: u64, now: Instant) {
         let host_connected = matches!(self.node.host_state(), HostState::Connected { .. });
         if should_emit_uipi(
@@ -3026,6 +3158,48 @@ pub fn should_emit_uipi(
         && last_emit.is_none_or(|at| now.duration_since(at) >= UIPI_EMIT_RATE)
 }
 
+/// Decision of the role-recovery watchdog (`service_role_recovery`),
+/// pure for unit testing with synthetic instants (the `should_emit_uipi`
+/// pattern).
+#[derive(Debug, PartialEq)]
+enum RoleRecovery {
+    /// Nothing to do this tick.
+    None,
+    /// The machine has been in `Registering` past the stuck window —
+    /// fail the registration locally (→ Idle) and schedule a re-drive.
+    FailRegistration { retry_at: Instant },
+    /// User intent is on but the machine sits Idle (a prior
+    /// RegistrationFailed) — schedule a re-drive.
+    ScheduleRedrive { retry_at: Instant },
+}
+
+fn role_recovery(
+    is_registering: bool,
+    is_idle: bool,
+    started: bool,
+    register_since: Option<Instant>,
+    reonline_at: Option<Instant>,
+    now: Instant,
+) -> RoleRecovery {
+    if is_registering {
+        // Seeded-but-not-yet-stuck (or unseeded: first tick) → wait.
+        if let Some(since) = register_since
+            && now.duration_since(since) >= REGISTER_STUCK_AFTER
+        {
+            return RoleRecovery::FailRegistration {
+                retry_at: now + ROLE_REDRIVE_AFTER,
+            };
+        }
+        return RoleRecovery::None;
+    }
+    if is_idle && started && reonline_at.is_none() {
+        return RoleRecovery::ScheduleRedrive {
+            retry_at: now + ROLE_REDRIVE_AFTER,
+        };
+    }
+    RoleRecovery::None
+}
+
 pub fn controller_in_session(state: &ControllerState) -> bool {
     matches!(
         state,
@@ -3065,5 +3239,69 @@ mod tests {
         assert!(!should_emit_uipi(6, 7, true, Some(t0), t1));
         // …and re-arms after the window.
         assert!(should_emit_uipi(6, 7, true, Some(t0), t6));
+    }
+
+    #[test]
+    fn role_recovery_fails_stuck_register_and_redrives_idle() {
+        let t0 = Instant::now();
+        // Registering, freshly seeded → wait (server may still ack).
+        assert_eq!(
+            role_recovery(
+                true,
+                false,
+                true,
+                Some(t0),
+                None,
+                t0 + Duration::from_secs(5)
+            ),
+            RoleRecovery::None
+        );
+        // Registering past the stuck window → fail + re-drive scheduled.
+        let retry = t0 + Duration::from_secs(25) + ROLE_REDRIVE_AFTER;
+        assert_eq!(
+            role_recovery(
+                true,
+                false,
+                true,
+                Some(t0),
+                None,
+                t0 + Duration::from_secs(25)
+            ),
+            RoleRecovery::FailRegistration { retry_at: retry }
+        );
+        // Registering but unseeded (first tick) → wait for the seed.
+        assert_eq!(
+            role_recovery(true, false, true, None, None, t0),
+            RoleRecovery::None
+        );
+        // Idle + intent on → schedule the re-drive…
+        assert_eq!(
+            role_recovery(false, true, true, None, None, t0),
+            RoleRecovery::ScheduleRedrive {
+                retry_at: t0 + ROLE_REDRIVE_AFTER
+            }
+        );
+        // …but never when intent is off (explicit Stop stands down)…
+        assert_eq!(
+            role_recovery(false, true, false, None, None, t0),
+            RoleRecovery::None
+        );
+        // …and not while a re-drive is already scheduled.
+        assert_eq!(
+            role_recovery(
+                false,
+                true,
+                true,
+                None,
+                Some(t0 + Duration::from_secs(3)),
+                t0
+            ),
+            RoleRecovery::None
+        );
+        // Online / in-session states: untouched.
+        assert_eq!(
+            role_recovery(false, false, true, None, None, t0),
+            RoleRecovery::None
+        );
     }
 }

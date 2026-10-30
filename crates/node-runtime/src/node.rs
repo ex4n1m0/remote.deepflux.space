@@ -1278,6 +1278,42 @@ impl Node {
     pub fn signaling_description(&self) -> String {
         self.signaling.describe()
     }
+
+    /// Signaling channel reachability — see [`SignalingIo::online`].
+    /// The engine surfaces this in `EngineStatus` so the UI can clear
+    /// its "couldn't reach the connection service" banner once the
+    /// service answers again.
+    pub fn signaling_online(&self) -> bool {
+        self.signaling.online()
+    }
+
+    /// Inject `RegistrationFailed` (Registering → Idle). The engine's
+    /// role-recovery watchdog re-drive: F27 keeps a machine in
+    /// `Registering` when the Register write fails, and nothing in
+    /// production ever raised this event — a launch while offline
+    /// dead-ended the role until a manual app restart.
+    pub fn host_registration_failed(&mut self, reason: &str, observer: &mut dyn NodeObserver) {
+        self.step_host(
+            HostEvent::RegistrationFailed {
+                reason: reason.to_owned(),
+            },
+            observer,
+        );
+    }
+
+    /// Controller twin of [`Node::host_registration_failed`].
+    pub fn controller_registration_failed(
+        &mut self,
+        reason: &str,
+        observer: &mut dyn NodeObserver,
+    ) {
+        self.step_controller(
+            ControllerEvent::RegistrationFailed {
+                reason: reason.to_owned(),
+            },
+            observer,
+        );
+    }
 }
 
 /// Invariant-6 choke point (QA F36b): transport/signaling error strings

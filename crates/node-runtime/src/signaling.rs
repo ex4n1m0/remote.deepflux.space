@@ -63,6 +63,14 @@ pub trait SignalingIo: Send {
     fn service_swallowed(&self) -> u64;
     /// Human-readable channel description for diagnostics (no secrets).
     fn describe(&self) -> String;
+    /// Reachability of the underlying channel — the UI's "connection
+    /// service is back" recovery signal. Adapters with no live network
+    /// concept (in-memory hub, scripted rigs) keep the default: nothing
+    /// to recover from, report up. The remote adapter reports WS-up or
+    /// a send acked within the last minute.
+    fn online(&self) -> bool {
+        true
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -246,6 +246,7 @@ fn sample_status() -> EngineStatus {
         viewer_suppressed: false,
         session_agent: false,
         streaming_suppressed: false,
+        signaling_online: true,
         counters: remote_desktop_app_lib::engine::EngineCounters {
             input_sent_fast: 10,
             input_sent_reliable: 4,

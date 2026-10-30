@@ -16,6 +16,7 @@ import type {
   SessionEndedEvent,
   ViewerInfo,
 } from "../types";
+import { isSignalingError } from "./mapping";
 
 export interface EngineUiState {
   hostState: HostStateName;
@@ -43,6 +44,8 @@ export interface EngineUiState {
   sessionAgent: boolean;
   /** Host side: the connected controller asked us not to stream video. */
   streamingSuppressed: boolean;
+  /** Signaling service reachable right now (engine status). */
+  signalingOnline: boolean;
   engineStarted: boolean;
 }
 
@@ -66,6 +69,7 @@ export function initialUiState(): EngineUiState {
     viewerSuppressed: false,
     sessionAgent: false,
     streamingSuppressed: false,
+    signalingOnline: true,
     engineStarted: false,
   };
 }
@@ -80,6 +84,7 @@ export type UiAction =
   | { type: "caps"; event: CapsEvent }
   | { type: "diagnostics"; snapshot: DiagSnapshot }
   | { type: "error"; event: ErrorEvent }
+  | { type: "clear-error" }
   | { type: "info"; message: string }
   | { type: "poll"; status: EngineStatus };
 
@@ -134,9 +139,19 @@ export function engineReducer(state: EngineUiState, action: UiAction): EngineUiS
         viewerSuppressed: status.viewer_suppressed,
         sessionAgent: status.session_agent,
         streamingSuppressed: status.streaming_suppressed,
+        signalingOnline: status.signaling_online,
+        // Recovery signal: the connection service answers again — a
+        // signaling-class error banner has done its job and clears
+        // itself (the engine keeps retrying underneath either way).
+        lastError:
+          status.signaling_online && state.lastError && isSignalingError(state.lastError)
+            ? null
+            : state.lastError,
         engineStarted: true,
       };
     }
+    case "clear-error":
+      return { ...state, lastError: null };
     default:
       return state;
   }

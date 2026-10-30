@@ -266,6 +266,22 @@ export const OFFLINE_PEER_DETAIL =
   "That PC isn't running the app right now. Ask whoever uses it to open " +
   "DeepFlux (it starts automatically when their PC is on), then try again.";
 
+/** True for engine errors that mean "the connection service is
+ * unreachable right now" — the class that recovers on its own (the
+ * engine retries registration and heartbeats until the app closes), so
+ * its banner must never ask for a restart and clears itself when the
+ * service answers again (`EngineStatus.signaling_online`). */
+export function isSignalingError(event: { code: string; message: string }): boolean {
+  const raw = `${event.code} ${event.message}`;
+  // unknown_target rides the word "signaling" but classifies as
+  // "machine off" (see engineErrorCopy) — it describes the peer, never
+  // the service, and must not self-clear.
+  if (raw.includes("unknown_target")) {
+    return false;
+  }
+  return raw.includes("No signaling server configured") || raw.includes("signaling");
+}
+
 /**
  * User-facing copy for engine ErrorEvents (the ErrorBanner path). The
  * raw engine reason reaches the UI verbatim (`signaling: ...`); the
@@ -289,10 +305,11 @@ export function engineErrorCopy(event: {
       hint: null,
     };
   }
-  if (raw.includes("No signaling server configured") || raw.includes("signaling")) {
+  if (isSignalingError(event)) {
     return {
-      title: "DeepFlux couldn't reach its connection service",
-      message: "Check the internet and restart the app. If it keeps happening, the service address is in Settings.",
+      title: "DeepFlux lost its connection service",
+      message:
+        "It keeps retrying on its own — this message clears when the connection is back, no restart needed. If it keeps happening, the service address is in Settings.",
       hint: null,
     };
   }

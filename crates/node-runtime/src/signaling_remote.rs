@@ -89,6 +89,20 @@ const WS_PING_PERIOD: Duration = Duration::from_secs(20);
 const PENDING_CAP: usize = 128;
 /// Backoff bounds for reconnect.
 const RECONNECT_MIN_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Liveness grace for `SignalingIo::online`: a send acked within this
+/// window counts as "service reachable" even with the WS down (sends
+/// ride the HTTP fallback). Four heartbeats at the 15 s period.
+const ONLINE_GRACE_MS: u64 = 60_000;
+
+/// Wall-clock ms since the Unix epoch (liveness timestamps only —
+/// never ordering or timers).
+fn now_wall_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(8);
 
 /// Configuration for [`RemoteSignaling`].
@@ -186,6 +200,9 @@ struct ActorShared {
     counters: Mutex<RemoteCounters>,
     acked_seq: AtomicU64,
     ws_connected: AtomicU64,
+    /// Wall-clock ms of the last acked send — the liveness evidence
+    /// behind `SignalingIo::online` (0 = nothing succeeded yet).
+    last_ok_ms: AtomicU64,
 }
 
 impl ActorShared {
@@ -205,6 +222,11 @@ impl ActorShared {
     fn bump(&self, f: impl FnOnce(&mut RemoteCounters)) {
         let mut c = self.counters.lock().expect("signaling counters lock");
         f(&mut c);
+    }
+
+    /// Record "the service just answered us" for `online()`.
+    fn note_ok(&self) {
+        self.last_ok_ms.store(now_wall_ms(), Ordering::Relaxed);
     }
 }
 
@@ -227,6 +249,7 @@ impl RemoteSignaling {
             counters: Mutex::new(RemoteCounters::default()),
             acked_seq: AtomicU64::new(0),
             ws_connected: AtomicU64::new(0),
+            last_ok_ms: AtomicU64::new(0),
         });
         let actor = Actor {
             cfg: cfg.clone(),
@@ -397,6 +420,8 @@ impl SignalingIo for RemoteSignaling {
         }
         match done_rx.recv_timeout(SEND_ACK_TIMEOUT) {
             Ok(Ok(duplicate)) => {
+                // Liveness evidence for `online()` — the service acked.
+                self.shared.note_ok();
                 self.shared.bump(|c| {
                     c.sent += 1;
                     if duplicate {
@@ -451,6 +476,14 @@ impl SignalingIo for RemoteSignaling {
 
     fn service_swallowed(&self) -> u64 {
         self.shared.counters().service_directed
+    }
+
+    fn online(&self) -> bool {
+        if self.ws_connected() {
+            return true;
+        }
+        let last = self.shared.last_ok_ms.load(Ordering::Relaxed);
+        last > 0 && now_wall_ms().saturating_sub(last) <= ONLINE_GRACE_MS
     }
 
     fn describe(&self) -> String {
@@ -1515,6 +1548,22 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .to_owned()
+    }
+
+    #[test]
+    fn online_false_until_the_service_answers() {
+        // Loopback port 1: nothing listens — connects fail, no send ever
+        // acks. Liveness must read false so the UI keeps its recovery
+        // banner. Drop shuts the actor down cleanly (Shutdown + join).
+        let rs = RemoteSignaling::new(RemoteSignalingConfig::new(
+            "http://127.0.0.1:1",
+            "t-online",
+            "t-token",
+        ));
+        assert!(!<RemoteSignaling as crate::signaling::SignalingIo>::online(
+            &rs
+        ));
+        drop(rs);
     }
 
     #[test]

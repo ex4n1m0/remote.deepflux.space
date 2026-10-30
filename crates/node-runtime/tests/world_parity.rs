@@ -1097,3 +1097,43 @@ fn late_session_traffic_in_disconnected_is_tolerated() {
     assert_eq!(a.node.counters().illegal_transitions, 0);
     let _ = &mut b;
 }
+
+/// Role-recovery watchdog primitives (always-on communication): the
+/// `*_registration_failed` injectors move a Registering machine back to
+/// Idle — the legal edge F27 dead-ended on a failed Register write —
+/// and `Start` is legal again from Idle, which is exactly the engine's
+/// re-drive fire block. Scripted adapters keep the `online()` default.
+#[test]
+fn registration_failed_unsticks_registering_for_redrive() {
+    let clock = Arc::new(ManualClock::new());
+    let mut node = Node::new(
+        "device-x",
+        SessionConfig::default(),
+        clock,
+        Box::new(FailingServiceIo {
+            fail_service: true,
+            received: Vec::new(),
+        }),
+    );
+    node.attach_transport(ScriptedTransport::new());
+    let mut observer = NoObserver;
+    // Host: Start → Registering (the Register write fails underneath —
+    // F27 keeps the state), watchdog fails it → Idle, re-drive → Registering.
+    node.host_start(caps(), &mut observer);
+    assert!(matches!(node.host_state(), HostState::Registering));
+    node.host_registration_failed("signaling unreachable (watchdog)", &mut observer);
+    assert!(matches!(node.host_state(), HostState::Idle));
+    node.host_start(caps(), &mut observer);
+    assert!(matches!(node.host_state(), HostState::Registering));
+    // Controller twin.
+    node.controller_start(caps(), &mut observer);
+    assert!(matches!(
+        node.controller_state(),
+        ControllerState::Registering
+    ));
+    node.controller_registration_failed("signaling unreachable (watchdog)", &mut observer);
+    assert!(matches!(node.controller_state(), ControllerState::Idle));
+    // Scripted/hub adapters keep the `online()` default: no network
+    // concept, nothing to recover from.
+    assert!(node.signaling_online());
+}

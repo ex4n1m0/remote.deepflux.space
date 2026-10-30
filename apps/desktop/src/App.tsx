@@ -44,7 +44,7 @@ import mark from "./assets/mark.png";
 
 export default function App() {
   const engine = useEngine();
-  const [ui] = engine.ui;
+  const [ui, uiDispatch] = engine.ui;
   const assistant = useAssistant();
   // ADR-010: the discovery list (decrypted circle directory) — pulled at
   // mount, pushed by the 30 s poller.
@@ -257,9 +257,7 @@ export default function App() {
           title={errCopy.title}
           message={errCopy.message}
           hint={errCopy.hint}
-          onDismiss={() => {
-            /* engine errors are informational; replaced by the next one */
-          }}
+          onDismiss={() => uiDispatch({ type: "clear-error" })}
         />
       ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}

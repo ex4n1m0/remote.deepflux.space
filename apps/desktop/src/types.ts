@@ -135,6 +135,10 @@ export interface EngineStatus {
   session_agent: boolean;
   /** Host side: the connected controller asked us not to stream video. */
   streaming_suppressed: boolean;
+  /** Signaling service reachable right now (WS up or a send acked
+   * recently) — the recovery signal: a "couldn't reach the connection
+   * service" banner clears itself when this is true. */
+  signaling_online: boolean;
   counters: EngineCounters;
 }
 

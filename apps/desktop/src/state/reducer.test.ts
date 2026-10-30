@@ -21,6 +21,7 @@ const poll = (patch: Partial<EngineStatus>): EngineStatus => ({
   viewer_suppressed: false,
   session_agent: false,
   streaming_suppressed: false,
+  signaling_online: true,
   counters: {
     input_sent_fast: 0,
     input_sent_reliable: 0,
@@ -144,4 +145,31 @@ describe("engineReducer", () => {
     state = engineReducer(state, { type: "info", message: "quality preset set to high" });
     expect(state.lastInfo).toContain("quality");
   });
+  it("clears a signaling error banner when the service answers again", () => {
+    let state = initialUiState();
+    state = engineReducer(state, {
+      type: "error",
+      event: { code: "transport_failure", message: "signaling: connect timeout", hint: null },
+    });
+    expect(state.lastError).not.toBeNull();
+    // Still unreachable: the banner stays, liveness tracks the engine.
+    state = engineReducer(state, { type: "poll", status: poll({ signaling_online: false }) });
+    expect(state.lastError).not.toBeNull();
+    expect(state.signalingOnline).toBe(false);
+    // Service answers: a signaling-class banner clears itself.
+    state = engineReducer(state, { type: "poll", status: poll({ signaling_online: true }) });
+    expect(state.lastError).toBeNull();
+    expect(state.signalingOnline).toBe(true);
+    // Non-signaling errors are never auto-cleared…
+    state = engineReducer(state, {
+      type: "error",
+      event: { code: "transport_failure", message: "data channel error", hint: null },
+    });
+    state = engineReducer(state, { type: "poll", status: poll({ signaling_online: true }) });
+    expect(state.lastError).not.toBeNull();
+    // …but manual dismiss always works.
+    state = engineReducer(state, { type: "clear-error" });
+    expect(state.lastError).toBeNull();
+  });
+
 });
