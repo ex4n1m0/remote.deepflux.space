@@ -103,6 +103,13 @@ fn now_wall_ms() -> u64 {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
+
+/// Grace decision behind `SignalingIo::online`, pure for boundary
+/// tests: a send acked at `last_ok_ms` (0 = nothing succeeded yet)
+/// counts as reachable within [`ONLINE_GRACE_MS`].
+fn online_given(last_ok_ms: u64, now_ms: u64) -> bool {
+    last_ok_ms > 0 && now_ms.saturating_sub(last_ok_ms) <= ONLINE_GRACE_MS
+}
 const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(8);
 
 /// Configuration for [`RemoteSignaling`].
@@ -482,8 +489,10 @@ impl SignalingIo for RemoteSignaling {
         if self.ws_connected() {
             return true;
         }
-        let last = self.shared.last_ok_ms.load(Ordering::Relaxed);
-        last > 0 && now_wall_ms().saturating_sub(last) <= ONLINE_GRACE_MS
+        online_given(
+            self.shared.last_ok_ms.load(Ordering::Relaxed),
+            now_wall_ms(),
+        )
     }
 
     fn describe(&self) -> String {
@@ -1548,6 +1557,18 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .to_owned()
+    }
+
+    #[test]
+    fn online_grace_boundary() {
+        // Nothing acked yet → never online via grace.
+        assert!(!online_given(0, 1_000_000));
+        // Exactly at the grace edge → still reachable…
+        assert!(online_given(1_000_000, 1_000_000 + ONLINE_GRACE_MS));
+        // …one ms past it → gone.
+        assert!(!online_given(1_000_000, 1_000_000 + ONLINE_GRACE_MS + 1));
+        // A backward wall-clock step saturates, never wraps true.
+        assert!(online_given(2_000_000, 1_000_000));
     }
 
     #[test]

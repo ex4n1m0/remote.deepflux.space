@@ -1377,18 +1377,19 @@ fn run(
             engine.last_recovery_tick = now;
             engine.service_role_recovery();
         }
-        if engine.status_file.is_some()
-            && now.duration_since(engine.last_status_tick) >= Duration::from_millis(200)
-        {
-            engine.last_status_tick = now;
-            engine.write_status_file(&counters_arc, &viewer_arc, &input_arc);
-        }
         if now.duration_since(engine.last_status_tick) >= Duration::from_millis(200) {
             engine.last_status_tick = now;
+            // Liveness refreshes in BOTH modes — the status-file branch
+            // used to own the tick exclusively, starving this bit to a
+            // permanent false in --status-file rigs (review finding 3).
             engine
                 .shared
                 .set_signaling_online(engine.node.signaling_online());
-            engine.publish_snapshot(&counters_arc, &viewer_arc, &input_arc);
+            if engine.status_file.is_some() {
+                engine.write_status_file(&counters_arc, &viewer_arc, &input_arc);
+            } else {
+                engine.publish_snapshot(&counters_arc, &viewer_arc, &input_arc);
+            }
         }
 
         std::thread::sleep(Duration::from_millis(2));
@@ -2945,14 +2946,18 @@ impl Engine {
             }
             RoleRecovery::FailRegistration { retry_at } => {
                 self.host_register_since = None;
-                self.host_reonline_at = Some(retry_at);
+                // None when the role was stopped mid-Register: the fail
+                // honors the stop (→ Idle), no re-drive is scheduled.
+                self.host_reonline_at = retry_at;
                 self.node.host_registration_failed(
                     "signaling unreachable (watchdog)",
                     &mut self.observer,
                 );
-                self.info(
-                    "couldn't reach the connection service — the app keeps retrying on its own",
-                );
+                if retry_at.is_some() {
+                    self.info(
+                        "couldn't reach the connection service — the app keeps retrying on its own",
+                    );
+                }
             }
             RoleRecovery::ScheduleRedrive { retry_at } => {
                 self.host_reonline_at = Some(retry_at);
@@ -2978,14 +2983,18 @@ impl Engine {
             }
             RoleRecovery::FailRegistration { retry_at } => {
                 self.ctrl_register_since = None;
-                self.ctrl_reonline_at = Some(retry_at);
+                // None when the role was stopped mid-Register: the fail
+                // honors the stop (→ Idle), no re-drive is scheduled.
+                self.ctrl_reonline_at = retry_at;
                 self.node.controller_registration_failed(
                     "signaling unreachable (watchdog)",
                     &mut self.observer,
                 );
-                self.info(
-                    "couldn't reach the connection service — the app keeps retrying on its own",
-                );
+                if retry_at.is_some() {
+                    self.info(
+                        "couldn't reach the connection service — the app keeps retrying on its own",
+                    );
+                }
             }
             RoleRecovery::ScheduleRedrive { retry_at } => {
                 self.ctrl_reonline_at = Some(retry_at);
@@ -3166,8 +3175,13 @@ enum RoleRecovery {
     /// Nothing to do this tick.
     None,
     /// The machine has been in `Registering` past the stuck window —
-    /// fail the registration locally (→ Idle) and schedule a re-drive.
-    FailRegistration { retry_at: Instant },
+    /// fail the registration locally (→ Idle). `Some(retry_at)`
+    /// schedules a re-drive, but only while the role's intent is on:
+    /// a Stop issued during `Registering` leaves the machine in that
+    /// state (Stop is illegal there) with intent cleared — the fail
+    /// still fires (it honors the stop AND un-dead-ends the machine so
+    /// a later manual Start is legal again), the re-drive never does.
+    FailRegistration { retry_at: Option<Instant> },
     /// User intent is on but the machine sits Idle (a prior
     /// RegistrationFailed) — schedule a re-drive.
     ScheduleRedrive { retry_at: Instant },
@@ -3187,7 +3201,7 @@ fn role_recovery(
             && now.duration_since(since) >= REGISTER_STUCK_AFTER
         {
             return RoleRecovery::FailRegistration {
-                retry_at: now + ROLE_REDRIVE_AFTER,
+                retry_at: started.then_some(now + ROLE_REDRIVE_AFTER),
             };
         }
         return RoleRecovery::None;
@@ -3267,12 +3281,29 @@ mod tests {
                 None,
                 t0 + Duration::from_secs(25)
             ),
-            RoleRecovery::FailRegistration { retry_at: retry }
+            RoleRecovery::FailRegistration {
+                retry_at: Some(retry)
+            }
         );
         // Registering but unseeded (first tick) → wait for the seed.
         assert_eq!(
             role_recovery(true, false, true, None, None, t0),
             RoleRecovery::None
+        );
+        // Stopped mid-Register (Stop is illegal from Registering, so the
+        // machine sits there with intent cleared): the stuck register
+        // still fails — honoring the stop and un-dead-ending the machine
+        // — but NO re-drive is ever scheduled (review finding 1).
+        assert_eq!(
+            role_recovery(
+                true,
+                false,
+                false,
+                Some(t0),
+                None,
+                t0 + Duration::from_secs(25)
+            ),
+            RoleRecovery::FailRegistration { retry_at: None }
         );
         // Idle + intent on → schedule the re-drive…
         assert_eq!(
