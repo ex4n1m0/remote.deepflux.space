@@ -98,20 +98,20 @@ pub fn run() {
             store
                 .adopt_identity_anchor(&crate::credstore::WindowsCredStore)
                 .map_err(|e| e.to_string())?;
-            // ADR-011 admin posture: relaunch elevated when the setting
-            // is on and this process is not (release builds only — dev
-            // and test runs stay put; DEEPFLUX_NO_ELEVATE=1 is the
-            // escape hatch). A declined UAC prompt or a failed spawn
-            // just continues unelevated — never a dead app.
-            if !cfg!(debug_assertions)
-                && store.settings().agent_admin
-                && !elevate::is_elevated()
-                && std::env::var("DEEPFLUX_NO_ELEVATE").as_deref() != Ok("1")
-                && elevate::relaunch_elevated()
-            {
-                std::process::exit(0);
-            }
             let launch_at_login = store.settings().launch_at_login;
+            let agent_admin = store.settings().agent_admin;
+            // manage() MUST precede the elevated relaunch below. The UAC
+            // prompt (ShellExecuteW "runas") runs a modal message pump on
+            // this thread, and that pump services the webview's IPC: the
+            // first sync command arrives re-entrantly here, before setup
+            // finishes. With manage() still pending its handler's
+            // `state::<AppServices>()` panicked ("state() called before
+            // manage()") inside the WndProc — which cannot unwind — and
+            // the process aborted 3 s after the 0.15.0 auto-update
+            // (2026-10-30 incident, panics.log). Commands that land in
+            // this window now see the loaded store and a not-started
+            // engine — exactly the state the frontend already handles at
+            // cold start.
             app.manage(AppServices {
                 store: Mutex::new(store),
                 engine: Mutex::new(None),
@@ -121,6 +121,19 @@ pub fn run() {
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
+            // ADR-011 admin posture: relaunch elevated when the setting
+            // is on and this process is not (release builds only — dev
+            // and test runs stay put; DEEPFLUX_NO_ELEVATE=1 is the
+            // escape hatch). A declined UAC prompt or a failed spawn
+            // just continues unelevated — never a dead app.
+            if !cfg!(debug_assertions)
+                && agent_admin
+                && !elevate::is_elevated()
+                && std::env::var("DEEPFLUX_NO_ELEVATE").as_deref() != Ok("1")
+                && elevate::relaunch_elevated()
+            {
+                std::process::exit(0);
+            }
             // Always-ready first-run default: login autostart on once
             // (idempotent — the flag persists; reversible in Settings).
             commands::enable_autostart_default(app.handle());
