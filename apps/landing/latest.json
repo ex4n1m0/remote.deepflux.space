@@ -1,9 +1,9 @@
 {
   "product": "remote-desktop",
-  "version": "0.15.2",
-  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.15.2-x64-setup.exe",
-  "sha256_hex": "7efbc79f5993de3f2cb6fed017faf6368d9f4afcc82f743c1c17c0f05aab3590",
-  "size_bytes": 7731751,
-  "notes": "0.15.2 \u2014 the connection service now stays on until you close the app: after a network blip it keeps retrying on its own, registration recovers by itself (even when the app was opened offline), and the couldnt-reach-its-connection-service message clears itself the moment the service answers \u2014 no restart needed. Also fixes a reviewer-caught edge case where a manually stopped machine could re-register itself.",
-  "published_at": "2026-10-30"
+  "version": "0.15.3",
+  "url": "https://remote.deepflux.space/download/Remote-Desktop-0.15.3-x64-setup.exe",
+  "sha256_hex": "6b44cae8e78e70df40d72a5b282b8b18a50f57882fe8210b1ba038b26c5aa777",
+  "size_bytes": 7735161,
+  "notes": "Starts minimized at logon and fixes silent auto-updates: the scheduler now owns the install + relaunch sequence, so updates complete even when launched from the logon task.",
+  "published_at": "2026-11-02"
 }
