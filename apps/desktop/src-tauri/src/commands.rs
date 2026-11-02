@@ -1092,7 +1092,7 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) -> CmdResult<()> {
 }
 
 /// The registry Run-key autostart the plugin owns (unelevated starts).
-fn plugin_autostart(app: &AppHandle, enabled: bool) -> CmdResult<()> {
+pub(crate) fn plugin_autostart(app: &AppHandle, enabled: bool) -> CmdResult<()> {
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app.autolaunch();
     let result = if enabled {

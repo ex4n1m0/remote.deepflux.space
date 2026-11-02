@@ -28,6 +28,11 @@ pub fn run() {
     // host consent prompt distinguishes the agent.
     let mcp_mode = std::env::args().any(|arg| arg == "--mcp");
     engine::set_mcp_mode(mcp_mode);
+    // Start-minimized (0.15.3): both logon autostart command lines (the
+    // HIGHEST task in elevate.rs and the Run-key fallback below) append
+    // `--minimized`, so a logon boot lands in the tray instead of
+    // popping the window. Manual launches carry no flag and show.
+    let minimized_start = std::env::args().any(|arg| arg == "--minimized");
     // ADR-006: single instance (login autostart + manual launch must not
     // double-run), then the tray (close-to-tray keeps always-ready hosts
     // reachable), then login autostart.
@@ -41,9 +46,11 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            // Run-key logon starts are tray-only too — the same flag the
+            // elevated task's action carries (elevate.rs).
+            Some(vec!["--minimized"]),
         ))
-        .setup(|app| {
+        .setup(move |app| {
             // Persisted panic log (2026-10-28 "engine stopped" incident):
             // a GUI-subsystem process has no stderr, so a thread panic —
             // e.g. the engine thread dying mid-session — vanished without
@@ -139,12 +146,25 @@ pub fn run() {
             commands::enable_autostart_default(app.handle());
             // ADR-011: while running elevated with login autostart on,
             // keep the HIGHEST scheduled task in place (idempotent) so
-            // logon starts the admin app with no UAC prompt.
+            // logon starts the admin app with no UAC prompt. The refresh
+            // also rewrites pre-0.15.3 task actions to carry
+            // `--minimized` on the fleet's first post-update boot, and
+            // completes the swap by dropping a stale Run key — the two
+            // would double-start at logon (and the second instance's
+            // single-instance handoff pops the window, defeating
+            // start-minimized).
             if elevate::is_elevated() && launch_at_login {
                 let exe = std::env::current_exe().unwrap_or_default();
-                if !exe.as_os_str().is_empty() && !elevate::ensure_admin_autostart(&exe) {
+                if !exe.as_os_str().is_empty() && elevate::ensure_admin_autostart(&exe) {
+                    let _ = commands::plugin_autostart(app.handle(), false);
+                } else {
                     eprintln!("[autostart] elevated task refresh failed (non-fatal)");
                 }
+            } else if launch_at_login && !agent_admin {
+                // Admin-off posture (the Run key IS the autostart
+                // mechanism): rewrite it so pre-0.15.3 entries gain
+                // `--minimized` as well; new entries already carry it.
+                let _ = commands::plugin_autostart(app.handle(), true);
             }
             // ADR-010: the family build auto-joins the circle from its
             // embedded key; the directory poller keeps the discovery list
@@ -168,7 +188,14 @@ pub fn run() {
             chat::spawn_poller(app.handle().clone());
             // 0.15.0: one-shot post-update confirmation ("Updated to X"
             // or the restart-to-finish race note) — before the poller.
-            updater::note_post_update(app.handle());
+            // It returns false while a scheduled install sequence may
+            // still be pending (a manual relaunch inside the +20 s
+            // install window) — then its one-shot tasks must survive.
+            if updater::note_post_update(app.handle()) {
+                // Sweep the one-shot update tasks from a previous
+                // scheduler-path install (0.15.3): they fired long ago.
+                updater::cleanup_update_tasks();
+            }
             // ADR-008 update poller: first check ~20 s after launch (past
             // the engine's own startup), then daily; Help → Check for
             // updates forces one anytime.
@@ -211,6 +238,15 @@ pub fn run() {
             // Tray icon with open/quit — close-to-tray keeps the
             // app running (and reachable) when the window closes.
             setup_tray(app.handle().clone())?;
+
+            // Start-minimized (0.15.3): with the tray in place as the
+            // front door, a `--minimized` logon start keeps the shell
+            // hidden; every other launch shows the window (the config
+            // creates it hidden so nothing ever flashes first).
+            if !minimized_start && let Some(window) = app.get_webview_window("shell") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
 
             if engine::mcp_mode() {
                 // The bridge is the front door in this mode: start the

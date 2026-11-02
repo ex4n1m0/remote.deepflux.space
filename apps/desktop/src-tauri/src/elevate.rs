@@ -64,18 +64,38 @@ pub fn relaunch_elevated() -> bool {
     };
     let exe = wide(&exe.to_string_lossy());
     let verb = wide("runas");
+    // Forward the launch arguments — `--minimized` (logon tray start)
+    // and `--mcp` must survive the elevation relaunch.
+    let argv: Vec<String> = std::env::args().collect();
+    let parameters = launch_parameters(&argv);
+    let parameters_wide = wide(&parameters);
+    let parameters = if parameters.is_empty() {
+        PCWSTR::null()
+    } else {
+        PCWSTR(parameters_wide.as_ptr())
+    };
     unsafe {
         let code = ShellExecuteW(
             None,
             PCWSTR(verb.as_ptr()),
             PCWSTR(exe.as_ptr()),
-            PCWSTR::null(),
+            parameters,
             PCWSTR::null(),
             SW_SHOWNORMAL,
         );
         // ShellExecuteW returns a value > 32 on success (HINSTANCE-as-int
         // legacy contract, not a HRESULT).
         code.0 as usize > 32
+    }
+}
+
+/// Everything after argv[0], re-joined as the elevated replacement's
+/// parameter line.
+fn launch_parameters(argv: &[String]) -> String {
+    if argv.len() > 1 {
+        argv[1..].join(" ")
+    } else {
+        String::new()
     }
 }
 
@@ -90,14 +110,52 @@ fn schtasks(args: &[&str]) -> bool {
 
 /// Register the elevated logon task (replaces any previous one). Only
 /// meaningful from an elevated process — schtasks /RL HIGHEST needs it.
+/// The action carries `--minimized` (tray-only logon start); the
+/// idempotent refresh at every elevated launch rewrites pre-0.15.3
+/// no-arg entries on the fleet's first post-update boot.
 pub fn ensure_admin_autostart(exe: &Path) -> bool {
-    let tr = format!("\"{}\"", exe.display());
+    let tr = admin_task_action(exe);
     schtasks(&[
         "/Create", "/F", "/TN", TASK_NAME, "/TR", &tr, "/SC", "ONLOGON", "/RL", "HIGHEST",
     ])
 }
 
+/// The logon task's action line: the exe quoted plus `--minimized`.
+fn admin_task_action(exe: &Path) -> String {
+    format!("\"{}\" --minimized", exe.display())
+}
+
 /// Remove the elevated logon task (admin mode turned off / autostart off).
 pub fn remove_admin_autostart() -> bool {
     schtasks(&["/Delete", "/F", "/TN", TASK_NAME])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // String-only tests — nothing here touches the OS (the merge gate
+    // must never mutate the machine as a side effect).
+
+    #[test]
+    fn task_action_quotes_exe_and_carries_minimized() {
+        let tr = admin_task_action(Path::new(
+            r"C:\Users\Fam\AppData\Local\Programs\Remote Desktop\Remote Desktop.exe",
+        ));
+        assert_eq!(
+            tr,
+            "\"C:\\Users\\Fam\\AppData\\Local\\Programs\\Remote Desktop\\Remote Desktop.exe\" --minimized"
+        );
+    }
+
+    #[test]
+    fn launch_parameters_forward_flags_and_drop_argv0() {
+        let argv = vec![
+            r"C:\Apps\Remote Desktop.exe".to_string(),
+            "--minimized".to_string(),
+        ];
+        assert_eq!(launch_parameters(&argv), "--minimized");
+        assert_eq!(launch_parameters(&["exe".to_string()]), "");
+        assert!(launch_parameters(&[]).is_empty());
+    }
 }

@@ -19,8 +19,17 @@
 //!   machinery as agent downloads.
 //! * **Install**: run the NSIS installer silently (`/S`; per-user install
 //!   mode = no UAC), quit, and relaunch the app once the installer
-//!   exits. The relaunch is a detached `cmd` wrapper because the
-//!   installer replaces the running exe — the app must be gone first.
+//!   exits. Since 0.15.3 the WHOLE sequence is owned by Task Scheduler
+//!   as two one-shot tasks (installer at +20 s, relaunch at +100 s,
+//!   registration-trigger delays): the updating app may itself run
+//!   inside the scheduler's kill-on-close job (the `DeepFluxHostAdmin`
+//!   logon autostart — every always-on fleet machine), and any child we
+//!   spawn dies with that job the moment we exit — exactly how the
+//!   0.15.1→0.15.2 update vanished (spawned fine, reaped before the
+//!   installer ran; `CREATE_BREAKAWAY_FROM_JOB` is denied from
+//!   scheduler jobs, probe-verified 2026-11-02). Each task's process is
+//!   its own job root, immune to our exit; the pre-0.15.3 `cmd` wrapper
+//!   (and its quoting/AutoRun hazards) is gone entirely.
 //!
 //! Trust model (ADR-008): identical to the manual download — HTTPS to
 //! remote.deepflux.space, plus a SHA-256 pinned in the same manifest
@@ -41,9 +50,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 /// Where the published manifest lives. Override for dev/tests with the
 /// `DEEPFLUX_UPDATE_MANIFEST` env var (e.g. a loopback server).
 pub const DEFAULT_MANIFEST_URL: &str = "https://remote.deepflux.space/latest.json";
@@ -62,10 +68,6 @@ const MAX_INSTALLER_BYTES: u64 = 256 * 1024 * 1024;
 const PROGRESS_POLL: Duration = Duration::from_millis(400);
 /// Event channel (updater → UI); payload = [`UpdateUiState`], metadata only.
 pub const EVENT: &str = "update://state";
-/// Slack after the installer exits before the wrapper relaunches the app.
-/// Doubled (0.15.0): the 0.11.0 field trace showed the relaunch beating
-/// the installer's final writes on slow disks; 8 pings ≈ 7 s of settle.
-const INSTALLER_SETTLE_PINGS: u32 = 8;
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -365,29 +367,35 @@ fn write_update_marker(app: &AppHandle, from: &str, to: &str) {
 /// 0.11.0 field report: the update SUCCEEDED but looked like a failure —
 /// the app quits for the hidden install, relaunches with no word, and
 /// the banner idles. Now: if this launch's version equals the marker's
-/// `to`, the banner says "Updated to X"; if it does NOT, the wrapper's
-/// relaunch beat the installer (slow-disk race) and the banner says to
-/// restart once more. Either way the marker is consumed (shows once).
-pub fn note_post_update(app: &AppHandle) {
-    let Some(path) = marker_path(app) else { return };
+/// `to`, the banner says "Updated to X"; if it does NOT, the relaunch
+/// predates the installer completing and the banner says to restart
+/// once more. Either way the marker is consumed (shows once).
+///
+/// Returns `true` when NO install sequence is pending — the caller
+/// gates the one-shot task sweep on it (a manual relaunch inside the
+/// install task's +20 s window must not delete the pending sequence).
+pub fn note_post_update(app: &AppHandle) -> bool {
+    let Some(path) = marker_path(app) else {
+        return true;
+    };
     // A local file is untrusted input (security review): cap its size
     // BEFORE reading, and accept only dotted-numeric versions — anything
     // else is corrupt by definition and never becomes banner text.
     let Ok(meta) = std::fs::metadata(&path) else {
-        return;
+        return true;
     };
     if meta.len() > 4096 {
         let _ = std::fs::remove_file(&path);
         log_update(app, "post-update marker oversized — ignored");
-        return;
+        return true;
     }
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return;
+        return true;
     };
     let _ = std::fs::remove_file(&path); // consumed: one-shot, both arms
     let Ok(marker) = serde_json::from_str::<UpdateMarker>(&text) else {
         log_update(app, "post-update marker was corrupt — ignored");
-        return;
+        return true;
     };
     if marker.to.len() > 32
         || marker.from.len() > 32
@@ -395,7 +403,7 @@ pub fn note_post_update(app: &AppHandle) {
         || parse_version(&marker.from).is_none()
     {
         log_update(app, "post-update marker had invalid versions — ignored");
-        return;
+        return true;
     }
     let current = env!("CARGO_PKG_VERSION");
     let engine = &app.state::<crate::commands::AppServices>().update;
@@ -413,7 +421,10 @@ pub fn note_post_update(app: &AppHandle) {
         });
     } else {
         // The relaunched process predates the installer's final writes
-        // (the `start /wait` race) — say what to do instead of idling.
+        // (e.g. a manual relaunch inside the install task's +20 s
+        // window) — say what to do instead of idling. The scheduled
+        // sequence may still be pending: report it so the caller does
+        // not sweep the tasks out from under it.
         log_update(
             app,
             &format!(
@@ -428,7 +439,9 @@ pub fn note_post_update(app: &AppHandle) {
             s.current_version = current.into();
             s.error.clear();
         });
+        return false;
     }
+    true
 }
 
 /// Where staged installers live (`<app data>/updates`).
@@ -808,55 +821,6 @@ fn hex_lower(bytes: &[u8]) -> String {
 // Install (silent NSIS + relaunch)
 // ---------------------------------------------------------------------------
 
-/// cmd metacharacters that would break the wrapper script — paths
-/// containing them skip the relaunch wrapper (rare; the installer still
-/// runs, the user starts the app themselves afterwards).
-fn path_safe_for_cmd(path: &str) -> bool {
-    !path.contains(['&', '^', '%', '<', '>', '|'])
-}
-
-/// The detached wrapper: wait for the app to exit, run the installer
-/// silently to completion, settle, then start the app again. One
-/// `cmd /d /c` script.
-///
-/// Three shapes by path safety (a path with a cmd metacharacter must not
-/// go into a script — see [`path_safe_for_cmd`]):
-/// * both paths safe → install + relaunch;
-/// * only the app exe unsafe → install with grace, no relaunch;
-/// * installer itself unsafe → caller falls back to a bare spawn.
-#[derive(Debug)]
-enum InstallCommand {
-    /// Full script: grace, silent install, settle, relaunch the app.
-    InstallAndRelaunch(String),
-    /// Script: grace + silent install only (user starts the app after).
-    InstallOnly(String),
-    /// Run the installer directly, no wrapper (extreme-path residual).
-    Bare,
-}
-
-fn build_install_command(installer: &Path, app_exe: &Path) -> InstallCommand {
-    let Some(installer_s) = installer.to_str() else {
-        return InstallCommand::Bare;
-    };
-    if !path_safe_for_cmd(installer_s) {
-        return InstallCommand::Bare;
-    }
-    match app_exe.to_str().filter(|exe| path_safe_for_cmd(exe)) {
-        Some(app_exe) => InstallCommand::InstallAndRelaunch(format!(
-            "ping -n 3 127.0.0.1 >nul \
-             & start /wait \"\" \"{installer_s}\" /S \
-             & ping -n {INSTALLER_SETTLE_PINGS} 127.0.0.1 >nul \
-             & start \"\" \"{app_exe}\""
-        )),
-        None => InstallCommand::InstallOnly(format!(
-            // Same grace as the full wrapper: the tauri silent installer
-            // force-kills a still-running app (RmShutdown), which would
-            // skip the clean engine shutdown — give teardown the lead.
-            "ping -n 3 127.0.0.1 >nul & start /wait \"\" \"{installer_s}\" /S"
-        )),
-    }
-}
-
 /// A role state that means "no session machinery in flight" — anything
 /// else (ConsentPrompted, Exchanging, Connecting, Connected on the host;
 /// Requesting, Offering, Connecting, Connected on the controller) means
@@ -922,48 +886,262 @@ pub fn install(app: AppHandle) -> Result<(), String> {
         s.stage = "install".into();
         s.error.clear();
     });
-    // NOTE: the confirmation marker is written only AFTER a successful
-    // installer spawn (below) — a marker left behind by a failed start
-    // would surface a false "restart once more" card on a later launch
-    // (review finding 3).
+    // NOTE: the confirmation marker is written only AFTER the install
+    // tasks are successfully registered (below) — a marker left behind
+    // by a failed registration would surface a false "restart once
+    // more" card on a later launch (review finding 3).
     let app_exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => return Err(bail(&format!("couldn't locate the app program: {e}"))),
     };
-    let spawned = match build_install_command(&staged, &app_exe) {
-        InstallCommand::InstallAndRelaunch(script) | InstallCommand::InstallOnly(script) => {
-            std::process::Command::new("cmd.exe")
-                .args(["/d", "/c", &script])
-                .creation_flags(detached_flags())
-                .spawn()
-        }
-        InstallCommand::Bare => std::process::Command::new(&staged)
-            .arg("/S")
-            .creation_flags(detached_flags())
-            .spawn(),
-    };
-    if let Err(e) = spawned {
-        return Err(bail(&format!("couldn't start the installer: {e}")));
+    // Wrapper survival (2026-11-02 incident, fleet-wide on task-launched
+    // machines): the updating app may run inside Task Scheduler's
+    // kill-on-close job (the DeepFluxHostAdmin logon autostart) — any
+    // child we spawn dies with the job the moment we exit, which is
+    // exactly how the 0.15.1→0.15.2 update vanished (spawned fine,
+    // reaped before the installer ever ran; CREATE_BREAKAWAY_FROM_JOB
+    // is denied from scheduler jobs — probe-verified today). Task
+    // Scheduler itself now runs the sequence as two one-shot tasks
+    // (installer +20 s, relaunch +100 s, registration-trigger delays):
+    // each task's process is its own job root, immune to our exit —
+    // and the `cmd` wrapper is gone entirely (no quoting edges, no
+    // AutoRun surface; XML escaping covers every path shape).
+    if let Err(e) = schedule_update_sequence(&staged, &app_exe) {
+        return Err(bail(&e));
     }
-    // Confirmation marker (0.15.0), written once the installer is really
-    // running: the relaunch reads this and says "Updated to X" — the
+    // Confirmation marker (0.15.0), written once the sequence is really
+    // scheduled: the relaunch reads this and says "Updated to X" — the
     // silent-success gap from the 0.11.0 report. Nothing below can
     // return, so the marker can never outlive a failed install start.
     write_update_marker(&app, env!("CARGO_PKG_VERSION"), &staged_version(&staged));
-    // The wrapper now owns the machine: shut down and get out of the way.
+    // The scheduler now owns the machine: shut down and get out of the
+    // way (the tasks are immune to our exit — that is the fix).
     crate::commands::shutdown_and_exit(&app);
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Wrapper survival (the 0.15.1→0.15.2 field incident, 2026-11-02)
+// ---------------------------------------------------------------------------
+
+/// One-shot task definition (Task Scheduler 2.0). A RegistrationTrigger
+/// fires `delay` after registration — relative timing, no clock
+/// arithmetic. InteractiveToken runs as the logged-on user; RunLevel
+/// preserves the updating instance's elevation (no UAC prompt on the
+/// post-update relaunch). The installer and the app are both GUI
+/// binaries — no console ever flashes.
+///
+/// Built piecewise: every caller-supplied value passes through
+/// [`xml_escape`] at its single injection point (`delay`/`time_limit`
+/// are module constants, `highest` a bool).
 #[cfg(windows)]
-fn detached_flags() -> u32 {
-    // CREATE_NO_WINDOW | DETACHED_PROCESS
-    0x0800_0008
+fn update_task_xml(
+    command: &str,
+    arguments: &str,
+    delay: &str,
+    time_limit: &str,
+    highest: bool,
+) -> String {
+    let mut xml = String::new();
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-16\"?>");
+    xml.push_str(
+        "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">",
+    );
+    xml.push_str("<Triggers><RegistrationTrigger><Delay>");
+    xml.push_str(delay);
+    xml.push_str("</Delay></RegistrationTrigger></Triggers>");
+    xml.push_str("<Principals><Principal id=\"Author\">");
+    xml.push_str("<LogonType>InteractiveToken</LogonType><RunLevel>");
+    xml.push_str(if highest {
+        "HighestAvailable"
+    } else {
+        "LeastPrivilege"
+    });
+    xml.push_str("</RunLevel></Principal></Principals>");
+    xml.push_str("<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>");
+    xml.push_str("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>");
+    xml.push_str("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
+    xml.push_str("<ExecutionTimeLimit>");
+    xml.push_str(time_limit);
+    xml.push_str("</ExecutionTimeLimit>");
+    xml.push_str("<Enabled>true</Enabled></Settings>");
+    xml.push_str("<Actions Context=\"Author\"><Exec><Command>");
+    xml.push_str(&xml_escape(command));
+    xml.push_str("</Command><Arguments>");
+    xml.push_str(&xml_escape(arguments));
+    xml.push_str("</Arguments></Exec></Actions></Task>");
+    xml
+}
+
+/// The five XML escapes that matter inside element text.
+fn xml_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Task XML as UTF-16LE with a BOM — the encoding the schtasks /XML
+/// parser is documented for.
+fn utf16_bom(text: &str) -> Vec<u8> {
+    let mut bytes: Vec<u8> = vec![0xFF, 0xFE];
+    bytes.extend(text.encode_utf16().flat_map(|u| u.to_le_bytes()));
+    bytes
+}
+
+/// One-shot task names for the scheduler-run install sequence. Deleted
+/// at the next app launch ([`cleanup_update_tasks`]) — they exist only
+/// to outlive the updating instance.
+#[cfg(windows)]
+const UPDATE_TASK_INSTALL: &str = "DeepFluxUpdateInstall";
+#[cfg(windows)]
+const UPDATE_TASK_LAUNCH: &str = "DeepFluxUpdateLaunch";
+/// Registration-trigger delays: install 20 s after registration (the
+/// old wrapper's grace — teardown lead before the installer looks for a
+/// running app), relaunch 100 s (install itself takes ~5–20 s).
+#[cfg(windows)]
+const INSTALL_DELAY: &str = "PT20S";
+#[cfg(windows)]
+const LAUNCH_DELAY: &str = "PT100S";
+/// Execution time limits. The INSTALL task is bounded (a hung silent
+/// installer must not sit forever). The LAUNCH task's action process IS
+/// the relaunched app — Task Scheduler enforces this limit by killing
+/// the task's process tree, so it MUST be disabled (`PT0S`), or every
+/// machine whose relaunch outlives the limit goes offline with no
+/// trace (review finding 1, 2026-11-02: the app is long-lived by
+/// design; the failure path even keeps the task registered via the
+/// note_post_update guard).
+#[cfg(windows)]
+const INSTALL_TIME_LIMIT: &str = "PT1H";
+#[cfg(windows)]
+const LAUNCH_TIME_LIMIT: &str = "PT0S";
+
+/// Run schtasks quietly (never a console flash) and surface stderr on
+/// failure — a task-registration refusal must be diagnosable from
+/// updates.log, not silent. Fixed argument list, no shell string.
+#[cfg(windows)]
+fn schtasks_run(args: &[&str]) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("schtasks")
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("couldn't run schtasks: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_owned();
+    Err(if err.is_empty() {
+        format!("schtasks {:?} failed with status {}", args, out.status)
+    } else {
+        err
+    })
+}
+
+/// Best-effort schtasks (cleanup paths — failures are expected noise,
+/// e.g. deleting a task that never existed, and stay quiet).
+#[cfg(windows)]
+fn schtasks_quiet(args: &[&str]) -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("schtasks")
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+/// Delete the one-shot update tasks from a previous scheduler-path
+/// install (both fired long ago; leftovers only pollute the task list).
+/// Called once at app startup; absent tasks are expected and quiet.
+#[cfg(windows)]
+pub fn cleanup_update_tasks() {
+    let _ = schtasks_quiet(&["/Delete", "/F", "/TN", UPDATE_TASK_INSTALL]);
+    let _ = schtasks_quiet(&["/Delete", "/F", "/TN", UPDATE_TASK_LAUNCH]);
 }
 
 #[cfg(not(windows))]
-fn detached_flags() -> u32 {
-    0
+pub fn cleanup_update_tasks() {}
+
+/// Hand the WHOLE install sequence to Task Scheduler (in-job updater):
+/// installer at +20 s, relaunch at +100 s. Each task's process is its
+/// own job root — immune to the updating instance exiting. XML escaping
+/// covers every path shape (no cmd quoting edges at all).
+#[cfg(windows)]
+fn schedule_update_sequence(installer: &Path, app_exe: &Path) -> Result<(), String> {
+    let elevated = crate::elevate::is_elevated();
+    let staging = installer
+        .parent()
+        .ok_or_else(|| "installer path has no folder".to_owned())?
+        .to_owned();
+    // Stage both task definitions in the staging dir, register, then
+    // remove the XML files immediately (paths only; purge_stale would
+    // also drop them on the next download).
+    let install_xml = staging.join("update-install-task.xml");
+    let launch_xml = staging.join("update-launch-task.xml");
+    let installer_path = installer.display().to_string();
+    let app_path = app_exe.display().to_string();
+    std::fs::write(
+        &install_xml,
+        utf16_bom(&update_task_xml(
+            &installer_path,
+            "/S",
+            INSTALL_DELAY,
+            INSTALL_TIME_LIMIT,
+            elevated,
+        )),
+    )
+    .map_err(|e| format!("couldn't stage the update task: {e}"))?;
+    std::fs::write(
+        &launch_xml,
+        utf16_bom(&update_task_xml(
+            &app_path,
+            "",
+            LAUNCH_DELAY,
+            LAUNCH_TIME_LIMIT,
+            elevated,
+        )),
+    )
+    .map_err(|e| format!("couldn't stage the update task: {e}"))?;
+    let install_xml_path = install_xml.display().to_string();
+    let launch_xml_path = launch_xml.display().to_string();
+    let created = schtasks_run(&[
+        "/Create",
+        "/F",
+        "/TN",
+        UPDATE_TASK_INSTALL,
+        "/XML",
+        &install_xml_path,
+    ])
+    .and_then(|_| {
+        schtasks_run(&[
+            "/Create",
+            "/F",
+            "/TN",
+            UPDATE_TASK_LAUNCH,
+            "/XML",
+            &launch_xml_path,
+        ])
+    });
+    let _ = std::fs::remove_file(&install_xml);
+    let _ = std::fs::remove_file(&launch_xml);
+    if let Err(err) = created {
+        // Never leave a half-registered pair behind.
+        let _ = schtasks_quiet(&["/Delete", "/F", "/TN", UPDATE_TASK_INSTALL]);
+        let _ = schtasks_quiet(&["/Delete", "/F", "/TN", UPDATE_TASK_LAUNCH]);
+        return Err(format!(
+            "couldn't schedule the update — task registration failed ({err})"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn schedule_update_sequence(_installer: &Path, _app_exe: &Path) -> Result<(), String> {
+    Err("scheduler install path is Windows-only".into())
 }
 
 // ---------------------------------------------------------------------------
@@ -1080,43 +1258,54 @@ mod tests {
     }
 
     #[test]
-    fn install_command_quoting() {
-        let script = match build_install_command(
-            Path::new(
-                "C:\\Users\\igor k\\AppData\\Roaming\\space.deepflux.remote.desktop\\updates\\update-0.9.0-setup.exe",
-            ),
-            Path::new("C:\\Users\\igor k\\AppData\\Local\\Remote Desktop\\Remote Desktop.exe"),
-        ) {
-            InstallCommand::InstallAndRelaunch(script) => script,
-            other => panic!("plain paths must get the relaunch wrapper: {other:?}"),
-        };
-        assert!(script.contains("start /wait \"\" \"C:\\Users\\igor k\\AppData\\Roaming\\space.deepflux.remote.desktop\\updates\\update-0.9.0-setup.exe\" /S"));
-        assert!(script.contains(
-            "start \"\" \"C:\\Users\\igor k\\AppData\\Local\\Remote Desktop\\Remote Desktop.exe\""
+    fn update_task_xml_shape() {
+        let xml = update_task_xml(
+            r"C:\Users\igor k\AppData\Roaming\space.deepflux.remote.desktop\updates\update-9.9.9-setup.exe",
+            "/S",
+            "PT20S",
+            "PT1H",
+            true,
+        );
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-16\"?>"));
+        assert!(xml.contains("<RegistrationTrigger><Delay>PT20S</Delay>"));
+        assert!(xml.contains("<LogonType>InteractiveToken</LogonType>"));
+        assert!(xml.contains("<RunLevel>HighestAvailable</RunLevel>"));
+        assert!(xml.contains(
+            "<Command>C:\\Users\\igor k\\AppData\\Roaming\\space.deepflux.remote.desktop\\updates\\update-9.9.9-setup.exe</Command>"
         ));
-        assert!(script.starts_with("ping -n 3"));
-        // Unsafe APP path: install-only wrapper (grace kept, no relaunch).
-        match build_install_command(
-            Path::new("C:\\ok\\x.exe"),
-            Path::new("C:\\bad^path\\app.exe"),
-        ) {
-            InstallCommand::InstallOnly(script) => {
-                assert!(script.contains("/S"));
-                assert!(script.starts_with("ping -n 3"));
-                assert!(!script.contains("app.exe"));
-            }
-            other => panic!("unsafe app path must drop the relaunch: {other:?}"),
-        }
-        // Unsafe INSTALLER path: bare spawn (no script at all).
-        assert!(matches!(
-            build_install_command(
-                Path::new("C:\\bad&path\\x.exe"),
-                Path::new("C:\\ok\\app.exe")
-            ),
-            InstallCommand::Bare
-        ));
-        assert!(path_safe_for_cmd("C:\\plain path\\app.exe"));
-        assert!(!path_safe_for_cmd("C:\\a&b\\app.exe"));
+        assert!(xml.contains("<Arguments>/S</Arguments>"));
+        assert!(xml.contains("<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>"));
+        // Unelevated registration keeps the relaunch at the user's level.
+        // The LAUNCH task (the app itself) MUST carry PT0S — the limit
+        // is enforced by killing the task's process tree (review
+        // finding 1), which would take the app down after an hour.
+        let xml = update_task_xml(
+            "C:\\Apps\\Remote Desktop\\app.exe",
+            "",
+            "PT100S",
+            "PT0S",
+            false,
+        );
+        assert!(xml.contains("<RunLevel>LeastPrivilege</RunLevel>"));
+        assert!(xml.contains("<Delay>PT100S</Delay>"));
+        assert!(xml.contains("<Arguments></Arguments>"));
+        assert!(xml.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"));
+    }
+
+    #[test]
+    fn update_task_xml_escapes_every_path() {
+        // Path metacharacters are exactly what killed the cmd wrapper —
+        // in XML they must all escape, no path shape is degraded.
+        let xml = update_task_xml("C:\\a&b<c>d\"e'f\\x.exe", "/S", "PT20S", "PT1H", false);
+        assert!(xml.contains("<Command>C:\\a&amp;b&lt;c&gt;d&quot;e&apos;f\\x.exe</Command>"));
+        assert!(!xml.contains("<Command>C:\\a&b"));
+    }
+
+    #[test]
+    fn utf16_task_file_is_bom_prefixed_little_endian() {
+        let bytes = utf16_bom("<A>");
+        assert_eq!(&bytes[..2], &[0xFF, 0xFE]);
+        assert_eq!(&bytes[2..], b"<\0A\0>\0");
     }
 
     #[test]
