@@ -120,6 +120,28 @@ describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)",
     expect(live[0].online).toBe(true);
   });
 
+  it("a stale session-scoped offline never shadows the directory's live flag", () => {
+    // Sticky-offline bug: after any session with the machine ended,
+    // peerOnline[code] stuck at `false`, and the old merge only applied
+    // the directory flag when the session value was `null` — so a trusted
+    // peer showed offline forever; only an app restart cleared it.
+    const rows = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa" })],
+      { aaaaaaaaaaaaaaaa: false },
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { online: true })],
+    );
+    expect(rows[0].online).toBe(true);
+    // Both honest-false paths still show false.
+    const both = unifiedMachines(
+      [pairing({ code: "aaaaaaaaaaaaaaaa" })],
+      { aaaaaaaaaaaaaaaa: false },
+      null,
+      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+    );
+    expect(both[0].online).toBe(false);
+  });
+
   it("directory-only machines appear as untrusted discovered rows", () => {
     const rows = unifiedMachines([], {}, null, [
       dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" }),

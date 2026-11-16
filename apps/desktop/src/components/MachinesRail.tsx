@@ -57,9 +57,12 @@ export function machinesFromPairings(
 /** ADR-010: trusted list + discovery list, ONE row per machine — the
  * merge is keyed by device code, so a machine can never appear twice.
  * Pairings win: a paired row keeps its cached name (a placeholder name
- * that is just the bare code adopts the discovered name instead) and
- * upgrades its presence from session-only to the directory's live flag
- * when no session is running. */
+ * that is just the bare code adopts the discovered name instead).
+ * Presence: a `true` from either source wins — a live session shows
+ * online even before the directory catches up, and the directory's live
+ * flag (refreshed every 30 s) clears the session-scoped `false` that a
+ * past disconnect left behind (sticky-offline bug: only an app restart
+ * used to clear it, so a trusted peer showed offline forever). */
 export function unifiedMachines(
   pairings: PairingInfo[],
   peerOnline: Record<string, boolean>,
@@ -75,9 +78,7 @@ export function unifiedMachines(
       if (existing.name === existing.code && d.name) {
         existing.name = d.name; // placeholder name — the discovered one is real
       }
-      if (existing.online == null) {
-        existing.online = d.online;
-      }
+      existing.online = existing.online === true || d.online === true;
       continue;
     }
     const row: MachineRow = {
