@@ -795,8 +795,12 @@ pub fn inbox_send(
 /// webview event. Returns the count delivered.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
     let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    // The drain contract requires the caller's `device` as a query param
+    // (GET /api/chat?device=…): without it the service 400s every poll and
+    // the inbox never delivers (the live 400 flood, diagnosed 2026-11-03).
+    let url = format!("{}?device={me}", chat_api(base_url));
     let Ok(response) = agent
-        .get(&chat_api(base_url))
+        .get(&url)
         .set("Authorization", format!("Bearer {token}").as_str())
         .call()
     else {
