@@ -9,3 +9,5 @@ apps/desktop/dist/
 services/signaling/api/*.js
 # Local ZCode agent state (plans, config) — never project data
 .zcode/
+# Local agent tool state (findings, hook state, reports) — never project data
+.mimosa/
