@@ -233,6 +233,24 @@ public launch, woven through the phases):**
   and the dashboard-side revoke is the only kill switch. P2's ownership
   story must document this and give the owner a re-key path (new seed =
   new installation id = fresh enrollment).
+  *P2 status (2026-11-19, code-complete on the working branches):* all
+  four gates implemented — (a) device-side claim handshake (approve →
+  pending claim → the device confirms via signed
+  `/auth/device/claim-confirm`; binds happen only on that confirm,
+  bind-before-approve per the P2 security review); (b) 14-day session
+  TTL + "sign out everywhere"; (c) awaiting the PR click — the CI
+  `integration-postgres` job runs the Pg suites incl. the new SQL;
+  (d) `docs/security/device-seed-theft.md` + the `swarm_rekey` command.
+  The feature itself: Ed25519 account proof on `connect_request`
+  (additive-optional; pairing proofs still win), host trust = valid
+  proof ∧ installation in its own account-directory snapshot (30 s
+  poll; fails closed on auth death), consent-once keyed to the
+  installation id, intents pruned when a machine leaves the account,
+  circle directory retired from discovery (server endpoint stays for
+  old clients). Independent security review passed with its findings
+  fixed (4644131, 8704bda). Remaining for P2 acceptance: the two-NAT
+  live end-to-end pass (staging tracker), which also completes P1's
+  outstanding E2E item.
 - **P3 — agent fleet commands + human chat:** `fleet_run` generalized
   — N machines, parallel, per-machine results, retries, audit;
   agent-to-agent instruction routing master→slaves. In the same phase,
