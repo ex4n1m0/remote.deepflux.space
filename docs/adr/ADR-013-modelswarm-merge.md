@@ -223,7 +223,13 @@ public launch, woven through the phases):**
   shorten the 30-day account-session TTL (7–14 d) and/or add a user
   "revoke all sessions" affordance; (c) the account suites' PgStore SQL
   must have run once against real Postgres (CI integration job or a
-  throwaway Neon branch) before any account data is production-real.
+  throwaway Neon branch) before any account data is production-real;
+  (d) device-seed theft model (from the P1 app-side security review) —
+  the app's Ed25519 seed is a never-rotating per-user credential-store
+  key; theft lets an attacker sign as that installation indefinitely
+  and the dashboard-side revoke is the only kill switch. P2's ownership
+  story must document this and give the owner a re-key path (new seed =
+  new installation id = fresh enrollment).
 - **P3 — agent fleet commands + human chat:** `fleet_run` generalized
   — N machines, parallel, per-machine results, retries, audit;
   agent-to-agent instruction routing master→slaves. In the same phase,
