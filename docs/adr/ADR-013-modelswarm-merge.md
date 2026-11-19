@@ -150,9 +150,12 @@ becomes the human chat layer of the merged app.**
   product name is not adopted; the layout, tokens, and interaction
   principles are. Notable dependency it creates: the dual-cursor
   design requires closing rd15's input-source-tag gap on the wire (P3).
-- **Brand/domain:** the merged product keeps the name **ModelSwarm**;
-  `modelswarm.deepflux.space` (already the tracker's domain) grows
-  into the one site; `remote.deepflux.space` redirects to it. App
+- **Brand/domain (amended 2026-11-19):** the merged product is named
+  **DeepMulti** (owner decision, same day as acceptance — supersedes
+  the ModelSwarm working brand used while planning). Target domain
+  `deepmulti.deepflux.space` (to be confirmed at cutover); the
+  tracker's current `modelswarm.deepflux.space` and
+  `remote.deepflux.space` both redirect to it. App
   renaming/rebranding lands with P5.
 - **Circle directory:** replaced by the account directory at P2; the
   sealed machine-chat it was paired with stays.
@@ -245,7 +248,7 @@ public launch, woven through the phases):**
   served by a slave's hosted model through the swarm path, including
   via relay.
 - **P5 — hardening + launch:** posture items above closed, security
-  review pass, app rebrand to ModelSwarm, unified domain, public
+  review pass, app rebrand to DeepMulti, unified domain, public
   positioning.
 
 ## Resolved questions (2026-11-19)
@@ -256,7 +259,8 @@ public launch, woven through the phases):**
    with the standalone OnlyHumans product. Cross-product interop would
    require deliberately sharing a channel key later; default no.
 3. Brand/domain: **ModelSwarm** on `modelswarm.deepflux.space`;
-   `remote.deepflux.space` redirects.
+   `remote.deepflux.space` redirects. *Amended 2026-11-19: product
+   named **DeepMulti**; domain decision moves to cutover (P5).*
 4. Platform: **Windows-only v1**.
 5. Circle directory: **replaced at P2** by the account directory;
    sealed machine-chat stays.
