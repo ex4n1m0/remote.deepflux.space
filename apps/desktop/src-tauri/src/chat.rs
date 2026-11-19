@@ -615,6 +615,28 @@ pub fn has_account_intent(app: &AppHandle, installation_id: &str) -> bool {
         .any(|i| i == id)
 }
 
+/// Security review finding 3: armed account intents are revocable after
+/// all — a machine removed from the account (dashboard revoke) vanishes
+/// from every directory snapshot, and the next successful poll prunes its
+/// intent here. Called ONLY with a fresh, successful snapshot (an empty
+/// cache from a failed poll must never prune). Returns whether the doc
+/// changed.
+pub fn prune_account_intents(app: &AppHandle, present: &[String]) -> bool {
+    if present.is_empty() {
+        return false; // defensive: never wipe trust on an empty read
+    }
+    let mut doc = read_pairings(app);
+    let before = doc.account_remembered.len();
+    doc.account_remembered
+        .retain(|id| present.iter().any(|p| p == id));
+    if doc.account_remembered.len() != before {
+        write_pairings(app, &doc);
+        true
+    } else {
+        false
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Dead-key purge (2026-10-27 duplicate-list fix)
 // ---------------------------------------------------------------------------

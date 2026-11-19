@@ -51,6 +51,14 @@ impl AccountDirectory {
         self.machines.lock().expect("account directory").clone()
     }
 
+    /// Empty the snapshot (security review finding 2: the cache must FAIL
+    /// CLOSED — auth death, membership loss, leave, and re-key all drop
+    /// every row, so a revoked installation's proof stops matching a
+    /// stale "same account" view immediately).
+    pub fn clear(&self) {
+        *self.machines.lock().expect("account directory") = Vec::new();
+    }
+
     /// The host-side consent check: is this installation in OUR account?
     /// Returns its label for the prompt when it is.
     pub fn lookup(&self, installation_id: &str) -> Option<Option<String>> {

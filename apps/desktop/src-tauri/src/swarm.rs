@@ -830,15 +830,20 @@ impl TrackerClient {
     }
 
     /// GET /api/v1/account/directory — the account's machines, machine-
-    /// signed like the heartbeat (empty-body digest). Transport errors are
-    /// `Err` (the poller retries); a 2xx parses into DTO rows.
+    /// signed like the heartbeat (empty-body digest). `Err(Some(status))`
+    /// is an HTTP answer the poller may act on (401/404 = auth death →
+    /// the cache must fail closed); `Err(None)` is a transport blip (keep
+    /// the last snapshot).
     fn account_directory(
         &self,
         identity: &SwarmIdentity,
         session_token: &str,
-    ) -> Result<Vec<crate::account_directory::AccountMachineDto>, String> {
+    ) -> Result<Vec<crate::account_directory::AccountMachineDto>, Option<u16>> {
         let path = "/api/v1/account/directory";
-        let auth = msp1_authorization(&identity.identity, "GET", path, "")?;
+        let auth = msp1_authorization(&identity.identity, "GET", path, "").map_err(|e| {
+            eprintln!("swarm directory: {e}");
+            None
+        })?;
         let resp = self
             .agent
             .get(&format!("{}{path}", self.base))
@@ -847,27 +852,35 @@ impl TrackerClient {
             .call();
         let resp = match resp {
             Ok(resp) if resp.status() == 200 => resp,
-            Ok(resp) => return Err(format!("swarm directory: HTTP {}", resp.status())),
-            Err(ureq::Error::Status(status, _)) => {
-                return Err(format!("swarm directory: HTTP {status}"));
+            Ok(resp) => return Err(Some(resp.status())),
+            Err(ureq::Error::Status(status, _)) => return Err(Some(status)),
+            Err(e) => {
+                eprintln!("swarm directory: {e}");
+                return Err(None);
             }
-            Err(e) => return Err(format!("swarm directory: {e}")),
         };
-        let value: serde_json::Value = resp
-            .into_json()
-            .map_err(|e| format!("swarm directory: bad reply: {e}"))?;
-        let rows = value
-            .get("machines")
-            .and_then(|m| m.as_array())
-            .ok_or_else(|| "swarm directory: reply missing machines".to_owned())?;
+        let value: serde_json::Value = match resp.into_json() {
+            Ok(value) => value,
+            Err(e) => {
+                eprintln!("swarm directory: bad reply: {e}");
+                return Err(None); // transient — the poller keeps the snapshot
+            }
+        };
+        let Some(rows) = value.get("machines").and_then(|m| m.as_array()) else {
+            eprintln!("swarm directory: reply missing machines");
+            return Err(None);
+        };
         let mut machines = Vec::with_capacity(rows.len());
         for row in rows {
-            let installation_id = row
+            let Some(installation_id) = row
                 .get("installationId")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.trim().is_empty())
-                .ok_or_else(|| "swarm directory: row missing installationId".to_owned())?
-                .to_owned();
+            else {
+                eprintln!("swarm directory: row missing installationId");
+                return Err(None);
+            };
+            let installation_id = installation_id.to_owned();
             let label = row
                 .get("label")
                 .and_then(|v| v.as_str())
@@ -958,6 +971,10 @@ pub fn swarm_leave(app: AppHandle) -> CmdResult<()> {
         guard.clone()
     };
     clear_session(&crate::credstore::WindowsCredStore);
+    // No membership, no account view (security review finding 2).
+    app.state::<crate::commands::AppServices>()
+        .account_directory
+        .clear();
     let _ = app.emit(crate::commands::events::SWARM, dto);
     Ok(())
 }
@@ -992,8 +1009,15 @@ pub fn swarm_rekey(app: AppHandle) -> CmdResult<String> {
         *guard = SwarmState::NotJoined;
         guard.clone()
     };
-    clear_session(&crate::credstore::WindowsCredStore);
+    // Mint the new seed FIRST (security review note): a credstore failure
+    // then leaves everything untouched instead of a cleared session with
+    // the suspected-stolen identity still installed.
     let identity = SwarmIdentity::rekey(&crate::credstore::WindowsCredStore)?;
+    clear_session(&crate::credstore::WindowsCredStore);
+    // The old identity's account view is dead (finding 2).
+    app.state::<crate::commands::AppServices>()
+        .account_directory
+        .clear();
     let _ = app.emit(crate::commands::events::SWARM, dto);
     Ok(identity.installation_id())
 }
@@ -1275,14 +1299,34 @@ fn spawn_heartbeat(app: AppHandle, identity: SwarmIdentity, cycle: u64) -> bool 
                     }
                 };
                 // Directory every tick (30 s) — the discovery + membership
-                // snapshot; a failed poll keeps the last one (latest-wins).
+                // snapshot. A successful poll also PRUNES armed account
+                // intents for machines no longer in the account (security
+                // review finding 3); a transport blip keeps the last
+                // snapshot; auth death (401/404) FAILS CLOSED — an empty
+                // cache means a revoked installation's proof immediately
+                // stops matching "same account" (finding 2).
                 match client.account_directory(&identity, &session_token) {
                     Ok(machines) => {
-                        let services = app.state::<crate::commands::AppServices>();
-                        services
-                            .account_directory
-                            .update(&identity.installation_id(), machines.clone());
+                        let present: Vec<String> =
+                            machines.iter().map(|m| m.installation_id.clone()).collect();
+                        {
+                            let services = app.state::<crate::commands::AppServices>();
+                            services
+                                .account_directory
+                                .update(&identity.installation_id(), machines.clone());
+                        }
                         let _ = app.emit(crate::commands::events::ACCOUNT_DIRECTORY, Some(machines));
+                        let _ = crate::chat::prune_account_intents(&app, &present);
+                    }
+                    Err(Some(401)) | Err(Some(404)) => {
+                        {
+                            let services = app.state::<crate::commands::AppServices>();
+                            services.account_directory.clear();
+                        }
+                        let _ = app.emit(
+                            crate::commands::events::ACCOUNT_DIRECTORY,
+                            Some(Vec::<crate::account_directory::AccountMachineDto>::new()),
+                        );
                     }
                     Err(_) => { /* transient: keep the last snapshot */ }
                 }
@@ -1299,6 +1343,12 @@ fn spawn_heartbeat(app: AppHandle, identity: SwarmIdentity, cycle: u64) -> bool 
                     HeartbeatDecision::Keep | HeartbeatDecision::Retry => continue,
                     HeartbeatDecision::NeedsRejoin | HeartbeatDecision::Expired => {
                         clear_session(&crate::credstore::WindowsCredStore);
+                        // Membership is gone: the directory cache dies with
+                        // it (finding 2 — never leave a stale account view
+                        // behind an exited poller).
+                        app.state::<crate::commands::AppServices>()
+                            .account_directory
+                            .clear();
                         let reason = if matches!(decision, HeartbeatDecision::Expired) {
                             "The swarm session expired (24 h) — rejoin from Config → Swarm."
                                 .to_owned()

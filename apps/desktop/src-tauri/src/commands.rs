@@ -222,6 +222,11 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust.sweep(now);
+                // ADR-013 P2 (security review finding 1): the prompt's
+                // account claim dies WITH the prompt — a later accept for a
+                // different machine (e.g. a paired auto-accept) must never
+                // arm a remembered account intent the user never answered.
+                trust.prompt_account = None;
                 if let Some((controller, accepted, rejected)) = trust.prompt.take()
                     && !accepted
                     && !rejected
@@ -324,7 +329,12 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 // engine send failed the UI must show the dialog, not a
                 // decisionless passive card.
                 proof_ok = crate::chat::auto_accept_if_paired(app, &controller_device_id);
-            } else {
+            } else if !proof_ok {
+                // (An account silent-accept already set proof_ok — it is a
+                // VERIFIED requester and must not consume the untrusted
+                // prompt budget or run the cooldown checks; security review
+                // finding 4: doing both raced an accept against a budget
+                // reject.)
                 // ADR-006 B3 prompt-flood defense: a controller in cooldown
                 // (explicit reject / unanswered timeout) is auto-rejected
                 // without a prompt. 0.10.3 adds the GLOBAL prompt budget —
@@ -389,14 +399,27 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // controller's PairOffer arrives only after the session
             // establishes, so RECORD the decision now and apply it when the
             // offer lands (see PairOfferReceived below).
-            {
+            let prompt_account = {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 if let Some((_, accepted, _)) = trust.prompt.as_mut() {
                     *accepted = true;
                 }
                 trust.decision = Some((controller_device_id.clone(), remember, requester_name));
-            }
+                // ADR-013 P2 (security review finding 1): the account claim
+                // belongs to the PROMPT this accept answers — a pending
+                // claim for a DIFFERENT controller (a timed-out prompt's
+                // leftover, answered here by a paired auto-accept) is
+                // dropped, never armed.
+                let claim_is_for_this_prompt = trust
+                    .prompt
+                    .as_ref()
+                    .is_some_and(|(c, _, _)| c == &controller_device_id);
+                trust
+                    .prompt_account
+                    .take()
+                    .filter(|_| claim_is_for_this_prompt)
+            };
             // ADR-006 amendment (2026-10-28): "Always allow" is durable at
             // click time. The in-memory decision above dies with the
             // session — if the controller's PairOffer is lost to a short
@@ -412,11 +435,6 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // ADR-013 P2: "Always allow" on an ACCOUNT prompt additionally
             // arms the standing account intent keyed to the proven
             // installation id (consumed here — one prompt, one decision).
-            let prompt_account = {
-                let services = app.state::<AppServices>();
-                let mut trust = services.trust.lock().expect("trust state");
-                trust.prompt_account.take()
-            };
             if remember && let Some(installation_id) = prompt_account.as_deref() {
                 crate::chat::remember_account_intent(app, installation_id);
             }
@@ -464,12 +482,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         } => {
             // ADR-006: the ceremony state dies with the session — an
             // un-applied decision or lingering prompt never crosses into
-            // the next one.
+            // the next one (ADR-013 P2: the prompt's account claim too).
             {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust.decision = None;
                 trust.prompt = None;
+                trust.prompt_account = None;
             }
             emit(
                 events::SESSION_ENDED,

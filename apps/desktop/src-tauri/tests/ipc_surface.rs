@@ -402,6 +402,10 @@ fn swarm_state_carries_metadata_only() {
             user_code: "AB2CDEFG".into(),
             expires_at_ms: 1,
         },
+        SwarmState::ConfirmClaim {
+            claimed_by: "i***@example.com".into(),
+            expires_at_ms: 1,
+        },
         SwarmState::Joined {
             installation_id: "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2".into(),
             session_expires_at_ms: 2,
