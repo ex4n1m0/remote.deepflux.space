@@ -468,15 +468,23 @@ mod tests {
         // Idempotent: the retained list was drained, not just marked.
         assert_eq!(super::close_all_retained_jobs(), 0);
 
+        // Column-exact liveness via CSV output. The previous text-mode
+        // scan searched for the PID digits anywhere in tasklist's text
+        // and could digit-collide with another column (e.g. a memory
+        // usage "4,096 K"), making a dead child look alive — observed
+        // as a CI-only flake on 2026-11-19 (run 44504396311). With
+        // /FO CSV the PID is the second quoted field; a no-match run
+        // prints only an unquoted "INFO:" line.
         let alive = |pid: u32| {
-            let pid_bytes = pid.to_string().into_bytes();
-            std::process::Command::new("tasklist")
-                .args(["/FI", &format!("PID eq {pid}")])
+            let out = std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
                 .output()
                 .unwrap()
-                .stdout
-                .windows(pid_bytes.len())
-                .any(|w| w == &pid_bytes[..])
+                .stdout;
+            String::from_utf8_lossy(&out)
+                .lines()
+                .filter_map(|l| l.split(',').nth(1))
+                .any(|pid_field| pid_field.trim_matches('"') == pid.to_string())
         };
         std::thread::sleep(std::time::Duration::from_millis(1500));
         assert!(!alive(a.id()), "closing all jobs must kill child a");
