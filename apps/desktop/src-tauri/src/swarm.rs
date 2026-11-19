@@ -2303,4 +2303,227 @@ mod tests {
         }
         unsafe { std::env::remove_var("DEEPFLUX_TRACKER_URL") };
     }
+
+    /// LIVE P2 smoke (loopback): the full account flow against a REAL
+    /// Next.js tracker - run the dev server with
+    /// `ACCOUNT_SIGNUP_OPEN=1 MSP_RATE_ENROLL_PER_IP=60 npm run dev
+    /// -- --port 3210` (memory store; no DATABASE_URL) and then
+    /// `DEEPFLUX_P2_LIVE_TRACKER=http://127.0.0.1:3210 cargo test ...
+    /// p2_account_flow -- --nocapture`. Skipped without the env var -
+    /// this is the runtime pass the unit suites cannot be (real route
+    /// wiring, cookies, the claim UX data flow end to end).
+    #[test]
+    fn p2_account_flow_against_a_live_tracker() {
+        let Ok(base) = std::env::var("DEEPFLUX_P2_LIVE_TRACKER") else {
+            eprintln!("SKIP p2 live smoke: DEEPFLUX_P2_LIVE_TRACKER not set");
+            return;
+        };
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|p| p.into_inner());
+        unsafe { std::env::set_var("DEEPFLUX_TRACKER_URL", &base) };
+
+        let identity_a = SwarmIdentity {
+            identity: modelswarm_identity::InstallationIdentity::generate(),
+        };
+        let identity_b = SwarmIdentity {
+            identity: modelswarm_identity::InstallationIdentity::generate(),
+        };
+        let client = TrackerClient::new();
+
+        // The website half of the ceremony (the dashboard user): signup ->
+        // msw_session cookie, then the claim/revoke verbs with that cookie.
+        let web = |method: &str,
+                   path: &str,
+                   body: Option<&str>,
+                   cookie: Option<&str>|
+         -> (u16, String, String) {
+            let mut request = client.agent.request(method, &format!("{base}{path}"));
+            request = request.set("content-type", "application/json");
+            if let Some(cookie) = cookie {
+                request = request.set("cookie", &format!("msw_session={cookie}"));
+            }
+            let result = match body {
+                Some(body) => request.send_string(body),
+                None => request.call(),
+            };
+            match result {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let set_cookie = resp.header("set-cookie").unwrap_or_default().to_owned();
+                    let mut text = String::new();
+                    use std::io::Read as _;
+                    let _ = resp.into_reader().take(8192).read_to_string(&mut text);
+                    (status, text, set_cookie)
+                }
+                Err(ureq::Error::Status(status, resp)) => {
+                    let mut text = String::new();
+                    let _ = resp.into_reader().take(8192).read_to_string(&mut text);
+                    (status, text, String::new())
+                }
+                Err(e) => panic!("p2 smoke: {method} {path}: {e}"),
+            }
+        };
+        let json_field = |text: &str, field: &str| -> String {
+            serde_json::from_str::<serde_json::Value>(text)
+                .ok()
+                .and_then(|v| v.get(field).and_then(|f| f.as_str()).map(str::to_owned))
+                .unwrap_or_default()
+        };
+
+        // -- the website account ------------------------------------------
+        let tag = now_ms();
+        let email = format!("p2smoke-{tag}@example.com");
+        let (status, _, set_cookie) = web(
+            "POST",
+            "/api/v1/account/signup",
+            Some(&format!(
+                "{{\"email\":\"{email}\",\"password\":\"correct-horse-battery\",\"displayName\":\"P2 Smoke\"}}"
+            )),
+            None,
+        );
+        assert_eq!(status, 201, "signup failed");
+        let cookie = set_cookie
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .strip_prefix("msw_session=")
+            .expect("signup set-cookie carries msw_session")
+            .to_owned();
+        assert!(cookie.bytes().all(|b| b.is_ascii_hexdigit()) && cookie.len() == 64);
+
+        // -- machine A enrolls; the account claims; A confirms ------------
+        let start_a = client.device_start(&identity_a).expect("A start");
+        let (status, body, _) = web(
+            "POST",
+            "/api/v1/account/devices/approve",
+            Some(&format!(
+                "{{\"userCode\":\"{}\",\"label\":\"Smoke A\"}}",
+                start_a.user_code
+            )),
+            Some(&cookie),
+        );
+        assert_eq!(status, 202, "claim A failed: {body}");
+        assert_eq!(json_field(&body, "status"), "claim_pending");
+        match client
+            .device_complete(&identity_a, &start_a.device_code)
+            .unwrap()
+        {
+            CompleteOutcome::ClaimPending { claimed_by } => {
+                // The masked claimer: first char + domain (maskEmail).
+                assert_eq!(claimed_by, "p***@example.com", "mask");
+            }
+            other => panic!("A complete must be claim_pending, got {other:?}"),
+        }
+        assert_eq!(
+            client
+                .claim_confirm(&identity_a, &start_a.device_code, true)
+                .unwrap(),
+            200
+        );
+        let token_a = match client
+            .device_complete(&identity_a, &start_a.device_code)
+            .unwrap()
+        {
+            CompleteOutcome::Approved { token, .. } => token,
+            other => panic!("A complete must be approved, got {other:?}"),
+        };
+
+        // -- machine B: same handshake -------------------------------------
+        let start_b = client.device_start(&identity_b).expect("B start");
+        let (status, body, _) = web(
+            "POST",
+            "/api/v1/account/devices/approve",
+            Some(&format!(
+                "{{\"userCode\":\"{}\",\"label\":\"Smoke B\"}}",
+                start_b.user_code
+            )),
+            Some(&cookie),
+        );
+        assert_eq!(status, 202, "claim B failed: {body}");
+        match client
+            .device_complete(&identity_b, &start_b.device_code)
+            .unwrap()
+        {
+            CompleteOutcome::ClaimPending { .. } => {}
+            other => panic!("B complete must be claim_pending, got {other:?}"),
+        }
+        assert_eq!(
+            client
+                .claim_confirm(&identity_b, &start_b.device_code, true)
+                .unwrap(),
+            200
+        );
+        let token_b = match client
+            .device_complete(&identity_b, &start_b.device_code)
+            .unwrap()
+        {
+            CompleteOutcome::Approved { token, .. } => token,
+            other => panic!("B complete must be approved, got {other:?}"),
+        };
+
+        // -- liveness + the signaling mapping ------------------------------
+        let sig_a = "a1b2c3d4e5f60718";
+        let sig_b = "b1a2c3d4e5f60718";
+        assert_eq!(
+            client
+                .heartbeat(&identity_a, &token_a, Some(sig_a), "Smoke A")
+                .unwrap(),
+            200
+        );
+        assert_eq!(
+            client
+                .heartbeat(&identity_b, &token_b, Some(sig_b), "Smoke B")
+                .unwrap(),
+            200
+        );
+
+        // -- the directory: B sees the account, A controllable -------------
+        let directory = client
+            .account_directory(&identity_b, &token_b)
+            .expect("directory");
+        let row_a = directory
+            .iter()
+            .find(|m| m.installation_id == identity_a.installation_id())
+            .expect("A in directory");
+        assert_eq!(row_a.signaling_device_id.as_deref(), Some(sig_a));
+        assert_eq!(row_a.label.as_deref(), Some("Smoke A"));
+        assert!(row_a.last_seen_at_ms.is_some(), "heartbeat touched A's row");
+        assert!(
+            directory
+                .iter()
+                .any(|m| m.installation_id == identity_b.installation_id())
+        );
+
+        // -- dashboard revoke A: the directory drops it, A's liveness dies --
+        let (status, body, _) = web(
+            "POST",
+            &format!(
+                "/api/v1/account/machines/{}/revoke",
+                identity_a.installation_id()
+            ),
+            Some("{}"),
+            Some(&cookie),
+        );
+        assert_eq!(status, 200, "revoke A failed: {body}");
+        assert_eq!(
+            client
+                .heartbeat(&identity_a, &token_a, Some(sig_a), "Smoke A")
+                .unwrap(),
+            404
+        );
+        let directory = client
+            .account_directory(&identity_b, &token_b)
+            .expect("directory after revoke");
+        assert!(
+            !directory
+                .iter()
+                .any(|m| m.installation_id == identity_a.installation_id()),
+            "revoked A must leave the directory"
+        );
+
+        eprintln!(
+            "p2 live smoke OK: claim handshake, directory mapping, and revoke all verified against {base}"
+        );
+        unsafe { std::env::remove_var("DEEPFLUX_P2_LIVE_TRACKER") };
+        unsafe { std::env::remove_var("DEEPFLUX_TRACKER_URL") };
+    }
 }
