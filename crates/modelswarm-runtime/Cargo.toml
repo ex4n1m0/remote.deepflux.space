@@ -1,0 +1,67 @@
+[package]
+name = "modelswarm-runtime"
+description = "Inference runtime trait and pinned llama.cpp sidecar implementation"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[features]
+# TEST-ONLY deterministic toy decoder (ADR-019): off by default; the node
+# binary never enables it. `modelswarm-bench` enables it via its path dep.
+mock-runtime = []
+# P16 research spike: IN-PROCESS runtime over the pinned llama.cpp C API
+# (loads the hash-verified `llama.dll` from the engine bundle). OFF by
+# default — production serving stays on the HTTP adapter (ADR-021); the
+# node binary never enables it. Research/bench-only.
+capi-adapter = ["dep:libloading"]
+
+[dependencies]
+async-trait = "0.1"
+# `bytes` + `futures-util` name the SSE body-chunk stream the llama.cpp
+# adapter consumes (both are already in the graph via reqwest/tokio).
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# "rt" gates `tokio::task::spawn_blocking` — the ADR-031 §5.2 offload path
+# every blocking C-API engine call rides (capi-adapter); sync/time are the
+# HTTP adapter's existing needs.
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+# 0.12 to match the workspace (two HTTP stacks compiled into the node
+# binary otherwise; unified 2026-10-08). "stream" enables the SSE body
+# consumption (`bytes_stream`) the true-streaming decode path needs.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+sha2 = "0.10"
+modelswarm-types = { path = "../modelswarm-types" }
+# Runtime-loading of the pinned C-API library (capi-adapter only).
+libloading = { version = "0.8", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+# 9.6 pass-2 experiment artifact timestamps (tests/capi_pass2.rs).
+chrono = "0.4"
+# REAL-trait compile-proof for `capi::verify` (ADR-032 §1): the architect's
+# `BatchVerifyEngine` lives in `modelswarm-session`, which already depends
+# on THIS crate — so the impl cannot live in the lib (cyclic package
+# dependency), but a DEV-dependency cycle is legal and lets
+# `tests/capi_verify.rs` implement the real trait for a newtype of
+# `CapiVerifyEngine` and run the engine-exactness pins THROUGH it. The
+# mirror trait in `capi::verify` is the labeled stopgap.
+modelswarm-session = { path = "../modelswarm-session" }
+
+# NOTE (lint scope): the workspace sets `unsafe_code = "forbid"`. This crate
+# defines its own lint table instead of inheriting, with `unsafe_code`
+# DENIED rather than forbidden, so the feature-gated `capi-adapter` FFI
+# module (`src/capi/ffi.rs`) can carry a module-scoped
+# `#![allow(unsafe_code)]`. Every other file in this crate — and every other
+# crate, which still inherits the workspace table — rejects unsafe code
+# exactly as before. `deny` + one scoped allow is the minimal relaxation the
+# in-process spike requires; removing the feature removes the allow too.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

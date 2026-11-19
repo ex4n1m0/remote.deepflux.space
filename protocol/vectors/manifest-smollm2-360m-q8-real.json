@@ -1,0 +1,32 @@
+{
+  "$note": "REAL profile: SmolLM2-360M-Instruct Q8_0 (official HuggingFaceTB repo) — resolved from the GGUF artifact per ADR-022.",
+  "vector": "real-artifact",
+  "manifest": {
+    "schema_version": 2,
+    "hf_repo": "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
+    "hf_revision": "593b5a2e04c8f3e4ee880263f93e0bd2901ad47f",
+    "artifact_hashes": [
+      {
+        "path": "smollm2-360m-instruct-q8_0.gguf",
+        "sha256": "48ab3034d0dd401fbc721eb1df3217902fee7dab9078992d66431f09b7750201"
+      }
+    ],
+    "tokenizer_hash": "ec5ec5f789ddcb674be5552c0c85e6c09adf26dcbb6e3eaf38edc72e287d6b18",
+    "chat_template_hash": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788",
+    "architecture_hash": "fe4b8c3428bf477d75c4aa34fb1f8c3e190f2e45d9a6779a47638ad2df926c08",
+    "quantization": {
+      "method": "q8_0",
+      "bits": 8
+    },
+    "runtime": {
+      "name": "llama.cpp",
+      "version": "b11407",
+      "build_hash": "353c4aab423bff5cb6dc0e1d32e41a447990ab3d69a411b7f58ff48187c91a03"
+    },
+    "decoding_abi_version": 1,
+    "speculative_capabilities": [
+      "proposal_tokens"
+    ]
+  },
+  "expected_profile_id": "msp1:6897f19273b191a1f73c0efb2872298a846e8c29663328fe200dbce9b94f32b2"
+}

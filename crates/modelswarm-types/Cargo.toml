@@ -1,0 +1,22 @@
+[package]
+name = "modelswarm-types"
+description = "Fundamental ModelSwarm types: protocol version, typed identifiers, validation"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,38 @@
+[package]
+name = "modelswarm-gateway"
+description = "Loopback OpenAI-compatible API: normalization, streaming proxy, retries"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[features]
+# Exposes the gateway's StaticExecutor test doubles outside this crate's own
+# test build (e.g. for the Phase D executor integration). OFF by default.
+test-doubles = []
+
+[dependencies]
+async-trait = "0.1"
+axum = "0.8"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+modelswarm-runtime = { path = "../modelswarm-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["net", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

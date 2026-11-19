@@ -1,0 +1,33 @@
+{
+  "$note": "Synthetic golden vector — not a catalog entry. All hashes are test data.",
+  "vector": "manifest-basic",
+  "manifest": {
+    "schema_version": 2,
+    "hf_repo": "example-org/example-model-gguf",
+    "hf_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_hashes": [
+      {
+        "path": "model-q4_k_m.gguf",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "tokenizer_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "chat_template_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "architecture_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "quantization": {
+      "method": "Q4_K_M",
+      "bits": 4
+    },
+    "runtime": {
+      "name": "llama.cpp",
+      "version": "b0-test",
+      "build_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "decoding_abi_version": 1,
+    "speculative_capabilities": [
+      "proposal_tokens",
+      "batch_verify"
+    ]
+  },
+  "expected_profile_id": "msp1:229e17c8c6eb23101c0f7f3a005c384a0a4d27a876903ee677f2342ec818e933"
+}

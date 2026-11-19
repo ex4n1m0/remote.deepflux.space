@@ -1,0 +1,97 @@
+{
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-032 §7 fixture row 2 (plan §2.2): mid-window rejection. accepted_prefix_len = 3 < len(window_tokens) = 8, divergence_point == accepted_prefix_len == 3 (§1 invariant), correction = replacement token, committed = window[..3] ++ [correction], new_prefix_hash recomputed over the committed ids (§1 rule 2).",
+  "engine": {
+    "backend": "cpu",
+    "batch_verify": true,
+    "batch_window_max": 32
+  },
+  "expected": {
+    "accepted_prefix_len": 3,
+    "committed": [
+      201,
+      202,
+      203,
+      777
+    ],
+    "correction": 777,
+    "divergence_point": 3,
+    "new_prefix_hash": "1e94d979f66b4db9caf2d323a254fe5a29296b32d5a46ecfc692de2648cb9e56",
+    "new_prefix_hash_construction": {
+      "committed_token_ids": [
+        201,
+        202,
+        203,
+        777
+      ],
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rule": "hex(sha256(raw32(parent_hex) || token ids as little-endian u32 each))"
+    },
+    "outcome": "rejected"
+  },
+  "generation_params": {
+    "canonical_json": "{\"seed\":null,\"temperature\":1,\"top_k\":40,\"top_p\":1}",
+    "seed": null,
+    "sha256_hex": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+    "temperature": 1,
+    "top_k": 40,
+    "top_p": 1
+  },
+  "name": "verifydrafts-2-reject",
+  "request": {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"1a2b3c4d5e6f7081\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":1,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":12,\"session_id\":\"sess-vd-reject-0001\",\"window_tokens\":[201,202,203,204,205,206,207,208]}",
+    "canonical_json_sha256": "bafb77398e7e6f8970ad71749ccd986a7c292fa970d791e3159248e11892503f",
+    "fields": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "1a2b3c4d5e6f7081",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 1,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 12,
+      "session_id": "sess-vd-reject-0001",
+      "signature": "ov2207ygqOBns47S2pY1ox4WBa+YXc3U4zed/wM+cDklMHE/2EywvCaZxiLP4hXvFMHbxiNZxQyv7PYoyah9Dw==",
+      "window_tokens": [
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208
+      ]
+    },
+    "signature": "ov2207ygqOBns47S2pY1ox4WBa+YXc3U4zed/wM+cDklMHE/2EywvCaZxiLP4hXvFMHbxiNZxQyv7PYoyah9Dw=="
+  },
+  "result": {
+    "canonical_json": "{\"accepted_prefix_len\":3,\"correction\":777,\"divergence_point\":3,\"new_prefix_hash\":\"1e94d979f66b4db9caf2d323a254fe5a29296b32d5a46ecfc692de2648cb9e56\",\"nonce_echo\":\"1a2b3c4d5e6f7081\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":1,\"sender\":\"2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3\",\"seq\":4,\"session_id\":\"sess-vd-reject-0001\",\"verify_pass_ms\":35}",
+    "canonical_json_sha256": "19c77bd40d13fa74d2b64ffdf45e4f4cf71c67d7f07a0cd0ce6cad6ad41b3f3d",
+    "fields": {
+      "accepted_prefix_len": 3,
+      "correction": 777,
+      "divergence_point": 3,
+      "new_prefix_hash": "1e94d979f66b4db9caf2d323a254fe5a29296b32d5a46ecfc692de2648cb9e56",
+      "nonce_echo": "1a2b3c4d5e6f7081",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 1,
+      "sender": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+      "seq": 4,
+      "session_id": "sess-vd-reject-0001",
+      "signature": "zzLpOY6o7nhmlWpbgbVt3sQoCIuo3q8A/ssKodxd75oYOajSlWNuNTzhDUYrprYxjoozgJ5a6MdKlTbZDG0NDA==",
+      "verify_pass_ms": 35
+    },
+    "signature": "zzLpOY6o7nhmlWpbgbVt3sQoCIuo3q8A/ssKodxd75oYOajSlWNuNTzhDUYrprYxjoozgJ5a6MdKlTbZDG0NDA=="
+  },
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "verify_at": "2026-10-12T00:00:00Z"
+}

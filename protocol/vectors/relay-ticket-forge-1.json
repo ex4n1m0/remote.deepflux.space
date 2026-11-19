@@ -1,0 +1,88 @@
+{
+  "name": "relay-ticket-forge-1",
+  "description": "ADR-038 §6.2 forge/refusal corpus: one row per hostile presentation, each with the expected status+reason under the frozen first-failure-wins ORDER (signature precedes binding; syntax precedes signature). Rows re-derive in-code by the consuming tests (mutate the relay-ticket-1 fixture); wire_tokens are provided for the rows where a concrete byte form is meaningful (base64url mutations are deterministic).",
+  "adr": "ADR-038 §3.4 / §6.2",
+  "signing_seed_hex": "3838383838383838383838383838383838383838383838383838383838383838",
+  "signing_public_key_hex": "76d81b33ba721df89b8e0b0ef26c34eb72e978951044798cd608a4f6dbf2e6d6",
+  "base_ticket": "relay-ticket-1.json",
+  "authenticated_remote_peer_id": "12D3KooWNm5t4HypYRmiC5v9CD2TnPKrJh2J8TcfJ2gPhA7L8TiZ",
+  "derived_installation_id": "65XbepYwFHBHzMqcTG1uqwN2Qo9xay8jtPSdNwcUm1Sq",
+  "binding_note": "REAL DERIVED PAIR (regenerated 2026-10-15, closing drift ruling (b)): installation_id = base58(SHA-256(pubkey)) re-derives from the authenticated PeerId's embedded key using peer_identity_seed_hex below (any ed25519-from-seed + base58 implementation reproduces it), so checks 7-8 are replayable cross-language — the TS consumer re-derives from the same seed with the tracker's own crypto primitives.",
+  "rows": [
+    {
+      "id": "bad_signature",
+      "mutation": "flip one base64url char of the signature segment",
+      "expected_status": "permission_denied(202)",
+      "expected_reason": "bad_signature",
+      "order_note": "signature precedes binding checks even when the ticket is also otherwise wrong"
+    },
+    {
+      "id": "wrong_key",
+      "mutation": "re-sign the canonical payload with a DIFFERENT ed25519 key (not the pinned one)",
+      "expected_status": "permission_denied(202)",
+      "expected_reason": "bad_signature"
+    },
+    {
+      "id": "peer_mismatch",
+      "mutation": "valid ticket naming peer B, presented on peer A's connection (authenticated_remote_peer_id stays the base ticket's)",
+      "expected_status": "permission_denied(202)",
+      "expected_reason": "peer_mismatch"
+    },
+    {
+      "id": "installation_mismatch",
+      "mutation": "valid ticket whose installation_id does not re-derive from the authenticated PeerId's embedded key (derived_installation_id stays the base)",
+      "expected_status": "permission_denied(202)",
+      "expected_reason": "installation_mismatch"
+    },
+    {
+      "id": "unknown_field",
+      "mutation": "canonical JSON gains an extra field (extra_key) — strict deny_unknown_fields parse",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "missing_field",
+      "mutation": "canonical JSON drops nonce",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "non_canonical_segment",
+      "mutation": "payload is non-canonical JSON encoding (field order swapped) of an otherwise-valid ticket",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "oversized_ticket",
+      "mutation": "serialized ticket longer than 1024 bytes (padding nonce in a syntactically-valid way is impossible within the field set — the corpus uses a >1024 B payload blob)",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "wrong_ttl_delta",
+      "mutation": "expires_at - issued_at == 601 s (valid signature over the mutated canonical form)",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "nonce_wrong_charset",
+      "mutation": "nonce contains uppercase hex / is 31 chars",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "bad_timestamp",
+      "mutation": "issued_at is not RFC-3339 (plain date)",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    },
+    {
+      "id": "single_segment",
+      "mutation": "wire form lacks the '.' separator",
+      "expected_status": "malformed_message(400)",
+      "expected_reason": "malformed"
+    }
+  ],
+  "peer_identity_seed_hex": "5151515151515151515151515151515151515151515151515151515151515151",
+  "peer_public_key_hex": "c050c5637a44fa8629fff3cccce2300cb362a63d99d95fc54145266f4332445a"
+}

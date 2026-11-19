@@ -1,0 +1,107 @@
+{
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-032 §7 fixture row 1 (plan §2.2): full acceptance, w=8. Pins the VerifyDrafts canonical-JSON bytes + sha256 (signature-omitted preimage, §1 rule 4), the signature, the VerifyDraftsResult canonical bytes + signature + sha256, accepted_prefix_len == len(window_tokens) == 8, divergence_point null PRESENT-AS-NULL, correction = bonus token, committed = window[..8] ++ [correction], the new_prefix_hash VALUE plus its byte-exact §1-rule-2 construction inputs, and the nonce_echo. Request seq 12 / result seq 4 are the VERIFIER-own-counter illustration of §2 RC-7 made normative bytes.",
+  "engine": {
+    "backend": "cpu",
+    "batch_verify": true,
+    "batch_window_max": 32
+  },
+  "expected": {
+    "accepted_prefix_len": 8,
+    "committed": [
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      999
+    ],
+    "correction": 999,
+    "divergence_point": null,
+    "new_prefix_hash": "488f0be8a4d52a1b789ab54f4ca2a5936af10029bc41fac182dbe73ca79283f5",
+    "new_prefix_hash_construction": {
+      "committed_token_ids": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        999
+      ],
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rule": "hex(sha256(raw32(parent_hex) || token ids as little-endian u32 each))"
+    },
+    "outcome": "accepted"
+  },
+  "generation_params": {
+    "canonical_json": "{\"seed\":null,\"temperature\":1,\"top_k\":40,\"top_p\":1}",
+    "seed": null,
+    "sha256_hex": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+    "temperature": 1,
+    "top_k": 40,
+    "top_p": 1
+  },
+  "name": "verifydrafts-1-accept",
+  "request": {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"0a1b2c3d4e5f6071\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":3,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":12,\"session_id\":\"sess-vd-accept-0001\",\"window_tokens\":[101,102,103,104,105,106,107,108]}",
+    "canonical_json_sha256": "c026aa2fe8beea8c1fa654c4892f6f1ab0f15be91a0cf6ba730084b28015319e",
+    "fields": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "0a1b2c3d4e5f6071",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 3,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 12,
+      "session_id": "sess-vd-accept-0001",
+      "signature": "4IshJEZuLq5kGx2MluKB4q+bJ/yZkz+FKpdb8qeuUP74qKyFZsP0VuQxRYL0wGoj2oiGVDrAmhfAkQjuUvtHAg==",
+      "window_tokens": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108
+      ]
+    },
+    "signature": "4IshJEZuLq5kGx2MluKB4q+bJ/yZkz+FKpdb8qeuUP74qKyFZsP0VuQxRYL0wGoj2oiGVDrAmhfAkQjuUvtHAg=="
+  },
+  "result": {
+    "canonical_json": "{\"accepted_prefix_len\":8,\"correction\":999,\"divergence_point\":null,\"new_prefix_hash\":\"488f0be8a4d52a1b789ab54f4ca2a5936af10029bc41fac182dbe73ca79283f5\",\"nonce_echo\":\"0a1b2c3d4e5f6071\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":3,\"sender\":\"2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3\",\"seq\":4,\"session_id\":\"sess-vd-accept-0001\",\"verify_pass_ms\":35}",
+    "canonical_json_sha256": "3de200896e486305d26d5286cf5276a6eeccd1ce68e321aa78cbfe7c07665955",
+    "fields": {
+      "accepted_prefix_len": 8,
+      "correction": 999,
+      "divergence_point": null,
+      "new_prefix_hash": "488f0be8a4d52a1b789ab54f4ca2a5936af10029bc41fac182dbe73ca79283f5",
+      "nonce_echo": "0a1b2c3d4e5f6071",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 3,
+      "sender": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+      "seq": 4,
+      "session_id": "sess-vd-accept-0001",
+      "signature": "f/2WqnfI4Zwj/PiiD2xPVI3K8I8t4BF4Fhed6SK1I814YcJ5OIuGCtf75iM0brsGHTn3veTYrC2ur08fagsxBQ==",
+      "verify_pass_ms": 35
+    },
+    "signature": "f/2WqnfI4Zwj/PiiD2xPVI3K8I8t4BF4Fhed6SK1I814YcJ5OIuGCtf75iM0brsGHTn3veTYrC2ur08fagsxBQ=="
+  },
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "verify_at": "2026-10-12T00:00:00Z"
+}
