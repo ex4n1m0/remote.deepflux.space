@@ -165,6 +165,9 @@ export function MachinesRail({
   thisName,
   hostState,
   sharing,
+  swarmChip,
+  swarmJoinable,
+  onJoinSwarm,
   onPick,
   onConnect,
   onShare,
@@ -176,6 +179,12 @@ export function MachinesRail({
   thisName: string | null;
   hostState: HostStateName;
   sharing: boolean;
+  /** ADR-013: "swarm · <id first 8>…" when this machine is joined to the
+   * account swarm (null otherwise). */
+  swarmChip: string | null;
+  /** ADR-013: whether to offer "Join a swarm" under the connect box. */
+  swarmJoinable: boolean;
+  onJoinSwarm: () => void;
   onPick: (code: string) => void;
   onConnect: (code: string, agent: boolean) => void;
   onShare: () => void;
@@ -254,6 +263,16 @@ export function MachinesRail({
         ) : (
           <p className="hint">the code is on the other machine's "This machine" card</p>
         )}
+        {swarmJoinable ? (
+          <button
+            type="button"
+            className="ghost small rail-join-swarm"
+            onClick={onJoinSwarm}
+            title="Bind this machine to your ModelSwarm account — approve an 8-character code on the website"
+          >
+            Join a swarm
+          </button>
+        ) : null}
       </div>
 
       <input
@@ -305,6 +324,11 @@ export function MachinesRail({
         </div>
         {thisName ? <strong>{thisName}</strong> : null}{" "}
         <span className="chip chip-neutral">{host.status}</span>
+        {swarmChip ? (
+          <span className="chip chip-neutral swarm-chip" title="This machine is joined to your ModelSwarm account">
+            {swarmChip}
+          </span>
+        ) : null}
         <div className="row">
           <code className="code">{thisCode}</code>
           <CopyButton value={thisCode} label="code" />

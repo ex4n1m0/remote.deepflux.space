@@ -11,6 +11,7 @@ import type {
   MonitorInfo,
   PairingInfo,
   Settings,
+  SwarmState,
 } from "./types";
 
 export const EVENT = {
@@ -41,6 +42,9 @@ export const CHAT_EVENT = "engine://chat";
 
 /** Automatic updates (ADR-008): updater → UI event. */
 export const UPDATE_EVENT = "update://state";
+
+/** Swarm enrollment (ADR-013): membership state push. */
+export const SWARM_EVENT = "swarm://state";
 
 export interface UpdateState {
   status:
@@ -154,6 +158,14 @@ export const api = {
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
     invoke("chat_send", { args: { code, text, agent } }),
   chatHistory: (code: string): Promise<ChatLine[]> => invoke("chat_history", { code }),
+
+  // Swarm enrollment (ADR-013): join shows the userCode via the state
+  // event; cancel abandons the poll; leave drops the LOCAL membership
+  // (the website dashboard's revoke stays authoritative).
+  swarmStatus: (): Promise<SwarmState> => invoke("swarm_status"),
+  swarmJoin: (): Promise<void> => invoke("swarm_join"),
+  swarmCancelJoin: (): Promise<void> => invoke("swarm_cancel_join"),
+  swarmLeave: (): Promise<void> => invoke("swarm_leave"),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

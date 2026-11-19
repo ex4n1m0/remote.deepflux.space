@@ -2,14 +2,21 @@
  * place, opened from the Config menu. Reuses the existing sections
  * (SettingsPanel, TrustedMachinesSection) and adds the Assistant section
  * that finally exposes the provider base URL and model (they lived in
- * settings with no UI before). Esc and the backdrop close it. */
+ * settings with no UI before). ADR-013 adds the Swarm section (account
+ * membership). Esc and the backdrop close it. */
 import { useEffect, useRef, useState } from "react";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import { SettingsPanel } from "./IdentityCard";
 import { TrustedMachinesSection } from "./TrustedMachines";
-import type { Settings } from "../types";
+import {
+  SWARM_DASHBOARD_URL,
+  sessionExpiryText,
+  swarmJoinable,
+  swarmStatusLine,
+} from "../state/swarm";
+import type { Settings, SwarmState } from "../types";
 
-export type ConfigSection = "settings" | "trusted" | "assistant";
+export type ConfigSection = "settings" | "trusted" | "assistant" | "swarm";
 
 export interface ConfigDialogProps {
   open: boolean;
@@ -19,6 +26,10 @@ export interface ConfigDialogProps {
   version: string | null;
   assistant: AssistantBinding;
   onRevokedTrusted: () => void;
+  /** ADR-013: swarm membership state + the join/leave verbs. */
+  swarm: SwarmState | null;
+  onJoinSwarm: () => void;
+  onLeaveSwarm: () => void;
   onClose: () => void;
 }
 
@@ -26,6 +37,7 @@ const SECTION_IDS: Array<{ id: ConfigSection; label: string }> = [
   { id: "settings", label: "Settings" },
   { id: "trusted", label: "Trusted machines" },
   { id: "assistant", label: "Assistant" },
+  { id: "swarm", label: "Swarm" },
 ];
 
 export function ConfigDialog({
@@ -36,6 +48,9 @@ export function ConfigDialog({
   version,
   assistant,
   onRevokedTrusted,
+  swarm,
+  onJoinSwarm,
+  onLeaveSwarm,
   onClose,
 }: ConfigDialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +132,9 @@ export function ConfigDialog({
           </section>
           <section id={sectionAnchor("assistant")}>
             <AssistantSection assistant={assistant} />
+          </section>
+          <section id={sectionAnchor("swarm")}>
+            <SwarmSection state={swarm} onJoin={onJoinSwarm} onLeave={onLeaveSwarm} />
           </section>
         </div>
       </div>
@@ -232,4 +250,68 @@ export function AssistantSection({ assistant }: { assistant: AssistantBinding })
       </div>
     </div>
   );
+}
+
+/** Swarm membership (ADR-013): one status line, the join/leave verbs,
+ * and the dashboard link. Join opens the modal that carries the 8-char
+ * pairing code (the Config dialog itself closes — App's onJoinSwarm).
+ * Leave is LOCAL only: the website dashboard's revoke stays
+ * authoritative for the account binding. */
+export function SwarmSection({
+  state,
+  onJoin,
+  onLeave,
+}: {
+  state: SwarmState | null;
+  onJoin: () => void;
+  onLeave: () => void;
+}) {
+  const joined = state?.status === "joined" ? state : null;
+  const needsRejoin = state?.status === "needs_rejoin";
+  return (
+    <div className="settings-section">
+      <h3>Swarm</h3>
+      <p className="muted">{swarmStatusLine(state)}</p>
+      {joined ? (
+        <p className="muted small">Session valid until {sessionExpiryText(joined.session_expires_at_ms)}.</p>
+      ) : null}
+      {needsRejoin ? (
+        <div className="banner banner-info" role="status">
+          <p>This machine needs to rejoin the swarm — start the join again below.</p>
+        </div>
+      ) : null}
+      <div className="row">
+        {swarmJoinable(state) ? (
+          <button type="button" className="primary" onClick={onJoin}>
+            Join a swarm
+          </button>
+        ) : null}
+        {joined ? (
+          <button type="button" className="danger" onClick={onLeave}>
+            Leave this swarm
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => void openDashboard()}
+          title="Open the ModelSwarm website's account page in your browser"
+        >
+          Open the dashboard
+        </button>
+      </div>
+      <p className="hint">
+        Joining binds this machine to your ModelSwarm account — you approve
+        it with a short code on the website. Leaving here only removes the
+        local membership; removing the machine for good happens on the
+        dashboard.
+      </p>
+    </div>
+  );
+}
+
+async function openDashboard(): Promise<void> {
+  // MenuBar precedent: no opener plugin — the site opens in the default
+  // browser via target=_blank.
+  window.open(SWARM_DASHBOARD_URL, "_blank", "noopener");
 }

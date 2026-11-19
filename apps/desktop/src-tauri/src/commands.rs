@@ -27,6 +27,9 @@ pub mod events {
     pub const INFO: &str = "engine://info";
     pub const CHAT: &str = "engine://chat";
     pub const PAIRING: &str = "engine://pairing";
+    /// ADR-013 swarm enrollment state (app-layer, like the directory
+    /// event); payload = `swarm::SwarmState` — metadata only.
+    pub const SWARM: &str = "swarm://state";
 }
 
 pub struct AppServices {
@@ -40,6 +43,9 @@ pub struct AppServices {
     /// ADR-010 discovery list cache (sealed circle directory, decrypted
     /// rows only — latest-wins, never queue-shaped).
     pub directory: Mutex<crate::directory::DirectoryCache>,
+    /// ADR-013 swarm enrollment: membership state + the join/heartbeat
+    /// thread lifecycle (secrets stay in Rust state + credstore).
+    pub swarm: crate::swarm::SwarmService,
     /// ADR-008 automatic updates: the UI state machine plus the last
     /// fetched manifest (input for the download step).
     pub update: crate::updater::UpdateEngine,

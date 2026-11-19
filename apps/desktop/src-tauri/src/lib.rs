@@ -14,6 +14,7 @@ pub mod engine;
 pub mod ipc;
 pub mod mcp;
 pub mod store;
+pub mod swarm;
 pub mod updater;
 
 use std::sync::Mutex;
@@ -125,6 +126,7 @@ pub fn run() {
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
+                swarm: swarm::SwarmService::default(),
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
@@ -171,6 +173,10 @@ pub fn run() {
             // fresh while online.
             directory::auto_join_embedded(app.handle());
             directory::spawn_poller(app.handle().clone());
+            // ADR-013 swarm enrollment: restore a surviving tracker session
+            // (Joined + heartbeat) or surface NeedsRejoin; a no-op when this
+            // machine never joined.
+            swarm::spawn_startup(app.handle().clone());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -314,6 +320,10 @@ pub fn run() {
             commands::pairing_rename,
             commands::directory_machines,
             commands::directory_refresh,
+            swarm::swarm_status,
+            swarm::swarm_join,
+            swarm::swarm_cancel_join,
+            swarm::swarm_leave,
             commands::update_state,
             commands::update_check,
             commands::update_download,

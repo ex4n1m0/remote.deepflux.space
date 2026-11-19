@@ -4,6 +4,7 @@
  * a native OS menu) so it matches the shell's styling; no extra Tauri
  * permissions. Click-outside and Esc close; items are real buttons. */
 import { useEffect, useRef, useState } from "react";
+import type { ConfigSection } from "./ConfigDialog";
 
 export type MenuId = "file" | "config" | "help";
 
@@ -17,7 +18,7 @@ export interface MenuItemDef {
 
 export interface MenuBarProps {
   version: string | null;
-  onOpenConfig: (section: "settings" | "trusted" | "assistant") => void;
+  onOpenConfig: (section: ConfigSection) => void;
   onAbout: () => void;
   onDiagnostics: () => void;
   /** ADR-008: force an update check now (Help menu). */
@@ -96,6 +97,7 @@ export function MenuBar({
         { id: "settings", label: "Settings…", onPick: () => onOpenConfig("settings") },
         { id: "trusted", label: "Trusted machines…", onPick: () => onOpenConfig("trusted") },
         { id: "assistant", label: "Assistant…", onPick: () => onOpenConfig("assistant") },
+        { id: "swarm", label: "Swarm…", onPick: () => onOpenConfig("swarm") },
       ])}
       {menu("help", "Help", [
         {

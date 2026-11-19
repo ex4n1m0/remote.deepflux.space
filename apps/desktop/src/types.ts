@@ -244,6 +244,19 @@ export interface InfoEvent {
 
 // ---- trusted machines (ADR-009: the machine list) ----
 
+// ---- swarm enrollment (ADR-013: the tracker's device binding) ----
+
+/** Swarm membership state — mirrors the Rust `SwarmState` DTO (internally
+ * tagged, snake_case). Metadata only: the pairing `deviceCode` and the
+ * session bearer never cross IPC (Rust state + Credential Manager). */
+export type SwarmState =
+  | { status: "not_joined" }
+  | { status: "joining"; user_code: string; expires_at_ms: number }
+  | { status: "joined"; installation_id: string; session_expires_at_ms: number }
+  | { status: "needs_rejoin"; reason: string }
+  | { status: "failed"; reason: string };
+
+export type SwarmStatusName = SwarmState["status"];
 
 
 /** ADR-010: one discovered machine from the sealed circle directory

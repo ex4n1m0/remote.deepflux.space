@@ -46,6 +46,9 @@ codec-windows = { path = "../../../crates/codec-windows" }
 render-windows = { path = "../../../crates/render-windows" }
 input-windows = { path = "../../../crates/input-windows" }
 frame-surface = { path = "../../../crates/frame-surface" }
+# ADR-013 swarm enrollment: the Ed25519 installation identity + the MSP1
+# signed-envelope/timestamp helpers (wire-mirrors the tracker).
+modelswarm-identity = { path = "../../../crates/modelswarm-identity" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -85,4 +88,9 @@ aes-gcm = { workspace = true }
 # ADR-008 updater: SHA-256 verification of the staged installer against
 # the published manifest.
 sha2 = { workspace = true }
+# ADR-013 swarm enrollment: the enrollment agent (swarm.rs) pins
+# redirects(0) on the SAME schannel connector node-runtime's https_agent
+# uses — the helper cannot express a redirect policy, and the MSP1
+# Authorization header must never be re-sent cross-host by a 3xx.
+native-tls = { workspace = true }
 

@@ -1238,3 +1238,35 @@ button.link {
 .rail-row-wrap.pending .rail-name {
   color: var(--muted);
 }
+
+/* ADR-013 swarm enrollment. */
+
+/* The join modal's big pairing code — read across devices, so it is the
+ * loudest thing on the card. */
+.join-code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 34px;
+  letter-spacing: 0.3em;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px 12px 22px;
+  user-select: all;
+}
+
+.swarm-code-row {
+  align-items: center;
+}
+
+/* "This machine" card: the account-swarm membership chip sits beside the
+ * host-status chip. */
+.rail-this .swarm-chip {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* The rail's join entry under the connection-code box. */
+.rail-join-swarm {
+  width: 100%;
+}

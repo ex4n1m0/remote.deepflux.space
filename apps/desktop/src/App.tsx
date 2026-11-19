@@ -21,6 +21,7 @@ import { useEngine } from "./hooks/useEngine";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useDirectory } from "./hooks/useDirectory";
+import { useSwarm, useSwarmJoinModal } from "./hooks/useSwarm";
 import {
   MachinesRail,
   RemoveMachineButton,
@@ -30,6 +31,7 @@ import {
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
+import { SwarmJoinModal } from "./components/SwarmJoinModal";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { AgentChat } from "./components/AgentChat";
 import { Conversation } from "./components/Conversation";
@@ -40,6 +42,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { useUpdate } from "./hooks/useUpdate";
 import { api, normalizeCode } from "./ipc";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
+import { swarmChipText, swarmJoinable } from "./state/swarm";
 import mark from "./assets/mark.png";
 
 export default function App() {
@@ -53,6 +56,13 @@ export default function App() {
   // ADR-008 update flow: banner states + the user verbs. Declared with
   // the other hooks (never conditional); jsdom keeps state null.
   const update = useUpdate();
+  // ADR-013 swarm enrollment: membership state + join/cancel/leave. The
+  // join modal's open/close wiring lives in `useSwarmJoinModal` (closes
+  // on the join resolving, on any failed state — with or without ever
+  // entering "joining" — and on an invoke-level rejection).
+  const swarm = useSwarm();
+  const swarmJoin = useSwarmJoinModal(swarm);
+  const [dismissedSwarmError, setDismissedSwarmError] = useState<string | null>(null);
   // ADR-009: the trusted-host list (pairings) is the trust leg of the
   // machine list — pulled at mount, after consent decisions, and
   // whenever a pairing event lands (offer minted / acked / removed).
@@ -139,6 +149,15 @@ export default function App() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
+
+  const openSwarmJoin = () => {
+    setConfigSection(null); // the join modal replaces the Config dialog
+    swarmJoin.openJoin();
+  };
+  const swarmError =
+    swarm.state?.status === "failed" && swarm.state.reason !== dismissedSwarmError
+      ? swarm.state.reason
+      : null;
 
   // Machine list + selection. This machine's own directory row never
   // becomes a connectable contact — the pinned "This machine" card
@@ -260,6 +279,18 @@ export default function App() {
           onDismiss={() => uiDispatch({ type: "clear-error" })}
         />
       ) : null}
+      {swarmError ? (
+        <ErrorBanner
+          title="Couldn't join the swarm"
+          message={swarmError}
+          hint={null}
+          onDismiss={() =>
+            setDismissedSwarmError(
+              swarm.state?.status === "failed" ? swarm.state.reason : null,
+            )
+          }
+        />
+      ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
 
 
@@ -287,6 +318,9 @@ export default function App() {
           thisName={engine.identity?.device_name ?? null}
           hostState={ui.hostState}
           sharing={sharing}
+          swarmChip={swarmChipText(swarm.state)}
+          swarmJoinable={swarmJoinable(swarm.state)}
+          onJoinSwarm={openSwarmJoin}
           onPick={(code) => setSelectedCode(code)}
           onConnect={(code, agent) => void controlMachine(code, agent)}
           onShare={() => void share()}
@@ -455,8 +489,15 @@ export default function App() {
           version={appVersion}
           assistant={assistant}
           onRevokedTrusted={() => void refreshMachines()}
+          swarm={swarm.state}
+          onJoinSwarm={openSwarmJoin}
+          onLeaveSwarm={() => swarm.leave()}
           onClose={() => setConfigSection(null)}
         />
+      ) : null}
+
+      {swarmJoin.open ? (
+        <SwarmJoinModal state={swarm.state} onCancel={swarmJoin.cancel} />
       ) : null}
 
       {aboutOpen ? (

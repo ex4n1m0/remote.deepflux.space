@@ -5329,6 +5329,8 @@ dependencies = [
  "frame-surface",
  "getrandom 0.3.3",
  "input-windows",
+ "modelswarm-identity",
+ "native-tls",
  "node-runtime",
  "protocol",
  "render-windows",
