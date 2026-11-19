@@ -152,6 +152,7 @@ impl NodeObserver for Recorder {
         _pairing_proof_hex: Option<&str>,
         _requester_name: Option<&str>,
         _message_id: &str,
+        _account_proof: Option<&protocol::signaling::AccountProof>,
     ) {
         self.log
             .lock()
@@ -275,7 +276,7 @@ fn two_nodes_connect_through_the_real_service() {
     // 2. Controller calls the host.
     eprintln!("[t] +{:?} Online", t0.elapsed());
     ctrl.node
-        .controller_connect(&host_device, None, None, &mut NoObserver);
+        .controller_connect(&host_device, None, None, None, &mut NoObserver);
     wait_for("consent prompt", deadline, || {
         host.pump();
         ctrl.pump();

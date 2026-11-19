@@ -20,6 +20,8 @@ vi.mock("../ipc", () => ({
     swarmStatus: vi.fn(),
     swarmJoin: vi.fn(async () => {}),
     swarmCancelJoin: vi.fn(async () => {}),
+    swarmClaimAnswer: vi.fn(async () => {}),
+    swarmRekey: vi.fn(async () => "NewId1111111111111111111111111111111111"),
     swarmLeave: vi.fn(async () => {}),
     pairingsList: vi.fn(),
     pairingRemove: vi.fn(async () => {}),
@@ -46,6 +48,16 @@ const joined: SwarmState = {
 
 afterEach(cleanup);
 
+const binding = (state: SwarmState | null, join?: () => Promise<void>): SwarmBinding => ({
+  state,
+  join: join ?? (vi.fn(async () => {}) as unknown as () => Promise<void>),
+  cancelJoin: vi.fn(),
+  leave: vi.fn(),
+  claimAnswer: vi.fn(),
+  rekey: vi.fn(async () => "NewId"),
+});
+
+
 describe("SwarmJoinModal", () => {
   const joining: SwarmState = {
     status: "joining",
@@ -54,7 +66,7 @@ describe("SwarmJoinModal", () => {
   };
 
   it("shows the big userCode, the countdown, and the dashboard verb", () => {
-    render(<SwarmJoinModal state={joining} onCancel={() => {}} />);
+    render(<SwarmJoinModal state={joining} onCancel={() => {}} onClaimAnswer={() => {}} />);
     expect(screen.getByText("AB2CDEFG")).toBeTruthy();
     expect(screen.getByRole("code")).toBeTruthy();
     // Countdown rides the status line ("expires in 9:4x" over the tick).
@@ -66,7 +78,7 @@ describe("SwarmJoinModal", () => {
 
   it("opens the tracker dashboard in the default browser (MenuBar precedent)", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
-    render(<SwarmJoinModal state={joining} onCancel={() => {}} />);
+    render(<SwarmJoinModal state={joining} onCancel={() => {}} onClaimAnswer={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /Approve it on the website/i }));
     expect(open).toHaveBeenCalledWith(SWARM_DASHBOARD_URL, "_blank", "noopener");
     open.mockRestore();
@@ -74,15 +86,59 @@ describe("SwarmJoinModal", () => {
 
   it("cancel fires the callback", () => {
     const onCancel = vi.fn();
-    render(<SwarmJoinModal state={joining} onCancel={onCancel} />);
+    render(<SwarmJoinModal state={joining} onCancel={onCancel} onClaimAnswer={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it("still renders (placeholder code) before the joining state lands", () => {
-    render(<SwarmJoinModal state={null} onCancel={() => {}} />);
+    render(<SwarmJoinModal state={null} onCancel={() => {}} onClaimAnswer={() => {}} />);
     expect(screen.getByText("…")).toBeTruthy();
     expect(screen.getByText(/Starting…/i)).toBeTruthy();
+  });
+});
+
+describe("SwarmJoinModal claim handshake (gate (a))", () => {
+  const claim: SwarmState = {
+    status: "confirm_claim",
+    claimed_by: "i***@example.com",
+    expires_at_ms: Date.now() + 5 * 60 * 1000,
+  };
+
+  it("names the masked claimer and fires Allow/Deny", () => {
+    const onClaimAnswer = vi.fn();
+    render(<SwarmJoinModal state={claim} onCancel={() => {}} onClaimAnswer={onClaimAnswer} />);
+    expect(screen.getByText(/Claimed by account i\*\*\*@example\.com/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Allow — add this machine/i }));
+    expect(onClaimAnswer).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(onClaimAnswer).toHaveBeenCalledWith(false);
+    // The pairing-code view is replaced (no code shown during a claim).
+    expect(screen.queryByText("AB2CDEFG")).toBeNull();
+  });
+
+  it("explain why denying is safe", () => {
+    render(<SwarmJoinModal state={claim} onCancel={() => {}} onClaimAnswer={() => {}} />);
+    expect(screen.getByText(/Denying returns the pairing code to pending/i)).toBeTruthy();
+  });
+});
+
+describe("shouldCloseJoinModal over the claim handshake", () => {
+  it("stays open through joining → confirm_claim → joining (deny); closes on resolve", async () => {
+    const { result, rerender } = renderHook((p: SwarmBinding) => useSwarmJoinModal(p), {
+      initialProps: binding({ status: "not_joined" }),
+    });
+    act(() => result.current.openJoin());
+    rerender(binding({ status: "joining", user_code: "AB2CDEFG", expires_at_ms: 1 }));
+    expect(result.current.open).toBe(true);
+    rerender(
+      binding({ status: "confirm_claim", claimed_by: "i***@example.com", expires_at_ms: 1 }),
+    );
+    expect(result.current.open).toBe(true);
+    rerender(binding({ status: "joining", user_code: "AB2CDEFG", expires_at_ms: 1 }));
+    expect(result.current.open).toBe(true);
+    rerender(binding(joined));
+    await waitFor(() => expect(result.current.open).toBe(false));
   });
 });
 
@@ -131,7 +187,9 @@ describe("MachinesRail swarm entry + chip (ADR-013)", () => {
 describe("SwarmSection (Config → Swarm)", () => {
   it("joined: status line names the installation, Leave + dashboard verbs", () => {
     const onLeave = vi.fn();
-    render(<SwarmSection state={joined} onJoin={() => {}} onLeave={onLeave} />);
+    render(
+      <SwarmSection state={joined} onJoin={() => {}} onLeave={onLeave} onRekey={vi.fn(async () => "NewId")} />,
+    );
     expect(screen.getByText(/Joined as 9ZkdqFPe/i)).toBeTruthy();
     expect(screen.getByText(/Session valid until/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Join a swarm/i })).toBeNull();
@@ -142,7 +200,9 @@ describe("SwarmSection (Config → Swarm)", () => {
 
   it("not joined: the Join verb fires and there is no Leave", () => {
     const onJoin = vi.fn();
-    render(<SwarmSection state={{ status: "not_joined" }} onJoin={onJoin} onLeave={() => {}} />);
+    render(
+      <SwarmSection state={{ status: "not_joined" }} onJoin={onJoin} onLeave={() => {}} onRekey={vi.fn(async () => "NewId")} />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /Join a swarm/i }));
     expect(onJoin).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /Leave this swarm/i })).toBeNull();
@@ -155,6 +215,7 @@ describe("SwarmSection (Config → Swarm)", () => {
         state={{ status: "needs_rejoin", reason: "removed on the website" }}
         onJoin={onJoin}
         onLeave={() => {}}
+        onRekey={vi.fn(async () => "NewId")}
       />,
     );
     expect(screen.getByText(/removed on the website/i)).toBeTruthy();
@@ -169,24 +230,21 @@ describe("SwarmSection (Config → Swarm)", () => {
         state={{ status: "failed", reason: "swarm enroll: HTTP 502" }}
         onJoin={() => {}}
         onLeave={() => {}}
+        onRekey={vi.fn(async () => "NewId")}
       />,
     );
     expect(screen.getByText(/swarm enroll: HTTP 502/i)).toBeTruthy();
   });
 
   it("documents that leaving is local-only (dashboard revoke is authoritative)", () => {
-    render(<SwarmSection state={joined} onJoin={() => {}} onLeave={() => {}} />);
+    render(
+      <SwarmSection state={joined} onJoin={() => {}} onLeave={() => {}} onRekey={vi.fn(async () => "NewId")} />,
+    );
     expect(screen.getByText(/removing the machine for good happens on the\s+dashboard/i)).toBeTruthy();
   });
 });
 
 describe("useSwarmJoinModal", () => {
-  const binding = (state: SwarmState | null, join?: () => Promise<void>): SwarmBinding => ({
-    state,
-    join: join ?? (vi.fn(async () => {}) as unknown as () => Promise<void>),
-    cancelJoin: vi.fn(),
-    leave: vi.fn(),
-  });
 
   afterEach(() => {
     vi.mocked(api.swarmJoin).mockReset();
@@ -231,7 +289,14 @@ describe("useSwarmJoinModal", () => {
   it("cancel closes the modal and abandons the join", () => {
     const cancelJoin = vi.fn();
     const { result } = renderHook(() =>
-      useSwarmJoinModal({ state: null, join: vi.fn(async () => {}), cancelJoin, leave: vi.fn() }),
+      useSwarmJoinModal({
+        state: null,
+        join: vi.fn(async () => {}),
+        cancelJoin,
+        leave: vi.fn(),
+        claimAnswer: vi.fn(),
+        rekey: vi.fn(async () => "NewId"),
+      }),
     );
     act(() => result.current.openJoin());
     act(() => result.current.cancel());
@@ -262,5 +327,32 @@ describe("useSwarm (startup-race cover)", () => {
       await Promise.resolve();
     });
     expect(result.current.state).toBeNull();
+  });
+});
+
+describe("SwarmSection re-key (gate (d))", () => {
+  it("arms with a warning, then rekeys and reports the new installation", async () => {
+    const onRekey = vi.fn(async () => "NewIdentity11111111111111111111111111");
+    render(
+      <SwarmSection state={joined} onJoin={() => {}} onLeave={() => {}} onRekey={onRekey} />,
+    );
+    // Hidden until armed; arming shows the destructive-warning banner.
+    expect(screen.queryByRole("button", { name: /Yes, reset the identity/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Reset this machine's identity/i }));
+    expect(screen.getByText(/suspected stolen/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Yes, reset the identity/i }));
+    expect(onRekey).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.getByText(/New device identity minted \(NewIdent/)).toBeTruthy(),
+    );
+  });
+
+  it("arming can be walked back", () => {
+    render(
+      <SwarmSection state={joined} onJoin={() => {}} onLeave={() => {}} onRekey={vi.fn(async () => "NewId")} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Reset this machine's identity/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(screen.queryByRole("button", { name: /Yes, reset the identity/i })).toBeNull();
   });
 });

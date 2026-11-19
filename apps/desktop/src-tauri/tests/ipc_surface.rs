@@ -140,6 +140,14 @@ fn all_events() -> Vec<EngineEvent> {
             session_id: "s1".into(),
             ai_session: true,
             message_id: "m1".into(),
+            // ADR-013 P2: populated adversarially — the walker must see the
+            // nested proof keys (all public material, no secrets).
+            account_proof: Some(protocol::signaling::AccountProof {
+                installation_id: "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2".into(),
+                pub_key_b58: "4YkZS6qXe7cGz3JvN8mQ5wR1tL0pHbA2sD9uKfE7xM3c".into(),
+                signature_hex: "ab".repeat(64),
+                ts_ms: 1_695_000_000_000,
+            }),
         },
         EngineEvent::ConsentAccepted {
             controller_device_id: "ctrl-1".into(),

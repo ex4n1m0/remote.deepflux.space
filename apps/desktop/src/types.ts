@@ -208,6 +208,12 @@ export interface ConsentEvent {
   /** ADR-006: the requester's machine display name from the wire, when known —
    * advisory only; the device code beside it is the identity. */
   requester_name: string | null;
+  /** ADR-013 P2: present when a VERIFIED account-scope proof rode the
+   * request — the controller cryptographically proved it is this
+   * installation of the machine's own website account. The prompt renders
+   * the account variant; "Always allow" keys to the installation id.
+   * Null/absent on every other path (and on pre-P2 payloads). */
+  account?: { installation_id: string; label: string | null } | null;
 }
 
 export interface SessionEstablishedEvent {
@@ -252,6 +258,7 @@ export interface InfoEvent {
 export type SwarmState =
   | { status: "not_joined" }
   | { status: "joining"; user_code: string; expires_at_ms: number }
+  | { status: "confirm_claim"; claimed_by: string; expires_at_ms: number }
   | { status: "joined"; installation_id: string; session_expires_at_ms: number }
   | { status: "needs_rejoin"; reason: string }
   | { status: "failed"; reason: string };
@@ -279,3 +286,20 @@ export interface PairingInfo {
    * null on pre-0.10 rows and until the first session supplies it). */
   name: string | null;
 }
+
+/** ADR-013 P2: one machine of the website account, as the heartbeat
+ * thread's tracker poll reports it. `signaling_device_id` is the connect
+ * key (null = online-but-not-controllable); `is_self` keeps this machine's
+ * own row out of the rail's list. */
+export interface AccountMachine {
+  installation_id: string;
+  label: string | null;
+  last_seen_at_ms: number | null;
+  signaling_device_id: string | null;
+  is_self: boolean;
+}
+
+/** Online window for the account directory's last-seen (mirrors the
+ * website dashboard's Seen column: the heartbeat cadence is 60 s, so
+ * anything older than two ticks is offline). */
+export const ACCOUNT_ONLINE_WINDOW_MS = 120_000;

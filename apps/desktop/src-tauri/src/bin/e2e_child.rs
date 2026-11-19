@@ -390,6 +390,7 @@ fn run_controller(
             pairing_secret: None,
             requester_name: None,
             agent: false,
+            account_prover: None,
         })
         .expect("connect");
     // Connected.
@@ -608,6 +609,7 @@ fn run_controller_expect_connect_failure(
             pairing_secret: None,
             requester_name: None,
             agent: false,
+            account_prover: None,
         })
         .expect("connect");
     let mut ended = None;

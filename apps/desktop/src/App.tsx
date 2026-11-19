@@ -12,20 +12,24 @@
  * configurable lives in the top menu bar (File / Config / Help).
  *
  * 0.11.0 (ADR-010): the discovery list is back — machines running the
- * app appear in the rail on their own (sealed circle directory), merged
- * one-row-per-machine with the trusted list; pairing ("Always allow"
- * once) stays the only trust. */
+ * app appear in the rail on their own, merged one-row-per-machine with
+ * the trusted list; pairing ("Always allow" once) stays the only trust.
+ *
+ * P2 (ADR-013): the discovery source is the ACCOUNT directory — the
+ * website account's machines (account-proof connect, consent once per
+ * installation). The sealed circle directory is retired from the rail;
+ * sealed machine-chat and pairings stay. */
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
-import { useDirectory } from "./hooks/useDirectory";
+import { useAccountDirectory } from "./hooks/useAccountDirectory";
 import { useSwarm, useSwarmJoinModal } from "./hooks/useSwarm";
 import {
   MachinesRail,
   RemoveMachineButton,
-  excludeSelf,
+  excludeSelfAccount,
   unifiedMachines,
 } from "./components/MachinesRail";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
@@ -49,10 +53,9 @@ export default function App() {
   const engine = useEngine();
   const [ui, uiDispatch] = engine.ui;
   const assistant = useAssistant();
-  // ADR-010: the discovery list (decrypted circle directory) — pulled at
-  // mount, pushed by the 30 s poller.
-  const directory = useDirectory();
-  const [directoryUi] = directory.ui;
+  // ADR-013 P2: the account directory (the website account's machines) —
+  // pulled at mount, pushed by the swarm heartbeat thread's 30 s poll.
+  const accountDirectory = useAccountDirectory();
   // ADR-008 update flow: banner states + the user verbs. Declared with
   // the other hooks (never conditional); jsdom keeps state null.
   const update = useUpdate();
@@ -147,7 +150,6 @@ export default function App() {
     if (update.state?.status !== "none") return;
     const timer = setTimeout(() => update.dismiss(), 8_000);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
 
   const openSwarmJoin = () => {
@@ -159,18 +161,21 @@ export default function App() {
       ? swarm.state.reason
       : null;
 
-  // Machine list + selection. This machine's own directory row never
+  // Machine list + selection. This machine's own account row never
   // becomes a connectable contact — the pinned "This machine" card
   // already represents self. One row per machine: the merge is keyed by
-  // device code (a paired machine never duplicates its discovered row).
-  const directoryRows = directoryUi.loaded
-    ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
+  // device code (a paired machine never duplicates its account row).
+  const accountRows = accountDirectory.loaded
+    ? excludeSelfAccount(
+        accountDirectory.machines,
+        swarm.state?.status === "joined" ? swarm.state.installation_id : null,
+      )
     : null;
   const machines = unifiedMachines(
     pairings ?? [],
     ui.peerOnline,
     selectedCode,
-    directoryRows,
+    accountRows,
   );
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
   // Landing with machines but no selection: open the first one — the
@@ -492,12 +497,17 @@ export default function App() {
           swarm={swarm.state}
           onJoinSwarm={openSwarmJoin}
           onLeaveSwarm={() => swarm.leave()}
+          onRekeySwarm={swarm.rekey}
           onClose={() => setConfigSection(null)}
         />
       ) : null}
 
       {swarmJoin.open ? (
-        <SwarmJoinModal state={swarm.state} onCancel={swarmJoin.cancel} />
+        <SwarmJoinModal
+          state={swarm.state}
+          onCancel={swarmJoin.cancel}
+          onClaimAnswer={swarm.claimAnswer}
+        />
       ) : null}
 
       {aboutOpen ? (

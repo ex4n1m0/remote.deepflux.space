@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   MachinesRail,
   RemoveMachineButton,
-  excludeSelf,
+  excludeSelfAccount,
   filterMachines,
   machinesFromPairings,
   unifiedMachines,
@@ -56,7 +56,7 @@ describe("machinesFromPairings (the trusted-host list, ADR-009)", () => {
   });
 });
 
-describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)", () => {
+describe("unifiedMachines (ADR-013 P2: trusted + account directory, one row per machine)", () => {
   const pairing = (over: Partial<PairingInfo>): PairingInfo => ({
     code: "abcdef0123456789",
     created_ms: 1,
@@ -65,14 +65,18 @@ describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)",
     name: null,
     ...over,
   });
-  const dir = (
-    device: string,
-    over: Partial<import("../types").DirectoryMachine> = {},
-  ): import("../types").DirectoryMachine => ({
-    device,
-    name: device,
-    online: true,
-    refreshed_ms: 1,
+  const NOW = 1_800_000_000_000;
+  // Account rows: online = lastSeenAt within the 120 s window (the
+  // heartbeat cadence), name = the account label.
+  const acct = (
+    installationId: string,
+    signaling: string | null,
+    over: Partial<import("../types").AccountMachine> = {},
+  ): import("../types").AccountMachine => ({
+    installation_id: installationId,
+    label: null,
+    last_seen_at_ms: NOW - 30_000,
+    signaling_device_id: signaling,
     is_self: false,
     ...over,
   });
@@ -82,21 +86,23 @@ describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)",
       [pairing({ code: "aaaaaaaaaaaaaaaa", name: "MOMS-PC" })],
       {},
       null,
-      [dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" })],
+      [acct("inst-aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa", { label: "Mom's PC" })],
+      NOW,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].code).toBe("aaaaaaaaaaaaaaaa");
     expect(rows[0].trusted).toBe(true);
-    // The paired (wire-cached) name wins over the directory nickname.
+    // The paired (wire-cached) name wins over the account label.
     expect(rows[0].name).toBe("MOMS-PC");
   });
 
-  it("a placeholder pairing name (the bare code) adopts the discovered name", () => {
+  it("a placeholder pairing name (the bare code) adopts the account label", () => {
     const rows = unifiedMachines(
       [pairing({ code: "aaaaaaaaaaaaaaaa", name: null })],
       {},
       null,
-      [dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" })],
+      [acct("inst-aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa", { label: "Mom's PC" })],
+      NOW,
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Mom's PC");
@@ -107,29 +113,28 @@ describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)",
       [pairing({ code: "aaaaaaaaaaaaaaaa" })],
       {},
       null,
-      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+      [acct("inst-a", "aaaaaaaaaaaaaaaa", { last_seen_at_ms: NOW - 10 * 60_000 })],
+      NOW,
     );
-    expect(rows[0].online).toBe(false); // directory presence, honest
-    // A live session still wins over the directory flag.
+    expect(rows[0].online).toBe(false); // stale lastSeen, honest offline
+    // A live session still wins over the poll flag.
     const live = unifiedMachines(
       [pairing({ code: "aaaaaaaaaaaaaaaa" })],
       { aaaaaaaaaaaaaaaa: true },
       null,
-      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+      [acct("inst-a", "aaaaaaaaaaaaaaaa", { last_seen_at_ms: NOW - 10 * 60_000 })],
+      NOW,
     );
     expect(live[0].online).toBe(true);
   });
 
-  it("a stale session-scoped offline never shadows the directory's live flag", () => {
-    // Sticky-offline bug: after any session with the machine ended,
-    // peerOnline[code] stuck at `false`, and the old merge only applied
-    // the directory flag when the session value was `null` — so a trusted
-    // peer showed offline forever; only an app restart cleared it.
+  it("a stale session-scoped offline never shadows the account row's live flag", () => {
     const rows = unifiedMachines(
       [pairing({ code: "aaaaaaaaaaaaaaaa" })],
       { aaaaaaaaaaaaaaaa: false },
       null,
-      [dir("aaaaaaaaaaaaaaaa", { online: true })],
+      [acct("inst-a", "aaaaaaaaaaaaaaaa")],
+      NOW,
     );
     expect(rows[0].online).toBe(true);
     // Both honest-false paths still show false.
@@ -137,55 +142,58 @@ describe("unifiedMachines (ADR-010: trusted + discovered, one row per machine)",
       [pairing({ code: "aaaaaaaaaaaaaaaa" })],
       { aaaaaaaaaaaaaaaa: false },
       null,
-      [dir("aaaaaaaaaaaaaaaa", { online: false })],
+      [acct("inst-a", "aaaaaaaaaaaaaaaa", { last_seen_at_ms: NOW - 10 * 60_000 })],
+      NOW,
     );
     expect(both[0].online).toBe(false);
   });
 
-  it("directory-only machines appear as untrusted discovered rows", () => {
+  it("account-only machines appear as untrusted discovered rows; unlabeled ones show the short installation id", () => {
     const rows = unifiedMachines([], {}, null, [
-      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" }),
-      dir("bbbbbbbbbbbbbbbb", { name: "Office", online: false }),
-    ]);
+      acct("inst-aaaaaaaaaaaaaaaa0123456789abcdef", "aaaaaaaaaaaaaaaa", { label: "Mom's PC" }),
+      acct("inst-bbbbbbbbbbbbbbbb0123456789abcdef", "bbbbbbbbbbbbbbbb", {
+        label: null,
+        last_seen_at_ms: NOW - 10 * 60_000,
+      }),
+    ], NOW);
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.fromDirectory && !r.trusted && !r.pending)).toBe(true);
     expect(rows.find((r) => r.name === "Mom's PC")?.online).toBe(true);
-    expect(rows.find((r) => r.name === "Office")?.online).toBe(false);
+    const unlabeled = rows.find((r) => r.code === "bbbbbbbbbbbbbbbb");
+    expect(unlabeled?.name).toContain("…");
+    expect(unlabeled?.online).toBe(false);
   });
 
-  it("duplicate directory rows (same device) collapse into one row", () => {
+  it("rows without a shared signaling id stay out (online-but-not-controllable)", () => {
     const rows = unifiedMachines([], {}, null, [
-      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC" }),
-      dir("aaaaaaaaaaaaaaaa", { name: "Mom's PC (stale)" }),
-    ]);
+      acct("inst-a", "aaaaaaaaaaaaaaaa"),
+      acct("inst-b", null), // sharing off
+      acct("inst-c", null, { signaling_device_id: null }),
+    ], NOW);
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Mom's PC");
+    expect(rows[0].code).toBe("aaaaaaaaaaaaaaaa");
+  });
+
+  it("this machine's own account row never becomes a contact", () => {
+    const rows = unifiedMachines([], {}, null, [
+      acct("inst-a", "aaaaaaaaaaaaaaaa"),
+      acct("inst-self", "dddddddddddddddd", { is_self: true }),
+    ], NOW);
+    expect(rows.map((r) => r.code)).toEqual(["aaaaaaaaaaaaaaaa"]);
   });
 });
 
-describe("excludeSelf (ADR-010)", () => {
-  const dir = (
-    device: string,
-    over: Partial<import("../types").DirectoryMachine> = {},
-  ): import("../types").DirectoryMachine => ({
-    device,
-    name: device,
-    online: true,
-    refreshed_ms: 1,
-    is_self: false,
-    ...over,
-  });
-
-  it("drops this machine's own row by flag and by device id", () => {
-    const rows = excludeSelf(
+describe("excludeSelfAccount (ADR-013 P2)", () => {
+  it("drops this machine's own row by flag and by installation id", () => {
+    const rows = excludeSelfAccount(
       [
-        dir("aaaaaaaaaaaaaaaa"),
-        dir("bbbbbbbbbbbbbbbb", { is_self: true }),
-        dir("cccccccccccccccc"),
+        { installation_id: "inst-a", label: null, last_seen_at_ms: null, signaling_device_id: "aaaaaaaaaaaaaaaa", is_self: false },
+        { installation_id: "inst-self", label: null, last_seen_at_ms: null, signaling_device_id: "bbbbbbbbbbbbbbbb", is_self: true },
+        { installation_id: "inst-c", label: null, last_seen_at_ms: null, signaling_device_id: "cccccccccccccccc", is_self: false },
       ],
-      "cccccccccccccccc",
+      "inst-c",
     );
-    expect(rows.map((r) => r.device)).toEqual(["aaaaaaaaaaaaaaaa"]);
+    expect(rows.map((r) => r.installation_id)).toEqual(["inst-a"]);
   });
 });
 

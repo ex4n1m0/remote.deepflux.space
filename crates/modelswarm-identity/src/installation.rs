@@ -86,8 +86,11 @@ impl InstallationIdentity {
         self.peer_id()
     }
 
-    /// Signs an arbitrary message (used by the envelope and lease modules).
-    pub(crate) fn sign_raw(&self, message: &[u8]) -> Signature {
+    /// Signs an arbitrary message (used by the envelope and lease modules,
+    /// and — since the ADR-013 P2 merge — by the desktop app's
+    /// account-proof signer; visibility widened from `pub(crate)` for that
+    /// one consumer, worth porting upstream).
+    pub fn sign_raw(&self, message: &[u8]) -> Signature {
         self.signing_key.sign(message)
     }
 }

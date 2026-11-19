@@ -241,6 +241,7 @@ impl World {
             SignalingBody::ConnectRequest {
                 capabilities,
                 requester_name,
+                account_proof,
                 ..
             } => {
                 self.step_host(
@@ -252,6 +253,7 @@ impl World {
                         capabilities,
                         pairing_proof_hex: None,
                         requester_name,
+                        account_proof,
                     },
                 );
                 // Mirror half of the node-level collision rule (QA F2): a

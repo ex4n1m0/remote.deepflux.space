@@ -164,6 +164,7 @@ impl NodeObserver for EngineObserver {
         pairing_proof_hex: Option<&str>,
         requester_name: Option<&str>,
         message_id: &str,
+        account_proof: Option<&protocol::signaling::AccountProof>,
     ) {
         self.shared
             .set_pending_consent(Some(controller_device_id.to_owned()));
@@ -178,6 +179,7 @@ impl NodeObserver for EngineObserver {
             pairing_proof_hex: pairing_proof_hex.map(str::to_owned),
             requester_name: requester_name.map(str::to_owned),
             message_id: message_id.to_owned(),
+            account_proof: account_proof.cloned(),
         });
         self.emit(EngineEvent::PeerOnline {
             device_id: controller_device_id.to_owned(),

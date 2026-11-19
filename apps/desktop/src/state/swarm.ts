@@ -17,9 +17,13 @@ export function swarmChipText(state: SwarmState | null): string | null {
 }
 
 /** Whether the rail/config should offer "Join a swarm" — any state except
- * an in-flight join or an existing membership. */
+ * an in-flight join (code shown or claim confirmation pending) or an
+ * existing membership. */
 export function swarmJoinable(state: SwarmState | null): boolean {
-  return state === null || (state.status !== "joining" && state.status !== "joined");
+  return (
+    state === null ||
+    (state.status !== "joining" && state.status !== "confirm_claim" && state.status !== "joined")
+  );
 }
 
 /** One-line status copy for the Config → Swarm section. */
@@ -31,6 +35,8 @@ export function swarmStatusLine(state: SwarmState | null): string {
       return "This machine isn't in a swarm yet.";
     case "joining":
       return `Waiting for approval — enter ${state.user_code} on the website.`;
+    case "confirm_claim":
+      return `Account ${state.claimed_by} wants to add this machine — confirm here.`;
     case "joined":
       return `Joined as ${state.installation_id.slice(0, 8)}…`;
     case "needs_rejoin":
@@ -57,13 +63,15 @@ export function joinCountdownText(expiresAtMs: number, nowMs: number): string {
  * "joining" (the start POST itself failed) — or an open join resolving
  * (approved / expired). "Not joining" alone must NOT close: the modal
  * opens before the joining state lands, while the start call is in
- * flight. */
+ * flight. The joining ↔ confirm_claim handshake also keeps it open —
+ * the claim prompt and the code screen are the same enrollment. */
 export function shouldCloseJoinModal(
   prev: SwarmStatusName | undefined,
   status: SwarmStatusName | undefined,
 ): boolean {
   if (status === "failed") return true;
-  return prev === "joining" && status !== "joining";
+  if (prev !== "joining" && prev !== "confirm_claim") return false;
+  return status !== "joining" && status !== "confirm_claim";
 }
 
 /** The local time the 24 h session ends (Config section, joined state). */

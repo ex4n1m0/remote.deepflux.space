@@ -93,6 +93,7 @@ fn full_session_state_flow_through_the_command_layer() {
         pairing_secret: None,
         requester_name: None,
         agent: false,
+        account_prover: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -261,6 +262,7 @@ fn reject_leaves_host_online_and_controller_disconnected() {
         pairing_secret: None,
         requester_name: None,
         agent: false,
+        account_prover: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -309,6 +311,7 @@ fn graceful_shutdown_mid_session_sends_the_peer_goodbye() {
         pairing_secret: None,
         requester_name: None,
         agent: false,
+        account_prover: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -373,6 +376,7 @@ fn connect_from_idle_is_one_press() {
         pairing_secret: None,
         requester_name: None,
         agent: false,
+        account_prover: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -474,6 +478,7 @@ fn chat_message_flows_over_the_wire_without_killing_the_engine() {
         pairing_secret: None,
         requester_name: None,
         agent: false,
+        account_prover: None,
     })
     .expect("connect");
     wait_for("consent prompt", deadline, || {
@@ -546,6 +551,7 @@ fn agent_session_runs_chat_only_and_attaches_the_viewer_on_demand() {
         pairing_secret: None,
         requester_name: None,
         agent: true,
+        account_prover: None,
     })
     .expect("agent connect");
     wait_for("consent prompt", deadline, || {

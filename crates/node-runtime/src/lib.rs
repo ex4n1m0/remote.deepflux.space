@@ -37,6 +37,7 @@
 //! signaling files, never to logs or records); every queue bounded with a
 //! counted drop policy.
 
+pub mod account_proof;
 pub mod clock;
 pub mod congestion;
 pub mod directory_remote;

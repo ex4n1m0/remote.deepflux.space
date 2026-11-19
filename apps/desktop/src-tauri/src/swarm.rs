@@ -48,8 +48,15 @@ const SESSION_USER: &str = "swarm-session";
 /// self-trips it. 10 s = start + ~5 polls/min, safely under the bucket
 /// even single-instance.
 const JOIN_POLL_PERIOD: Duration = Duration::from_secs(10);
+
+/// How often the join thread checks for the user's ConfirmClaim answer
+/// ([`SwarmService::claim_answer`]) — short, so the Allow/Deny click feels
+/// immediate while staying a poll (no new sync primitives on the UI path).
+const CLAIM_ANSWER_POLL: Duration = Duration::from_millis(400);
 /// Heartbeat cadence (liveness only — the tracker needs "machine is up").
-const HEARTBEAT_PERIOD: Duration = Duration::from_secs(60);
+/// Account-directory poll cadence (the heartbeat rides every other tick —
+/// the P1 60 s liveness cadence is unchanged).
+const DIRECTORY_POLL_PERIOD: Duration = Duration::from_secs(30);
 /// Per-request timeout + user agent for all enrollment calls.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const ENROLL_UA: &str = "modelswarm-enroll";
@@ -254,6 +261,33 @@ impl SwarmIdentity {
         Ok(Self { identity: fresh })
     }
 
+    /// Gate (d) recovery: OVERWRITE the stored seed with a fresh one. The
+    /// returned identity has a new installation id — the old one is dead
+    /// locally the moment this returns (its server row must be revoked on
+    /// the dashboard). Caller must also clear the session.
+    pub fn rekey(creds: &dyn SessionStore) -> Result<Self, String> {
+        let fresh = InstallationIdentity::generate();
+        creds
+            .save(SEED_USER, &hex_lower(&fresh.to_bytes()))
+            .map_err(|e| format!("swarm rekey: {e}"))?;
+        Ok(Self { identity: fresh })
+    }
+
+    /// ADR-013 P2: the controller-side account-proof signer handed to the
+    /// engine at connect (the private key stays inside the closure — and
+    /// inside this process's Credential Manager).
+    pub fn account_prover(&self) -> node_runtime::account_proof::AccountProver {
+        let signing = self.identity.clone();
+        node_runtime::account_proof::AccountProver::new(
+            self.installation_id(),
+            self.pub_key_b58(),
+            std::sync::Arc::new(move |domain: &str| {
+                let signature = signing.sign_raw(domain.as_bytes());
+                Ok(hex_lower(&signature.to_bytes()))
+            }),
+        )
+    }
+
     /// base58(SHA-256(pubkey)) — the enrollment wire identity.
     pub fn installation_id(&self) -> String {
         self.identity.installation_id()
@@ -325,6 +359,15 @@ pub enum SwarmState {
         user_code: String,
         expires_at_ms: u64,
     },
+    /// An account claimed this machine's pairing code (gate (a) handshake):
+    /// the dashboard approve no longer binds directly — the person AT this
+    /// machine decides. `claimed_by` is the tracker's masked claimer email.
+    /// `swarm_claim_answer` resolves it (Allow → binding + enrollment;
+    /// Deny → the code returns to pending for the right owner).
+    ConfirmClaim {
+        claimed_by: String,
+        expires_at_ms: u64,
+    },
     Joined {
         installation_id: String,
         session_expires_at_ms: u64,
@@ -344,6 +387,10 @@ pub struct SwarmService {
     state: Mutex<SwarmState>,
     /// Cancels an in-flight join poller (checked every tick).
     join_cancel: AtomicBool,
+    /// The user's answer to a pending [`SwarmState::ConfirmClaim`] — set by
+    /// `swarm_claim_answer`, drained by the join thread (which owns the
+    /// deviceCode, so only it can POST the confirm). `None` = no answer yet.
+    claim_answer: Mutex<Option<bool>>,
     /// Monotonic lifecycle counter: every begin (join / startup restore /
     /// cancel / leave) bumps it, and poller/heartbeat state writes are
     /// only applied while the cycle they were spawned for is still
@@ -356,6 +403,7 @@ impl Default for SwarmService {
         Self {
             state: Mutex::new(SwarmState::NotJoined),
             join_cancel: AtomicBool::new(false),
+            claim_answer: Mutex::new(None),
             cycle: AtomicU64::new(0),
         }
     }
@@ -367,7 +415,26 @@ impl SwarmService {
     fn begin_cycle(&self) -> u64 {
         let cycle = self.cycle.fetch_add(1, Ordering::SeqCst) + 1;
         self.join_cancel.store(false, Ordering::SeqCst);
+        *self.claim_answer.lock().expect("swarm claim answer") = None;
         cycle
+    }
+
+    /// Record the user's answer to a pending claim prompt (the join thread
+    /// drains it on its next tick). True iff a ConfirmClaim is on screen.
+    fn answer_claim(&self, accept: bool) -> bool {
+        let mut guard = self.claim_answer.lock().expect("swarm claim answer");
+        match *self.state.lock().expect("swarm state") {
+            SwarmState::ConfirmClaim { .. } => {
+                *guard = Some(accept);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Take the pending claim answer, if any (join thread only).
+    fn take_claim_answer(&self) -> Option<bool> {
+        self.claim_answer.lock().expect("swarm claim answer").take()
     }
 
     /// Apply `next` only while `cycle` is still current. Returns the new
@@ -405,7 +472,7 @@ impl SwarmService {
         guard.clone()
     }
 
-    fn current(&self) -> SwarmState {
+    pub fn current(&self) -> SwarmState {
         self.state.lock().expect("swarm state").clone()
     }
 }
@@ -475,6 +542,9 @@ fn heartbeat_decision(
 enum CompleteOutcome {
     /// 200 — the dashboard approved; carry the session.
     Approved { token: String, expires_at_ms: u64 },
+    /// 200 with `{status:"claim_pending"}` — an account claimed the code;
+    /// surface the masked claimer and wait for this machine's answer.
+    ClaimPending { claimed_by: String },
     /// 403 — awaiting the user's approval; keep polling.
     Pending,
     /// 429 / 5xx / transport error — the enroll rate bucket tripped or the
@@ -496,6 +566,10 @@ impl core::fmt::Debug for CompleteOutcome {
                 .debug_struct("Approved")
                 .field("token", &"<redacted>")
                 .field("expires_at_ms", expires_at_ms)
+                .finish(),
+            Self::ClaimPending { claimed_by } => f
+                .debug_struct("ClaimPending")
+                .field("claimed_by", claimed_by)
                 .finish(),
             Self::Pending => f.write_str("Pending"),
             Self::Retry => f.write_str("Retry"),
@@ -643,6 +717,20 @@ impl TrackerClient {
                 let value: serde_json::Value = resp
                     .into_json()
                     .map_err(|e| format!("swarm enroll: bad reply: {e}"))?;
+                // Gate (a) handshake: a claimed-but-unconfirmed code answers
+                // claim_pending INSTEAD of a session — the claimer's masked
+                // email rides along for the ConfirmClaim prompt.
+                if value.get("status").and_then(|v| v.as_str()) == Some("claim_pending") {
+                    let claimed_by = value
+                        .get("claimedBy")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.trim().is_empty())
+                        .map(str::to_owned)
+                        .ok_or_else(|| {
+                            "swarm enroll: claim_pending without claimedBy".to_owned()
+                        })?;
+                    return Ok(CompleteOutcome::ClaimPending { claimed_by });
+                }
                 let token = value
                     .get("token")
                     .and_then(|v| v.as_str())
@@ -674,28 +762,135 @@ impl TrackerClient {
         }
     }
 
+    /// POST /api/v1/auth/device/claim-confirm — MSP1-signed exactly like
+    /// `device_complete` (no session yet). `accept` answers a pending
+    /// account claim: the tracker binds on accept and frees the code on
+    /// deny. Returns the HTTP status; the caller treats anything but 200
+    /// as "keep polling" (a transient failure resolves on the next
+    /// complete poll either way).
+    fn claim_confirm(
+        &self,
+        identity: &SwarmIdentity,
+        device_code: &str,
+        accept: bool,
+    ) -> Result<u16, String> {
+        let path = "/api/v1/auth/device/claim-confirm";
+        let body = canonical_json(&json!({ "deviceCode": device_code, "accept": accept }))
+            .ok_or_else(|| "swarm enroll: canonical body".to_owned())?;
+        let auth = msp1_authorization(&identity.identity, "POST", path, &body)?;
+        match self
+            .agent
+            .post(&format!("{}{path}", self.base))
+            .set("content-type", "application/json")
+            .set("authorization", &auth)
+            .send_string(&body)
+        {
+            Ok(_) => Ok(200),
+            Err(ureq::Error::Status(status, _)) => Ok(status),
+            Err(e) => Err(format!("swarm enroll: {e}")),
+        }
+    }
+
     /// POST /api/v1/account/machines/{installationId}/heartbeat —
-    /// MSP1-signed + `x-msp-session`; body exactly `{}`. Returns the HTTP
-    /// status (200 = alive; 401/404 = session/binding gone).
-    fn heartbeat(&self, identity: &SwarmIdentity, session_token: &str) -> Result<u16, String> {
+    /// MSP1-signed + `x-msp-session`; body carries the P2 contact info
+    /// (migration 0011): the signaling mailbox id (present-means-set —
+    /// `Some` maps/shares it, `None` clears it for sharing-off machines)
+    /// and the display name (fills an unnamed machine's label once).
+    /// Returns the HTTP status (200 = alive; 401/404 = session/binding
+    /// gone).
+    fn heartbeat(
+        &self,
+        identity: &SwarmIdentity,
+        session_token: &str,
+        signaling_device_id: Option<&str>,
+        display_name: &str,
+    ) -> Result<u16, String> {
         let path = format!(
             "/api/v1/account/machines/{}/heartbeat",
             identity.installation_id()
         );
-        let body = "{}";
-        let auth = msp1_authorization(&identity.identity, "POST", &path, body)?;
+        let body = canonical_json(&json!({
+            "signalingDeviceId": signaling_device_id,
+            "displayName": display_name,
+        }))
+        .ok_or_else(|| "swarm heartbeat: canonical body".to_owned())?;
+        let auth = msp1_authorization(&identity.identity, "POST", &path, &body)?;
         match self
             .agent
             .post(&format!("{}{path}", self.base))
             .set("content-type", "application/json")
             .set("authorization", &auth)
             .set("x-msp-session", session_token)
-            .send_string(body)
+            .send_string(&body)
         {
             Ok(_) => Ok(200),
             Err(ureq::Error::Status(status, _)) => Ok(status),
             Err(e) => Err(format!("swarm heartbeat: {e}")),
         }
+    }
+
+    /// GET /api/v1/account/directory — the account's machines, machine-
+    /// signed like the heartbeat (empty-body digest). Transport errors are
+    /// `Err` (the poller retries); a 2xx parses into DTO rows.
+    fn account_directory(
+        &self,
+        identity: &SwarmIdentity,
+        session_token: &str,
+    ) -> Result<Vec<crate::account_directory::AccountMachineDto>, String> {
+        let path = "/api/v1/account/directory";
+        let auth = msp1_authorization(&identity.identity, "GET", path, "")?;
+        let resp = self
+            .agent
+            .get(&format!("{}{path}", self.base))
+            .set("authorization", &auth)
+            .set("x-msp-session", session_token)
+            .call();
+        let resp = match resp {
+            Ok(resp) if resp.status() == 200 => resp,
+            Ok(resp) => return Err(format!("swarm directory: HTTP {}", resp.status())),
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(format!("swarm directory: HTTP {status}"));
+            }
+            Err(e) => return Err(format!("swarm directory: {e}")),
+        };
+        let value: serde_json::Value = resp
+            .into_json()
+            .map_err(|e| format!("swarm directory: bad reply: {e}"))?;
+        let rows = value
+            .get("machines")
+            .and_then(|m| m.as_array())
+            .ok_or_else(|| "swarm directory: reply missing machines".to_owned())?;
+        let mut machines = Vec::with_capacity(rows.len());
+        for row in rows {
+            let installation_id = row
+                .get("installationId")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .ok_or_else(|| "swarm directory: row missing installationId".to_owned())?
+                .to_owned();
+            let label = row
+                .get("label")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned);
+            let last_seen_at_ms = row
+                .get("lastSeenAt")
+                .and_then(|v| v.as_str())
+                .and_then(parse_iso_ms);
+            let signaling_device_id = row
+                .get("signalingDeviceId")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned);
+            machines.push(crate::account_directory::AccountMachineDto {
+                installation_id,
+                label,
+                last_seen_at_ms,
+                signaling_device_id,
+                is_self: false,
+            });
+        }
+        Ok(machines)
     }
 }
 
@@ -765,6 +960,42 @@ pub fn swarm_leave(app: AppHandle) -> CmdResult<()> {
     clear_session(&crate::credstore::WindowsCredStore);
     let _ = app.emit(crate::commands::events::SWARM, dto);
     Ok(())
+}
+
+/// Answer a pending account claim ([`SwarmState::ConfirmClaim`]): the join
+/// thread picks the answer up and POSTs the signed confirm (only it holds
+/// the deviceCode). Errors when no claim prompt is on screen.
+#[tauri::command]
+pub fn swarm_claim_answer(app: AppHandle, accept: bool) -> CmdResult<()> {
+    let services = app.state::<crate::commands::AppServices>();
+    if !services.swarm.answer_claim(accept) {
+        return Err("no claim is waiting for an answer".to_owned());
+    }
+    Ok(())
+}
+
+/// Gate (d) re-key: mint a FRESH Ed25519 device seed (new installation id)
+/// and drop the local session. The old identity is gone for good — its
+/// server row dies with the dashboard-side revoke (heartbeats already
+/// stopped here), and the new identity must enroll from scratch (fresh
+/// pairing code, fresh claim confirm, fresh consent on every other
+/// machine). This is the owner's recovery path when the never-rotating
+/// seed is suspected stolen: docs/security/device-seed-theft.md.
+#[tauri::command]
+pub fn swarm_rekey(app: AppHandle) -> CmdResult<String> {
+    let dto = {
+        let services = app.state::<crate::commands::AppServices>();
+        let swarm = &services.swarm;
+        let mut guard = swarm.state.lock().expect("swarm state");
+        swarm.cycle.fetch_add(1, Ordering::SeqCst);
+        swarm.join_cancel.store(true, Ordering::SeqCst);
+        *guard = SwarmState::NotJoined;
+        guard.clone()
+    };
+    clear_session(&crate::credstore::WindowsCredStore);
+    let identity = SwarmIdentity::rekey(&crate::credstore::WindowsCredStore)?;
+    let _ = app.emit(crate::commands::events::SWARM, dto);
+    Ok(identity.installation_id())
 }
 
 // ---------------------------------------------------------------------------
@@ -847,6 +1078,7 @@ fn spawn_join(app: AppHandle, cycle: u64) -> CmdResult<()> {
             };
             // Cancelled while the start POST was in flight: the cycle
             // bump already returned the user to NotJoined — stand down.
+            let user_code = start.user_code.clone();
             if !apply_state(
                 &app,
                 cycle,
@@ -912,6 +1144,65 @@ fn spawn_join(app: AppHandle, cycle: u64) -> CmdResult<()> {
                         }
                         return;
                     }
+                    Ok(CompleteOutcome::ClaimPending { claimed_by }) => {
+                        // Gate (a): the machine asks its own user before any
+                        // account binding sticks. Show the claimer and wait.
+                        if !apply_state(
+                            &app,
+                            cycle,
+                            SwarmState::ConfirmClaim {
+                                claimed_by,
+                                expires_at_ms,
+                            },
+                        ) {
+                            return;
+                        }
+                        let accept = loop {
+                            std::thread::sleep(CLAIM_ANSWER_POLL);
+                            let services = app.state::<crate::commands::AppServices>();
+                            if services.swarm.join_cancel.load(Ordering::SeqCst)
+                                || services.swarm.cycle.load(Ordering::SeqCst) != cycle
+                            {
+                                return;
+                            }
+                            if let Some(answer) = services.swarm.take_claim_answer() {
+                                break answer;
+                            }
+                            if join_expired(expires_at_ms, now_ms()) {
+                                apply_state(
+                                    &app,
+                                    cycle,
+                                    SwarmState::Failed {
+                                        reason: "The pairing code expired before the claim was \
+                                                 confirmed — start again."
+                                            .to_owned(),
+                                    },
+                                );
+                                return;
+                            }
+                        };
+                        // Best-effort confirm: on a transport blip the next
+                        // complete poll re-reports claim_pending and the
+                        // prompt waits for another click.
+                        let _ = client.claim_confirm(&identity, &device_code, accept);
+                        if !accept {
+                            // Denied: the code is pending again — back to the
+                            // pairing-code screen for the right owner (a
+                            // deny can repeat — the next claim may be
+                            // someone else's).
+                            if !apply_state(
+                                &app,
+                                cycle,
+                                SwarmState::Joining {
+                                    user_code: user_code.clone(),
+                                    expires_at_ms,
+                                },
+                            ) {
+                                return;
+                            }
+                        }
+                        continue;
+                    }
                     // Pending (403), rate-limited (429), server errors
                     // (5xx), and transport blips all keep polling until
                     // the join-window expiry above stops the loop.
@@ -927,10 +1218,14 @@ fn spawn_join(app: AppHandle, cycle: u64) -> CmdResult<()> {
         .map(|_| ())
 }
 
-/// Heartbeat every 60 s while Joined. 401/404 (or local expiry) moves to
-/// NeedsRejoin and clears the dead session; transient errors retry.
-/// Returns false (applying NeedsRejoin) when the thread could not spawn —
-/// a membership with no liveness reporter is not a membership.
+/// Heartbeat every 60 s while Joined (every other 30 s tick), the account
+/// directory poll on each tick (ADR-013 P2 — the rail's discovery source
+/// and the host-side consent-membership cache, so its freshness bounds how
+/// long a freshly-added machine waits before first connect works).
+/// 401/404 (or local expiry) moves to NeedsRejoin and clears the dead
+/// session; transient errors retry. Returns false (applying NeedsRejoin)
+/// when the thread could not spawn — a membership with no liveness
+/// reporter is not a membership.
 fn spawn_heartbeat(app: AppHandle, identity: SwarmIdentity, cycle: u64) -> bool {
     let worker_app = app.clone();
     let spawned = std::thread::Builder::new()
@@ -938,9 +1233,11 @@ fn spawn_heartbeat(app: AppHandle, identity: SwarmIdentity, cycle: u64) -> bool 
         .spawn(move || {
             let app = worker_app;
             let client = TrackerClient::new();
+            let mut tick: u32 = 0;
             loop {
-                std::thread::sleep(HEARTBEAT_PERIOD);
-                let (session_token, session_expires) = {
+                std::thread::sleep(DIRECTORY_POLL_PERIOD);
+                tick = tick.wrapping_add(1);
+                let (session_token, session_expires, contact) = {
                     let services = app.state::<crate::commands::AppServices>();
                     if services.swarm.cycle.load(Ordering::SeqCst) != cycle {
                         return;
@@ -959,12 +1256,44 @@ fn spawn_heartbeat(app: AppHandle, identity: SwarmIdentity, cycle: u64) -> bool 
                                 heartbeat_missing_session(&app, cycle);
                                 return;
                             };
-                            (session.token, session_expires_at_ms)
+                            // Contact (P2): the signaling id is shared only
+                            // while host sharing is on; a sharing-off machine
+                            // reports null so the directory drops it from the
+                            // controllable set.
+                            let store = services.store.lock().expect("store");
+                            let settings = store.settings();
+                            let signaling = if settings.host_sharing {
+                                Some(settings.device_id.clone())
+                            } else {
+                                None
+                            };
+                            let name =
+                                crate::commands::display_name(settings).to_owned();
+                            (session.token, session_expires_at_ms, (signaling, name))
                         }
                         _ => return, // superseded by a newer cycle's state
                     }
                 };
-                let status = client.heartbeat(&identity, &session_token).ok();
+                // Directory every tick (30 s) — the discovery + membership
+                // snapshot; a failed poll keeps the last one (latest-wins).
+                match client.account_directory(&identity, &session_token) {
+                    Ok(machines) => {
+                        let services = app.state::<crate::commands::AppServices>();
+                        services
+                            .account_directory
+                            .update(&identity.installation_id(), machines.clone());
+                        let _ = app.emit(crate::commands::events::ACCOUNT_DIRECTORY, Some(machines));
+                    }
+                    Err(_) => { /* transient: keep the last snapshot */ }
+                }
+                // Heartbeat every other tick (60 s, the P1 cadence).
+                if !tick.is_multiple_of(2) {
+                    continue;
+                }
+                let (signaling, name) = &contact;
+                let status = client
+                    .heartbeat(&identity, &session_token, signaling.as_deref(), name)
+                    .ok();
                 let decision = heartbeat_decision(status, session_expires, now_ms());
                 match decision {
                     HeartbeatDecision::Keep | HeartbeatDecision::Retry => continue,
@@ -1762,7 +2091,12 @@ mod tests {
         };
 
         // -- heartbeat -------------------------------------------------------
-        assert_eq!(client.heartbeat(&identity, &token).unwrap(), 200);
+        assert_eq!(
+            client
+                .heartbeat(&identity, &token, Some("0123456789abcdef"), "Test Rig")
+                .unwrap(),
+            200
+        );
 
         unsafe { std::env::remove_var("DEEPFLUX_TRACKER_URL") };
 
@@ -1814,7 +2148,11 @@ mod tests {
             format!("{{\"deviceCode\":\"{}\"}}", start.device_code)
         );
         assert_eq!(complete_pending.body, complete_ok.body);
-        assert_eq!(heartbeat_req.body, "{}");
+        // P2: the heartbeat carries the contact mapping (canonical order).
+        assert_eq!(
+            heartbeat_req.body,
+            "{\"displayName\":\"Test Rig\",\"signalingDeviceId\":\"0123456789abcdef\"}"
+        );
         for request in requests.iter() {
             assert_eq!(request.header("content-type"), Some("application/json"));
         }

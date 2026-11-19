@@ -122,6 +122,7 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                     capabilities: caps(),
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
             ),
         ),
@@ -139,6 +140,7 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                     // present whenever the controller holds a pairing.
                     pairing_proof_hex: Some("9e".repeat(32)),
                     requester_name: None,
+                    account_proof: None,
                 },
             ),
         ),
@@ -157,6 +159,7 @@ fn client_to_service() -> Vec<(&'static str, SignalingEnvelope)> {
                     // the host's consent prompt (advisory — the device id
                     // stays the identity).
                     requester_name: Some("Alice Doe".to_owned()),
+                    account_proof: None,
                 },
             ),
         ),

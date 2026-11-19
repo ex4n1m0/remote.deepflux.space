@@ -18,6 +18,13 @@ export interface SwarmBinding {
   join: () => Promise<void>;
   cancelJoin: () => void;
   leave: () => void;
+  /** Answer a pending account claim (gate (a)): the join thread picks the
+   * answer up and posts the signed confirm. Rejections are swallowed —
+   * the claim prompt stays until a later state transition. */
+  claimAnswer: (accept: boolean) => void;
+  /** Gate (d) recovery: mint a fresh device identity (new installation
+   * id) and drop the local session; the returned id is the new one. */
+  rekey: () => Promise<string>;
 }
 
 export interface SwarmJoinModalBinding {
@@ -64,6 +71,8 @@ export function useSwarm(): SwarmBinding {
     join: () => api.swarmJoin(),
     cancelJoin: () => run(api.swarmCancelJoin),
     leave: () => run(api.swarmLeave),
+    claimAnswer: (accept: boolean) => run(() => api.swarmClaimAnswer(accept)),
+    rekey: () => api.swarmRekey(),
   };
 }
 

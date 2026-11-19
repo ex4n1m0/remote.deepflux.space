@@ -269,6 +269,7 @@ impl AgentBridge {
                 pairing_secret,
                 requester_name: Some(requester_name),
                 agent: false,
+                account_prover: None,
             })
         }) {
             Ok(()) => {

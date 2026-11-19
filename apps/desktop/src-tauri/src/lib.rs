@@ -3,6 +3,7 @@
 //! surface only; video lives in the native viewer window owned by the
 //! engine's controller pipeline (AGENTS.md invariant 1).
 
+pub mod account_directory;
 pub mod agent;
 pub mod chat;
 pub mod commands;
@@ -127,6 +128,9 @@ pub fn run() {
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
                 swarm: swarm::SwarmService::default(),
+                account_directory: std::sync::Arc::new(
+                    account_directory::AccountDirectory::default(),
+                ),
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
@@ -168,11 +172,12 @@ pub fn run() {
                 // `--minimized` as well; new entries already carry it.
                 let _ = commands::plugin_autostart(app.handle(), true);
             }
-            // ADR-010: the family build auto-joins the circle from its
-            // embedded key; the directory poller keeps the discovery list
-            // fresh while online.
-            directory::auto_join_embedded(app.handle());
-            directory::spawn_poller(app.handle().clone());
+            // ADR-013 P2: the circle directory is RETIRED as the
+            // discovery source — no embedded-key auto-join, no directory
+            // poller (the account directory rides the swarm heartbeat
+            // thread instead; the signaling server's /api/directory stays
+            // deployed for older clients, and sealed machine-chat +
+            // pairings are untouched).
             // ADR-013 swarm enrollment: restore a surviving tracker session
             // (Joined + heartbeat) or surface NeedsRejoin; a no-op when this
             // machine never joined.
@@ -320,10 +325,13 @@ pub fn run() {
             commands::pairing_rename,
             commands::directory_machines,
             commands::directory_refresh,
+            commands::account_directory_machines,
             swarm::swarm_status,
             swarm::swarm_join,
             swarm::swarm_cancel_join,
             swarm::swarm_leave,
+            swarm::swarm_claim_answer,
+            swarm::swarm_rekey,
             commands::update_state,
             commands::update_check,
             commands::update_download,

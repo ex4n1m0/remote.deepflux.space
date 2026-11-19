@@ -4095,9 +4095,11 @@ name = "node-runtime"
 version = "0.15.3"
 dependencies = [
  "aes-gcm",
+ "bs58",
  "capture-windows",
  "codec-windows",
  "diagnostics",
+ "ed25519-dalek 2.2.0",
  "frame-surface",
  "getrandom 0.3.3",
  "hex",

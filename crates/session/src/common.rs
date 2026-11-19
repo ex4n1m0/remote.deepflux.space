@@ -107,7 +107,9 @@ pub enum Action {
     /// (ADR-006), forwarded verbatim — verification belongs to the app
     /// layer, which owns the pairing store. `requester_name` (ADR-007) is
     /// the controller's account display name, advisory only — the device
-    /// id beside it is the identity.
+    /// id beside it is the identity. `account_proof` (ADR-013 P2) is the
+    /// controller's Ed25519 account-scope proof, forwarded verbatim for
+    /// the same app-layer verification against the account directory.
     PromptConsent {
         controller_device_id: DeviceId,
         session_id: SessionId,
@@ -117,6 +119,7 @@ pub enum Action {
         /// The request envelope's message_id — the pairing-proof v2 MAC
         /// binds it (security review 2026-10-26: replay defense).
         message_id: MessageId,
+        account_proof: Option<protocol::signaling::AccountProof>,
     },
     /// Host runtime: build an SDP answer for this offer (webrtc-rs lives
     /// behind the `Transport` trait in `transport-webrtc`; M2 wires this).

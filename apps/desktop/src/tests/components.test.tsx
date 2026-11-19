@@ -127,7 +127,7 @@ describe("SessionCard", () => {
         controllerState="Connected"
         viewerCreated
         agentSession
-        monitors={[monitor("\\.\DISPLAY1", true)]}
+        monitors={[monitor("\\\\.\\DISPLAY1", true)]}
       />,
     );
     expect(screen.getByText(/Controlling Mom's PC/i)).toBeTruthy();
