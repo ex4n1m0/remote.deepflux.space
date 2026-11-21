@@ -195,7 +195,8 @@ mod tests {
         for i in 0..(AUDIT_CAP + 5) as u64 {
             log.record(entry(i, &format!("tool-{i}")));
         }
-        let lines: Vec<&str> = std::fs::read_to_string(&path).unwrap().lines().collect();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
         assert_eq!(lines.len(), AUDIT_CAP, "hard cap holds");
         assert!(
             lines[0].contains(r#""action":"tool-5""#),

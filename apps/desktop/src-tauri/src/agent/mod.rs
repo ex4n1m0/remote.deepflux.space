@@ -373,7 +373,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 // peer's device id. Recorded before the turn so a crash
                 // mid-turn still leaves the trail; write failures are
                 // swallowed inside the rail (non-fatal).
-                audit::shared(&app).record(audit::AuditEntry::new(
+                audit::AuditLog::shared(&app).record(audit::AuditEntry::new(
                     &format!("peer-agent:{peer}"),
                     "remote-wake",
                     "remote-agent-session",
@@ -752,7 +752,7 @@ fn run_turn(
             // who/what/when/result record. Tool NAME only — input
             // arguments never enter the log (invariant 6); a write
             // failure is swallowed inside the rail (non-fatal).
-            audit::shared(app).record(audit::AuditEntry::new(
+            audit::AuditLog::shared(app).record(audit::AuditEntry::new(
                 "local-assistant",
                 "tool",
                 &name,
