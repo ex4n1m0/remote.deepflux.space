@@ -67,8 +67,8 @@ fn main() {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(b"OH1-gk-v2|");
-    h.update(&channel);
-    h.update(&secret);
+    h.update(channel);
+    h.update(secret);
     let gk: [u8; 32] = h.finalize().into();
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
