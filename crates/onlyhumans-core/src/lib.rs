@@ -91,8 +91,8 @@ mod tests {
     fn shares_recombine_to_the_secret() {
         let secret = [42u8; 32];
         let mut a = [7u8; 32];
-        for i in 0..32 {
-            a[i] = i as u8;
+        for (i, slot) in a.iter_mut().enumerate() {
+            *slot = i as u8;
         }
         let b: Vec<u8> = secret.iter().zip(a.iter()).map(|(s, x)| s ^ x).collect();
         assert_eq!(derive_gk_secret(&a, &b), secret);

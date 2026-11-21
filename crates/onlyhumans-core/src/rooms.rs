@@ -283,7 +283,7 @@ impl Rooms {
         };
         let mut h = Sha256::new();
         h.update(b"OH1-dm-v1|");
-        h.update(&self.gk);
+        h.update(self.gk);
         h.update(a.as_bytes());
         h.update(b"|");
         h.update(b.as_bytes());
@@ -575,16 +575,17 @@ impl Rooms {
                 // membership is closed: a valid GK proof no longer mints a
                 // seat. People already on the member list (restarts,
                 // returns after a missed rotation) still re-join freely.
-                if let Some(st) = self.room.as_ref() {
-                    if st.crypto.epoch > 1 && !st.members.contains_key(&from.to_string()) {
-                        out.push(RoomEvent::Send {
-                            peer: from,
-                            envelope: Envelope::Error {
-                                message: "room-sealed: the room key was rotated — only current members keep access".into(),
-                            },
-                        });
-                        return out;
-                    }
+                if let Some(st) = self.room.as_ref()
+                    && st.crypto.epoch > 1
+                    && !st.members.contains_key(&from.to_string())
+                {
+                    out.push(RoomEvent::Send {
+                        peer: from,
+                        envelope: Envelope::Error {
+                            message: "room-sealed: the room key was rotated — only current members keep access".into(),
+                        },
+                    });
+                    return out;
                 }
                 out.extend(self.admit(from, &name));
             }
@@ -644,20 +645,20 @@ impl Rooms {
                 // authoritative — adopt a newer epoch or a changed key
                 // (missed rotation, takeover fork) and always apply the
                 // fresh member list; never regress.
-                if let Some(st) = self.room.as_mut() {
-                    if st.has_key {
-                        let current_key = *st.crypto.room_key();
-                        if epoch > st.crypto.epoch || key != current_key {
-                            st.crypto = RoomCrypto::from_delivered(room_id, key);
-                            st.crypto.epoch = epoch.max(1);
-                        }
-                        st.members = sanitize_members(members, &self.my_id);
-                        out.push(RoomEvent::MembersChanged {
-                            room_id_hex: room_id_hex.clone(),
-                            members: self.members(),
-                        });
-                        return out;
+                if let Some(st) = self.room.as_mut()
+                    && st.has_key
+                {
+                    let current_key = *st.crypto.room_key();
+                    if epoch > st.crypto.epoch || key != current_key {
+                        st.crypto = RoomCrypto::from_delivered(room_id, key);
+                        st.crypto.epoch = epoch.max(1);
                     }
+                    st.members = sanitize_members(members, &self.my_id);
+                    out.push(RoomEvent::MembersChanged {
+                        room_id_hex: room_id_hex.clone(),
+                        members: self.members(),
+                    });
+                    return out;
                 }
                 self.room = Some(RoomState::new(
                     RoomCrypto::from_delivered(room_id, key),
@@ -777,11 +778,11 @@ impl Rooms {
                 match self.open_frame(&frame, crypto::kinds::ROTATE) {
                     Ok((body, _, sender)) => {
                         // Only the host may rotate.
-                        if let Some(st) = self.room.as_ref() {
-                            if sender != st.host.to_string() {
-                                out.push(err("rotation from non-host rejected"));
-                                return out;
-                            }
+                        if let Some(st) = self.room.as_ref()
+                            && sender != st.host.to_string()
+                        {
+                            out.push(err("rotation from non-host rejected"));
+                            return out;
                         }
                         match serde_json::from_slice::<crypto::RotationSecret>(&body) {
                             Ok(secret) => {
@@ -830,24 +831,24 @@ impl Rooms {
             Envelope::Error { message } => {
                 // A peer could not decrypt a DM frame (they lost the room
                 // to a restart): re-invite them with our existing key.
-                if let Some(hex) = message.strip_prefix("unknown-room:") {
-                    if self.dms.contains_key(hex) {
-                        let dm = &self.dms[hex];
-                        let ct = crypto::seal_room_key(
-                            &self.gk,
-                            &dm.crypto.room_id,
-                            1, // DM deliveries pin epoch 1
-                            &from.to_string(),
-                            dm.crypto.room_key(),
-                        );
-                        out.push(RoomEvent::Send {
-                            peer: from,
-                            envelope: Envelope::DmInvite {
-                                room_id_hex: hex.to_string(),
-                                key_ct_b64: crypto::base64_encode(&ct),
-                            },
-                        });
-                    }
+                if let Some(hex) = message.strip_prefix("unknown-room:")
+                    && self.dms.contains_key(hex)
+                {
+                    let dm = &self.dms[hex];
+                    let ct = crypto::seal_room_key(
+                        &self.gk,
+                        &dm.crypto.room_id,
+                        1, // DM deliveries pin epoch 1
+                        &from.to_string(),
+                        dm.crypto.room_key(),
+                    );
+                    out.push(RoomEvent::Send {
+                        peer: from,
+                        envelope: Envelope::DmInvite {
+                            room_id_hex: hex.to_string(),
+                            key_ct_b64: crypto::base64_encode(&ct),
+                        },
+                    });
                 }
                 // Our join was refused because the room rotated under a key
                 // we never held: latch it so the join retry loop stops and
@@ -1122,7 +1123,7 @@ mod seal_tests {
         host.become_host(None, 1);
         assert!(host.rotate().is_some()); // epoch 2 — the door closes
 
-        let (mut stranger, spid) = node("stranger");
+        let (stranger, spid) = node("stranger");
         let events = host.handle(spid, stranger.join_envelope());
         let err = sent_error(&events).expect("stranger must be refused");
         assert!(err.starts_with("room-sealed"), "got: {err}");
@@ -1130,7 +1131,7 @@ mod seal_tests {
             delivered_key(&events).is_none(),
             "no key may leak to a stranger"
         );
-        assert!(stranger.sealed == false); // latch flips on the GUEST side, below
+        assert!(!stranger.sealed); // latch flips on the GUEST side, below
     }
 
     #[test]
@@ -1139,7 +1140,7 @@ mod seal_tests {
         host.become_host(None, 1);
         assert!(host.rotate().is_some());
 
-        let (mut guest, gpid) = node("guest");
+        let (mut guest, _gpid) = node("guest");
         // Guest receives the host's refusal the transport would deliver.
         let refusal = Envelope::Error {
             message: "room-sealed: the room key was rotated — only current members keep access"
@@ -1156,7 +1157,7 @@ mod seal_tests {
         host.become_host(None, 1);
 
         // A member joins at epoch 1, then the host rotates.
-        let (mut member, mpid) = node("member");
+        let (member, mpid) = node("member");
         let events = host.handle(mpid, member.join_envelope());
         assert_eq!(delivered_key(&events), Some(1), "member must be admitted");
 
@@ -1196,7 +1197,7 @@ mod seal_tests {
             &host.gk,
             &hex::decode(host.room_hex()).unwrap().try_into().unwrap(),
             1,
-            &guest.my_id().to_string(),
+            guest.my_id(),
             &key,
         );
         let poison = Envelope::KeyDelivery {
@@ -1268,7 +1269,7 @@ mod seal_tests {
             &host.gk,
             &hex::decode(host.room_hex()).unwrap().try_into().unwrap(),
             5,
-            &guest.my_id().to_string(),
+            guest.my_id(),
             &key,
         );
         let poison = Envelope::KeyDelivery {

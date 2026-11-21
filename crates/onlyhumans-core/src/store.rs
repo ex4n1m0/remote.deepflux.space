@@ -13,6 +13,8 @@ pub struct Store {
     device_key: Key,
 }
 
+// Upstream pinned against an older hybrid-array; from_slice semantics preserved.
+#[allow(deprecated)]
 fn seal_local(key: &Key, what: &[u8], data: &[u8]) -> Vec<u8> {
     let derived = crate::crypto::admission_proof(key, "local-storage", &[0u8; 16]);
     let mut nonce = [0u8; 24];
@@ -35,6 +37,8 @@ fn seal_local(key: &Key, what: &[u8], data: &[u8]) -> Vec<u8> {
     out
 }
 
+// Upstream pinned against an older hybrid-array; from_slice semantics preserved.
+#[allow(deprecated)]
 fn open_local(key: &Key, what: &[u8], blob: &[u8]) -> anyhow::Result<Vec<u8>> {
     let derived = crypto::admission_proof(key, "local-storage", &[0u8; 16]);
     // nonce is the first 24 bytes of the blob
@@ -304,7 +308,7 @@ impl Store {
         sender: &str,
         body: &str,
         epoch: u64,
-        outgoing: bool,
+        _outgoing: bool,
     ) -> anyhow::Result<i64> {
         let sealed = seal_local(&self.device_key, room_id_hex.as_bytes(), body.as_bytes());
         self.conn.execute(
@@ -355,6 +359,20 @@ impl Store {
                 })
             })
             .collect()
+    }
+}
+
+impl Store {
+    /// Drop a room's persisted state (key, epoch, host row). The node
+    /// forgets it was ever in the room and rediscovers it from the hub —
+    /// used when yielding to a live foreign host record and by the
+    /// manual "reset room" recovery action.
+    pub fn clear_conversation(&self, room_id_hex: &str) -> anyhow::Result<()> {
+        self.conn.execute(
+            "DELETE FROM conversations WHERE room_id_hex = ?1",
+            params![room_id_hex],
+        )?;
+        Ok(())
     }
 }
 
@@ -411,19 +429,5 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
-impl Store {
-    /// Drop a room's persisted state (key, epoch, host row). The node
-    /// forgets it was ever in the room and rediscovers it from the hub —
-    /// used when yielding to a live foreign host record and by the
-    /// manual "reset room" recovery action.
-    pub fn clear_conversation(&self, room_id_hex: &str) -> anyhow::Result<()> {
-        self.conn.execute(
-            "DELETE FROM conversations WHERE room_id_hex = ?1",
-            params![room_id_hex],
-        )?;
-        Ok(())
     }
 }

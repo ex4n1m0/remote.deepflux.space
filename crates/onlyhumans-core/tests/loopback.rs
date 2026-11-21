@@ -263,13 +263,12 @@ async fn three_nodes_one_room_full_lifecycle() {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     let mut saw_refusal = false;
     while tokio::time::Instant::now() < deadline {
-        if let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), b_rx.recv()).await {
-            if let NodeEvent::Log { message } = ev {
-                if message.contains("only the host") {
-                    saw_refusal = true;
-                    break;
-                }
-            }
+        if let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), b_rx.recv()).await
+            && let NodeEvent::Log { message } = ev
+            && message.contains("only the host")
+        {
+            saw_refusal = true;
+            break;
         }
     }
     assert!(saw_refusal, "guest rotate must be refused");
@@ -323,12 +322,10 @@ async fn three_nodes_one_room_full_lifecycle() {
         while tokio::time::Instant::now() < deadline {
             if let Ok(Some(ev)) =
                 tokio::time::timeout(Duration::from_millis(200), c_rx.recv()).await
+                && let NodeEvent::Message { room, .. } = ev
+                && room == dm_hex
             {
-                if let NodeEvent::Message { room, .. } = ev {
-                    if room == dm_hex {
-                        leaked = true;
-                    }
-                }
+                leaked = true;
             }
         }
         assert!(!leaked, "C must not receive dm frames");

@@ -133,10 +133,9 @@ async fn host_room_survives_restart() {
             peer,
             connected: false,
         } = &ev
+            && *peer == a.peer_id.to_string()
         {
-            if *peer == a.peer_id.to_string() {
-                break;
-            }
+            break;
         }
     }
     tokio::time::sleep(Duration::from_secs(1)).await;

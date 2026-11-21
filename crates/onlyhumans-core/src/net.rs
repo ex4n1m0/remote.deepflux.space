@@ -10,11 +10,10 @@ use crate::identity::Identity;
 use crate::rooms::{Envelope, RoomEvent, Rooms};
 use crate::store::Store;
 use futures::prelude::*;
-use libp2p::request_response::{self, Codec as _, ProtocolSupport};
+use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, Swarm, dcutr, identify, multiaddr::Protocol, ping, relay};
 use std::collections::{HashMap, VecDeque};
-use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -123,6 +122,9 @@ async fn write_json<T: futures::AsyncWrite + Unpin + Send>(
 // Behaviour
 // ---------------------------------------------------------------------------
 
+// The NetworkBehaviour derive's expansion trips rustc's unreachable-code
+// lint (macro artifact of this libp2p version); unreachable by construction.
+#[allow(unreachable_code)]
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     identify: identify::Behaviour,
@@ -380,38 +382,36 @@ pub async fn spawn(
     let room_hex = rooms.room_hex().to_string();
 
     // Restore the room so chats and the key survive restarts.
-    if let Ok(convs) = store.conversations() {
-        if let Some(c) = convs.iter().find(|c| c.room_id_hex == room_hex) {
-            if let Ok(host) = libp2p::PeerId::from_str(&c.peer_id) {
-                let role = if c.is_host {
-                    crate::rooms::Role::Host
-                } else {
-                    crate::rooms::Role::Guest
-                };
-                if let Ok(Some((key, epoch))) = store.room_state(&c.room_id_hex) {
-                    rooms.restore(host, role, key, epoch);
-                    // Rehydrate the member mesh from contacts so fan-out
-                    // works immediately; the host's list re-converges as
-                    // members re-join.
-                    if let Ok(cs) = store.contacts() {
-                        rooms
-                            .restore_members(cs.into_iter().map(|c| (c.peer_id, c.name)).collect());
-                    }
-                }
+    if let Ok(convs) = store.conversations()
+        && let Some(c) = convs.iter().find(|c| c.room_id_hex == room_hex)
+        && let Ok(host) = libp2p::PeerId::from_str(&c.peer_id)
+    {
+        let role = if c.is_host {
+            crate::rooms::Role::Host
+        } else {
+            crate::rooms::Role::Guest
+        };
+        if let Ok(Some((key, epoch))) = store.room_state(&c.room_id_hex) {
+            rooms.restore(host, role, key, epoch);
+            // Rehydrate the member mesh from contacts so fan-out
+            // works immediately; the host's list re-converges as
+            // members re-join.
+            if let Ok(cs) = store.contacts() {
+                rooms.restore_members(cs.into_iter().map(|c| (c.peer_id, c.name)).collect());
             }
         }
     }
 
-    /// Direct addresses of peers we can potentially reserve with.
+    // Direct addresses of peers we can potentially reserve with.
     let mut relay_candidates: HashMap<PeerId, Multiaddr> = HashMap::new();
-    /// Full circuit addresses from accepted reservations.
+    // Full circuit addresses from accepted reservations.
     let mut circuit_addrs: Vec<Multiaddr> = Vec::new();
     let mut outbox: HashMap<PeerId, VecDeque<Envelope>> = HashMap::new();
     let mut connected: HashMap<PeerId, bool> = HashMap::new();
-    /// Consecutive ticks a peer's outbox went undelivered while offline;
-    /// after two, the queue moves to the site mailbox.
+    // Consecutive ticks a peer's outbox went undelivered while offline;
+    // after two, the queue moves to the site mailbox.
     let mut mail_wait: HashMap<PeerId, u32> = HashMap::new();
-    /// Shadow of envelopes handed to send_request (see track_inflight).
+    // Shadow of envelopes handed to send_request (see track_inflight).
     let mut inflight: HashMap<PeerId, VecDeque<Envelope>> = HashMap::new();
 
     // Automatic join orchestration.
@@ -500,7 +500,7 @@ pub async fn spawn(
                         &mut outbox,
                         &mut inflight,
                         &cfg,
-                        &mut event_tx,
+                        &event_tx,
                     ).await;
                 }
                 _ = hub_fast.tick(), if !cfg.offline && !hub_registered => {
@@ -585,7 +585,7 @@ pub async fn spawn(
                         &mut outbox,
                         &mut inflight,
                         &store,
-                        &mut event_tx,
+                        &event_tx,
                     ).await;
                     // Retry hub-based dials for peers with undelivered
                     // envelopes (messages queue up while a member is
@@ -608,7 +608,7 @@ pub async fn spawn(
                                 break;
                             }
                             if !swarm.is_connected(&peer) {
-                                dial_peer(&mut swarm, &hub, &identity, peer, &cfg, &mut event_tx).await;
+                                dial_peer(&mut swarm, &hub, &identity, peer, &cfg, &event_tx).await;
                                 if !swarm.is_connected(&peer) {
                                     let waited = mail_wait.entry(peer).or_insert(0);
                                     *waited += 1;
@@ -645,7 +645,7 @@ pub async fn spawn(
                                         batch.iter().map(|(p, _)| *p).collect();
                                     for peer in pushed {
                                         let empty =
-                                            outbox.get(&peer).map_or(true, |q| q.is_empty());
+                                            outbox.get(&peer).is_none_or(|q| q.is_empty());
                                         if empty {
                                             mail_wait.remove(&peer);
                                         }
@@ -681,7 +681,7 @@ pub async fn spawn(
                         &mut relay_candidates,
                         &mut circuit_addrs,
                         cfg.relay_enabled,
-                        &mut event_tx,
+                        &event_tx,
                     );
                 }
             }
@@ -735,6 +735,7 @@ fn flush_outbox(
 /// start a hub-based redial immediately instead of letting them sit in
 /// the outbox until the 90 s tick. Reconnection flushes via
 /// ConnectionEstablished.
+#[allow(clippy::too_many_arguments)]
 async fn flush_or_redial(
     swarm: &mut Swarm<Behaviour>,
     hub: &HubClient,
@@ -1018,12 +1019,12 @@ async fn handle_command(
             }
         }
         Command::SendMessage { room, text } => {
-            if let Some(frame) = rooms.seal_chat(&room, text.as_bytes()) {
+            if let Some(frame) = rooms.seal_chat(room, text.as_bytes()) {
                 // The main room persists history; DMs are memory-only.
                 if room == rooms.room_hex() {
                     let epoch = rooms.state().map(|st| st.crypto.epoch).unwrap_or(1);
                     let _ = store.lock().unwrap().append_message(
-                        &room,
+                        room,
                         &identity.id_string(),
                         text.as_str(),
                         epoch,
@@ -1031,7 +1032,7 @@ async fn handle_command(
                     );
                 }
                 // DM frames go only to the peer; main room fans out.
-                if let Some(dm) = rooms.dm(&room) {
+                if let Some(dm) = rooms.dm(room) {
                     let peer = dm.peer;
                     enqueue(outbox, peer, Envelope::Chat { frame });
                     flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer)
@@ -1090,7 +1091,7 @@ async fn handle_command(
             }
         }
         Command::OpenDm { peer } => {
-            let Ok(pid) = PeerId::from_str(&peer) else {
+            let Ok(pid) = PeerId::from_str(peer) else {
                 let _ = event_tx.send(NodeEvent::Log {
                     message: format!("invalid peer id: {peer}"),
                 });
@@ -1206,20 +1207,18 @@ async fn room_orchestration(
             // A restored host must not blindly re-announce: if a LIVE
             // record names a different host, the election already chose
             // them — yield immediately instead of hosting a fork.
-            if rooms.is_host() && !cfg.offline {
-                if let Ok(Some(rec)) = hub.lookup_room(room_hex).await {
-                    if rec.host_peer_id != identity.peer_id().to_string() {
-                        rooms.reset();
-                        *join_mail = None;
-                        let _ = store.lock().unwrap().clear_conversation(room_hex);
-                        let _ = event_tx.send(NodeEvent::Log {
-                            message:
-                                "another live host holds the room record — yielding, rejoining"
-                                    .into(),
-                        });
-                        return;
-                    }
-                }
+            if rooms.is_host()
+                && !cfg.offline
+                && let Ok(Some(rec)) = hub.lookup_room(room_hex).await
+                && rec.host_peer_id != identity.peer_id().to_string()
+            {
+                rooms.reset();
+                *join_mail = None;
+                let _ = store.lock().unwrap().clear_conversation(room_hex);
+                let _ = event_tx.send(NodeEvent::Log {
+                    message: "another live host holds the room record — yielding, rejoining".into(),
+                });
+                return;
             }
             *announced = true;
             let st = rooms.state().expect("ready implies state");
@@ -1260,7 +1259,7 @@ async fn room_orchestration(
         // (One empty lookup alone can be a lapse window; two a minute
         // apart means the host is really gone.)
         if !rooms.is_host() && !cfg.offline {
-            let due = guest_check.map_or(true, |(at, _)| at.elapsed() >= Duration::from_secs(60));
+            let due = guest_check.is_none_or(|(at, _)| at.elapsed() >= Duration::from_secs(60));
             if due {
                 *guest_check = Some((std::time::Instant::now(), guest_check.map_or(0, |(_, m)| m)));
                 let st_host = rooms.state().expect("ready implies state").host;
@@ -1317,14 +1316,14 @@ async fn room_orchestration(
             rooms.become_host(None, 1);
             persist_room(rooms, store);
         }
-        if let Some(host) = &cfg.room_host {
-            if let Ok(host) = PeerId::from_str(host) {
-                *join_target = Some(host);
-                rooms.set_join_target(&host);
-                if swarm.is_connected(&host) {
-                    enqueue(outbox, host, rooms.join_envelope());
-                    flush_outbox(swarm, outbox, inflight, host);
-                }
+        if let Some(host) = &cfg.room_host
+            && let Ok(host) = PeerId::from_str(host)
+        {
+            *join_target = Some(host);
+            rooms.set_join_target(&host);
+            if swarm.is_connected(&host) {
+                enqueue(outbox, host, rooms.join_envelope());
+                flush_outbox(swarm, outbox, inflight, host);
             }
         }
         return;
@@ -1477,23 +1476,23 @@ async fn dial_peer(
     if swarm.is_connected(&pid) {
         return;
     }
-    if !cfg.offline {
-        if let Ok(Some(reg)) = hub.lookup(&pid.to_string()).await {
-            for a in &reg.addrs {
-                if let Ok(ma) = a.parse::<Multiaddr>() {
-                    let mut ma = ma;
-                    // A peer's published circuit address is
-                    // .../p2p/<relay>/p2p-circuit; dialing THEM through it
-                    // requires appending /p2p/<target>.
-                    let is_bare_circuit = ma.iter().last() == Some(Protocol::P2pCircuit);
-                    if is_bare_circuit {
-                        ma = ma.with(Protocol::P2p(pid));
-                    }
-                    let _ = swarm.dial(ma);
+    if !cfg.offline
+        && let Ok(Some(reg)) = hub.lookup(&pid.to_string()).await
+    {
+        for a in &reg.addrs {
+            if let Ok(ma) = a.parse::<Multiaddr>() {
+                let mut ma = ma;
+                // A peer's published circuit address is
+                // .../p2p/<relay>/p2p-circuit; dialing THEM through it
+                // requires appending /p2p/<target>.
+                let is_bare_circuit = ma.iter().last() == Some(Protocol::P2pCircuit);
+                if is_bare_circuit {
+                    ma = ma.with(Protocol::P2p(pid));
                 }
+                let _ = swarm.dial(ma);
             }
-            let _ = identity; // signature already verified inside lookup
         }
+        let _ = identity; // signature already verified inside lookup
     }
     let _ = event_tx;
 }
@@ -1581,7 +1580,7 @@ fn handle_swarm_event(
                         request, channel, ..
                     } => {
                         let events = rooms.handle(peer, request);
-                        process_room_events(rooms, &store, &peer, &events, event_tx);
+                        process_room_events(rooms, store, &peer, &events, event_tx);
                         for ev in events {
                             dispatch_room_event(
                                 swarm, outbox, inflight, &peer, ev, false, event_tx,
@@ -1595,7 +1594,7 @@ fn handle_swarm_event(
                     }
                     request_response::Message::Response { response, .. } => {
                         let events = rooms.handle(peer, response);
-                        process_room_events(rooms, &store, &peer, &events, event_tx);
+                        process_room_events(rooms, store, &peer, &events, event_tx);
                         for ev in events {
                             dispatch_room_event(
                                 swarm, outbox, inflight, &peer, ev, false, event_tx,
@@ -1706,7 +1705,7 @@ fn process_room_events(
                 }
             }
             RoomEvent::MembersChanged { members, .. } => {
-                let mut s = store.lock().unwrap();
+                let s = store.lock().unwrap();
                 for m in members {
                     if m.peer != rooms.my_id() {
                         let _ = s.set_shared_name(&m.peer, &m.name);

@@ -101,6 +101,8 @@ pub fn open_room_key(
 /// captured deliveries could XOR out the newer key. Replay within the
 /// same (epoch, recipient) still yields the identical frame, which the
 /// idempotent delivery path already tolerates.
+// Upstream pinned against an older hybrid-array; from_slice semantics preserved.
+#[allow(deprecated)]
 fn gk_cipher(
     gk: &Key,
     room_id: &RoomId,
@@ -242,6 +244,8 @@ impl RoomCrypto {
     /// Seal an arbitrary payload under the current key (chat, rotation,
     /// membership). The plaintext is padded to a size bucket first, so the
     /// ciphertext length does not leak the payload length.
+    // Upstream pinned against an older hybrid-array; from_slice semantics preserved.
+    #[allow(deprecated)]
     pub fn seal(&self, sender: &str, seq: u64, kind: &[u8; 8], plaintext: &[u8]) -> Sealed {
         let padded = pad(plaintext);
         let mk = self.message_key(sender, seq, kind);
@@ -270,6 +274,8 @@ impl RoomCrypto {
 
     /// Open a sealed frame; returns the plaintext or an error (wrong key,
     /// tampering, replay across epochs — epoch is part of the AAD).
+    // Upstream pinned against an older hybrid-array; from_slice semantics preserved.
+    #[allow(deprecated)]
     pub fn open(&self, frame: &Sealed, kind: &[u8; 8]) -> anyhow::Result<Vec<u8>> {
         if frame.room_id_hex != self.room_id_hex() {
             anyhow::bail!("frame belongs to a different room");
