@@ -9,6 +9,7 @@
 //! Windows Credential Manager (`agent-api-key`).
 
 pub mod apps;
+pub mod audit;
 pub mod schedule;
 pub mod startup;
 pub mod tools;
@@ -365,6 +366,19 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
         let (user_text, reply_to, scheduled) = match input {
             AssistantInput::User(text) => (text, None, None),
             AssistantInput::PeerAgent { peer, body } => {
+                // ADR-013 P3 audit rail: this turn runs at a paired
+                // machine's assistant's instruction — one local record.
+                // The instruction BODY is user content and never enters
+                // the log (invariant 6): fixed action label, actor = the
+                // peer's device id. Recorded before the turn so a crash
+                // mid-turn still leaves the trail; write failures are
+                // swallowed inside the rail (non-fatal).
+                audit::shared(&app).record(audit::AuditEntry::new(
+                    &format!("peer-agent:{peer}"),
+                    "remote-wake",
+                    "remote-agent-session",
+                    "ok",
+                ));
                 let text = format!(
                     "[INSTRUCTION FROM PAIRED MACHINE {peer} — sent by its user or its assistant] \
                      {body}\n\
@@ -734,6 +748,16 @@ fn run_turn(
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or(json!({}));
             let output = tools::execute(app, &name, &args, last_shot);
+            // ADR-013 P3 audit rail: every executed tool leaves a local
+            // who/what/when/result record. Tool NAME only — input
+            // arguments never enter the log (invariant 6); a write
+            // failure is swallowed inside the rail (non-fatal).
+            audit::shared(app).record(audit::AuditEntry::new(
+                "local-assistant",
+                "tool",
+                &name,
+                audit::outcome_from_tool_text(&output.text),
+            ));
             emit(
                 app,
                 AssistantEvent::ToolCall {
