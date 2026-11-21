@@ -58,6 +58,9 @@ async fn main() -> anyhow::Result<()> {
             .with(Protocol::Tcp(0)),
     )?;
 
+    // The loop always assigns before the read below; the None seed is never
+    // observed (idiomatic listen-addr capture in this demo).
+    #[allow(unused_assignments)]
     let mut relay_addr = None;
     loop {
         if let libp2p::swarm::SwarmEvent::NewListenAddr { address, .. } =
