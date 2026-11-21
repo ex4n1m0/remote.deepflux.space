@@ -44,6 +44,9 @@ members = [
     # crate-local Cargo.lock dropped — the workspace lock governs. (3) the
     # tree rustfmt-normalized under the workspace toolchain (rustfmt 1.11.0,
     # mechanical whitespace/wrap changes only — the source's fmt predates it).
+    # (4) rusqlite aligned 0.40.2 -> 0.32 to share the single libsqlite3-sys
+    # generation modelswarm-store pins (Cargo forbids two `links = "sqlite3"`
+    # copies); store.rs's surface is pre-0.32-stable API only.
     # build.rs writes its per-clone secret to crates/secrets/ (gitignored).
     "crates/onlyhumans-core",
 ]
