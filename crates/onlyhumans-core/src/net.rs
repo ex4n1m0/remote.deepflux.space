@@ -5,6 +5,12 @@
 //! relay v2 + DCUtR hole-punching are staged for the connectivity pass
 //! (see README) — the swarm composition keeps a slot for them.
 
+// The NetworkBehaviour derive's expansion trips rustc's unreachable-code
+// lint (macro artifact of this libp2p version); unreachable by construction.
+// Module-scoped: the diagnostic is attributed to the derive attribute, which
+// an item-level allow on the struct does not cover.
+#![allow(unreachable_code)]
+
 use crate::hub::HubClient;
 use crate::identity::Identity;
 use crate::rooms::{Envelope, RoomEvent, Rooms};
@@ -122,9 +128,6 @@ async fn write_json<T: futures::AsyncWrite + Unpin + Send>(
 // Behaviour
 // ---------------------------------------------------------------------------
 
-// The NetworkBehaviour derive's expansion trips rustc's unreachable-code
-// lint (macro artifact of this libp2p version); unreachable by construction.
-#[allow(unreachable_code)]
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     identify: identify::Behaviour,
@@ -293,7 +296,7 @@ impl Default for NodeConfig {
 
 pub async fn spawn(
     cfg: NodeConfig,
-    mut event_tx: mpsc::UnboundedSender<NodeEvent>,
+    event_tx: mpsc::UnboundedSender<NodeEvent>,
 ) -> anyhow::Result<NodeHandle> {
     let identity = Identity::load_or_create(&cfg.data_dir)?;
     let store = Store::open(&cfg.data_dir)?;
