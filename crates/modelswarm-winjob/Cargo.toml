@@ -1,0 +1,20 @@
+[package]
+name = "modelswarm-winjob"
+version = "0.1.0"
+edition = "2021"
+description = "Windows kill-on-close job objects for supervised engine children (ADR-024 ops)"
+
+# This crate exists BECAUSE the workspace forbids unsafe: the job-object FFI
+# is the one place raw Win32 calls are justified, so it is isolated here,
+# reviewed as unsafe-by-design, and consumed by modelswarm-node.
+[lints.rust]
+unsafe_code = "allow"
+unused_qualifications = "warn"
+
+[dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }

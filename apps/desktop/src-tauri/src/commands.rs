@@ -27,6 +27,12 @@ pub mod events {
     pub const INFO: &str = "engine://info";
     pub const CHAT: &str = "engine://chat";
     pub const PAIRING: &str = "engine://pairing";
+    /// ADR-013 swarm enrollment state (app-layer, like the directory
+    /// event); payload = `swarm::SwarmState` — metadata only.
+    pub const SWARM: &str = "swarm://state";
+    /// ADR-013 P2 account directory snapshot; payload =
+    /// `[account_directory::AccountMachineDto]` — metadata only.
+    pub const ACCOUNT_DIRECTORY: &str = "app://account-directory";
 }
 
 pub struct AppServices {
@@ -40,6 +46,12 @@ pub struct AppServices {
     /// ADR-010 discovery list cache (sealed circle directory, decrypted
     /// rows only — latest-wins, never queue-shaped).
     pub directory: Mutex<crate::directory::DirectoryCache>,
+    /// ADR-013 swarm enrollment: membership state + the join/heartbeat
+    /// thread lifecycle (secrets stay in Rust state + credstore).
+    pub swarm: crate::swarm::SwarmService,
+    /// ADR-013 P2 account directory: the account's machines, polled by
+    /// the swarm heartbeat thread (latest-wins snapshot, no secrets).
+    pub account_directory: std::sync::Arc<crate::account_directory::AccountDirectory>,
     /// ADR-008 automatic updates: the UI state machine plus the last
     /// fetched manifest (input for the download step).
     pub update: crate::updater::UpdateEngine,
@@ -210,6 +222,11 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust.sweep(now);
+                // ADR-013 P2 (security review finding 1): the prompt's
+                // account claim dies WITH the prompt — a later accept for a
+                // different machine (e.g. a paired auto-accept) must never
+                // arm a remembered account intent the user never answered.
+                trust.prompt_account = None;
                 if let Some((controller, accepted, rejected)) = trust.prompt.take()
                     && !accepted
                     && !rejected
@@ -232,6 +249,7 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             pairing_proof_hex,
             requester_name,
             message_id,
+            account_proof,
         } => {
             // ADR-006: silent auto-accept requires a VALID pairing proof.
             // The bare device id proves nothing — ids are claimable through
@@ -260,7 +278,48 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     )
                 })
                 .unwrap_or(false);
+            // ADR-013 P2: account-scope proof — the Ed25519 signature must
+            // verify (self-certifying installation id, domain-bound,
+            // fresh) AND the installation must be a machine of OUR account
+            // (the directory poller's snapshot). Signature-valid-but-
+            // unknown installations get NO upgrade — they fall through to
+            // the ordinary unpaired prompt path.
+            let account = account_proof.as_ref().and_then(|proof| {
+                let signature_ok = node_runtime::account_proof::verify_account_proof(
+                    Some(proof),
+                    &controller_device_id,
+                    &host_device_id,
+                    &session_id,
+                    &message_id,
+                    crate::chat::now_ms(),
+                );
+                if !signature_ok {
+                    return None;
+                }
+                app.state::<AppServices>()
+                    .account_directory
+                    .lookup(&proof.installation_id)
+                    .map(|label| {
+                        serde_json::json!({
+                            "installation_id": proof.installation_id,
+                            "label": label,
+                        })
+                    })
+            });
             let mut proof_ok = false;
+            if !verified
+                && let Some(account_claim) = account.as_ref()
+                && let Some(installation_id) = account_claim
+                    .get("installation_id")
+                    .and_then(|v| v.as_str())
+                && crate::chat::has_account_intent(app, installation_id)
+            {
+                // Consent-once honored: a remembered account machine
+                // connects silently (like a proven pairing). The accept's
+                // remember choice also completes the pairing ceremony, so
+                // later connects ride the stronger pairing proof.
+                proof_ok = crate::chat::auto_accept_account(app);
+            }
             if verified {
                 // RD-023 (user decision 2, 2026-10-24) + ADR-006 proof:
                 // proven-paired controllers are auto-accepted — silent full
@@ -270,13 +329,20 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 // engine send failed the UI must show the dialog, not a
                 // decisionless passive card.
                 proof_ok = crate::chat::auto_accept_if_paired(app, &controller_device_id);
-            } else {
+            } else if !proof_ok {
+                // (An account silent-accept already set proof_ok — it is a
+                // VERIFIED requester and must not consume the untrusted
+                // prompt budget or run the cooldown checks; security review
+                // finding 4: doing both raced an accept against a budget
+                // reject.)
                 // ADR-006 B3 prompt-flood defense: a controller in cooldown
                 // (explicit reject / unanswered timeout) is auto-rejected
                 // without a prompt. 0.10.3 adds the GLOBAL prompt budget —
                 // the cooldowns key on device ids an attacker rotates, so
                 // the aggregate (unpaired prompts per hour, all ids) is
-                // what actually bounds a flood.
+                // what actually bounds a flood. Account-verified requesters
+                // (ADR-013 P2) ride the same defenses: a compromised
+                // same-account machine must not be able to flood either.
                 let now = crate::chat::now_ms();
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
@@ -287,6 +353,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     return true;
                 }
                 trust.prompt = Some((controller_device_id.clone(), false, false));
+                // The account prompt's Always/Decline keys on the PROVEN
+                // installation id, not the (rotatable) signaling id.
+                trust.prompt_account = account
+                    .as_ref()
+                    .and_then(|a| a.get("installation_id"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned);
                 // The window must be VISIBLE for the consent moment: an
                 // always-ready family host normally lives in the tray, and
                 // an invisible prompt dies at the 30 s timeout.
@@ -308,6 +381,12 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     // (advisory — the code beside it in the prompt is the
                     // identity; pre-0.10 controllers send none).
                     "requester_name": requester_name,
+                    // ADR-013 P2: present on a VERIFIED account-scope
+                    // proof — the prompt renders the account variant
+                    // ("machine of your DeepMulti account", Always allow
+                    // keyed to the installation id). Null on every other
+                    // path, including signature-valid-but-unknown installs.
+                    "account": account,
                 })),
             );
         }
@@ -320,14 +399,27 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // controller's PairOffer arrives only after the session
             // establishes, so RECORD the decision now and apply it when the
             // offer lands (see PairOfferReceived below).
-            {
+            let prompt_account = {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 if let Some((_, accepted, _)) = trust.prompt.as_mut() {
                     *accepted = true;
                 }
                 trust.decision = Some((controller_device_id.clone(), remember, requester_name));
-            }
+                // ADR-013 P2 (security review finding 1): the account claim
+                // belongs to the PROMPT this accept answers — a pending
+                // claim for a DIFFERENT controller (a timed-out prompt's
+                // leftover, answered here by a paired auto-accept) is
+                // dropped, never armed.
+                let claim_is_for_this_prompt = trust
+                    .prompt
+                    .as_ref()
+                    .is_some_and(|(c, _, _)| c == &controller_device_id);
+                trust
+                    .prompt_account
+                    .take()
+                    .filter(|_| claim_is_for_this_prompt)
+            };
             // ADR-006 amendment (2026-10-28): "Always allow" is durable at
             // click time. The in-memory decision above dies with the
             // session — if the controller's PairOffer is lost to a short
@@ -339,6 +431,12 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // machine in Trusted machines revokes.
             if remember {
                 crate::chat::remember_intent(app, &controller_device_id);
+            }
+            // ADR-013 P2: "Always allow" on an ACCOUNT prompt additionally
+            // arms the standing account intent keyed to the proven
+            // installation id (consumed here — one prompt, one decision).
+            if remember && let Some(installation_id) = prompt_account.as_deref() {
+                crate::chat::remember_account_intent(app, installation_id);
             }
         }
         EngineEvent::SessionEstablished {
@@ -384,12 +482,13 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
         } => {
             // ADR-006: the ceremony state dies with the session — an
             // un-applied decision or lingering prompt never crosses into
-            // the next one.
+            // the next one (ADR-013 P2: the prompt's account claim too).
             {
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
                 trust.decision = None;
                 trust.prompt = None;
+                trust.prompt_account = None;
             }
             emit(
                 events::SESSION_ENDED,
@@ -753,6 +852,22 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
     // just claim the (claimable) device id.
     let pairing_secret =
         crate::chat::pairing_for(&app, &code).map(|p| crate::chat::PairingSecret(p.secret_hex));
+    // ADR-013 P2: a live swarm membership signs the connect_request with
+    // the account proof — a host of the SAME account that knows this
+    // installation in its directory trusts it (prompt once, then
+    // silently). No membership = the field stays absent, as on pre-P2
+    // controllers; a pairing proof still wins where one exists.
+    let account_prover = {
+        let services = app.state::<AppServices>();
+        match services.swarm.current() {
+            crate::swarm::SwarmState::Joined { .. } => {
+                crate::swarm::SwarmIdentity::load_or_create(&crate::credstore::WindowsCredStore)
+                    .ok()
+                    .map(|identity| std::sync::Arc::new(identity.account_prover()))
+            }
+            _ => None,
+        }
+    };
     // ADR-006 amendment (2026-10-28): this connect owes the session an
     // outbound pairing offer — consumed at establishment to send it from
     // the CONTROLLER side only (see SessionEstablished).
@@ -767,8 +882,19 @@ pub fn connect(app: AppHandle, args: ConnectArgs) -> CmdResult<()> {
             pairing_secret,
             requester_name: Some(requester_name),
             agent: args.agent,
+            account_prover,
         })
     })
+}
+
+/// The account directory (ADR-013 P2): this account's machines as the
+/// heartbeat thread's poller last saw them (latest-wins snapshot; the
+/// `app://account-directory` event mirrors every refresh).
+#[tauri::command]
+pub fn account_directory_machines(
+    app: AppHandle,
+) -> CmdResult<Vec<crate::account_directory::AccountMachineDto>> {
+    Ok(app.state::<AppServices>().account_directory.machines())
 }
 
 /// Attach the viewer window to a live agent session ("show the screen"):
@@ -819,12 +945,18 @@ pub fn consent_reject(app: AppHandle) -> CmdResult<()> {
             trust.block(controller, now + crate::chat::REJECT_COOLDOWN_MS);
         }
         trust.decision = None;
-        controller
+        let account = trust.prompt_account.take();
+        (controller, account)
     };
     // ADR-006 amendment (2026-10-28): Decline is the explicit un-trust —
-    // it also revokes any standing "Always allow" intent for this machine.
-    if let Some(controller) = declined {
+    // it also revokes any standing "Always allow" intent for this machine
+    // (ADR-013 P2: the account intent keyed to the installation id too).
+    let (controller, account) = declined;
+    if let Some(controller) = controller {
         crate::chat::revoke_intent(&app, &controller);
+    }
+    if let Some(installation_id) = account {
+        crate::chat::revoke_account_intent(&app, &installation_id);
     }
     with_engine(&app, |handle| handle.send(EngineCmd::ConsentReject))
 }

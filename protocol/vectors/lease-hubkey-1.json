@@ -1,0 +1,24 @@
+{
+  "name": "lease-hubkey-1",
+  "description": "Cross-language EligibilityLease golden vector (ADR-012; serving gate ADR-026). Signed by the fixture key recorded below — NOT the production hub key. TS (issueEligibilityLease canonical form) and Rust (EligibilityLease::from_wire + verify) must both accept this exact token; see crypto-vectors.test.ts and the lease.rs golden test.",
+  "signing_seed_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+  "signing_public_key_hex": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "verify_at": "2026-10-08T00:01:00Z",
+  "fields": {
+    "peer_id": "12D3KooWSrKnMZUcSxK8G7wmBbXdU8nFEfWGhLu6H8xjn8LmCSJb",
+    "installation_id": "b58-installation-golden-0001",
+    "model_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+    "issued_at": "2026-10-08T00:00:00.000Z",
+    "expires_at": "2026-10-08T00:05:00.000Z",
+    "lease_expires_at": "2026-10-08T00:04:00.000Z",
+    "can_host": true,
+    "can_consume": true,
+    "slots": 2,
+    "verified_capacity": "gpu_mid",
+    "audit_epoch": 7,
+    "challenge_id": "c3a1c3a1c3a1c3a1c3a1c3a1c3a1c3a1",
+    "nonce": "9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e9f1e"
+  },
+  "token": "eyJhdWRpdF9lcG9jaCI6NywiY2FuX2NvbnN1bWUiOnRydWUsImNhbl9ob3N0Ijp0cnVlLCJjaGFsbGVuZ2VfaWQiOiJjM2ExYzNhMWMzYTFjM2ExYzNhMWMzYTFjM2ExYzNhMSIsImV4cGlyZXNfYXQiOiIyMDI2LTEwLTA4VDAwOjA1OjAwLjAwMFoiLCJpbnN0YWxsYXRpb25faWQiOiJiNTgtaW5zdGFsbGF0aW9uLWdvbGRlbi0wMDAxIiwiaXNzdWVkX2F0IjoiMjAyNi0xMC0wOFQwMDowMDowMC4wMDBaIiwibGVhc2VfZXhwaXJlc19hdCI6IjIwMjYtMTAtMDhUMDA6MDQ6MDAuMDAwWiIsIm1vZGVsX3Byb2ZpbGVfaWQiOiJtc3AxOmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWIiLCJub25jZSI6IjlmMWU5ZjFlOWYxZTlmMWU5ZjFlOWYxZTlmMWU5ZjFlOWYxZTlmMWU5ZjFlOWYxZTlmMWU5ZjFlOWYxZTlmMWUiLCJwZWVyX2lkIjoiMTJEM0tvb1dTcktuTVpVY1N4SzhHN3dtQmJYZFU4bkZFZldHaEx1Nkg4eGpuOExtQ1NKYiIsInNsb3RzIjoyLCJ2ZXJpZmllZF9jYXBhY2l0eSI6ImdwdV9taWQifQ.YM_KOm5U-yyzGEMJ8nMyxlNBVyUSk4jxy5rKwyODZ2PnEOJkSEbBPgA31ntiOoDXVI3hOvgaCa35BbIjoUq6BQ",
+  "canonical_json_sha256": "2199054378c690da9eb364e2ab93d441566b1823d68a1415261117113418c05a"
+}

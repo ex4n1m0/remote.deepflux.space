@@ -1,0 +1,30 @@
+{
+  "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"1bf75c5b110835d798afed028bd048f0da430562a59a1ca83e6bb9e3420bbf16\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"\"}",
+  "canonical_json_sha256": "8ec244633b2900be63aaac1c3370d9653889255c6563a66e76b4344c268eddd7",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-036 pin commitment mismatch: pin_commitment is well-formed bare 64-hex but does NOT bind prompt_tokens (it is the commitment of a different payload). The pure validation core returns commitment_mismatch; the serving-side honest reject is SessionReject reason pin_mismatch (the string identical to the frozen probe verdict label).",
+  "expected_reject": "pin_mismatch",
+  "expected_validate_error": "commitment_mismatch",
+  "name": "pin-carrier-2-mismatch",
+  "fields": {
+    "deadline_ms": 2500,
+    "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+    "nonce": "cc0000000000000a",
+    "pin_commitment": "1bf75c5b110835d798afed028bd048f0da430562a59a1ca83e6bb9e3420bbf16",
+    "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+    "prompt_tokens": [
+      151644,
+      11,
+      22,
+      33,
+      44,
+      151645
+    ],
+    "protocol_version": "msp-cooperative-v1",
+    "round": 0,
+    "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "seq": 1,
+    "session_id": "sess-pin-0001",
+    "signature": ""
+  }
+}

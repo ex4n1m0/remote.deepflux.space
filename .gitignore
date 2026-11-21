@@ -11,3 +11,6 @@ services/signaling/api/*.js
 .zcode/
 # Local agent tool state (findings, hook state, reports) — never project data
 .mimosa/
+# onlyhumans-core build.rs per-clone GK secret (auto-generated; release
+# builds inject the real channel secret via env — never stored in git)
+crates/secrets/

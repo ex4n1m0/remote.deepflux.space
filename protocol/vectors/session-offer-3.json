@@ -1,0 +1,30 @@
+{
+  "block": {
+    "canonical_json": "{\"budget\":{\"max_endpoint_seconds\":120,\"max_endpoints\":1,\"max_output_tokens\":2048},\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"preset\":\"verified\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"protocol_version\":\"msp-cooperative-v1\",\"session_id\":\"sess-coop-0003\",\"verifier_backend\":\"cpu\"}",
+    "canonical_json_sha256": "05300afb7ad7757c4c70ecc7daf0ebf2f0b9393dbe4566c206c3c65986bab8ab",
+    "fields": {
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 2048
+      },
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "preset": "verified",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "protocol_version": "msp-cooperative-v1",
+      "session_id": "sess-coop-0003",
+      "verifier_backend": "cpu"
+    }
+  },
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "THIRD SessionOffer canonical form (ADR-032 revision 4 §3/G3, 2026-10-12): the v2 shape plus the REQUIRED binding fields profile_id (msp1:<64 hex> — the coordinator's pinned exact profile under the project rule) and generation_params_hash (bare 64-hex, the §1 rule-3 canonical preimage). Absence of EITHER fails schema; the base and v2 forms are preserved as data that fails deserialization (session-offer-1/2.json). The serving side compares both against its own pinned config and rejects profile_mismatch / params_mismatch — negotiation-time discovery; verifier-side pinning (stage 4 params, stage 7 profile, §8 commit-time equality) remains the enforcement authority. Unsigned (handshake-authenticated session).",
+  "name": "session-offer-3",
+  "signed": "none — negotiation messages carry no signature of their own (msp-cooperative-v1 §1; msp-v1 §6.6 PeerId binding)",
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+}

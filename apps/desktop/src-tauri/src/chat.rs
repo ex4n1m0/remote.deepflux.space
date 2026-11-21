@@ -117,6 +117,11 @@ pub struct TrustState {
     /// device ids an attacker freely rotates; this bounds the aggregate
     /// no matter how many fresh ids arrive.
     pub untrusted_prompt_times: std::collections::VecDeque<u64>,
+    /// ADR-013 P2: when the prompt on screen is an ACCOUNT-scope proof
+    /// prompt, the proven installation id (set with the prompt, consumed
+    /// by the accept/decline commands to remember/revoke the account
+    /// intent). `None` on ordinary pairing prompts.
+    pub prompt_account: Option<String>,
 }
 
 /// Prompt-flood cooldown after an explicit user reject (ADR-006 B3).
@@ -196,6 +201,14 @@ struct PairingsDoc {
     /// finally arrives in an accepted session.
     #[serde(default)]
     remembered: Vec<String>,
+    /// ADR-013 P2: installation ids with a standing "Always allow" for
+    /// their ACCOUNT-scope proofs (account-scoped remote control's
+    /// consent-once). Keyed by the proof's self-certifying installation
+    /// id — not the claimable signaling device id — so a re-keyed or
+    /// revoked installation loses trust by construction (its id can never
+    /// be re-earned by a different key).
+    #[serde(default)]
+    account_remembered: Vec<String>,
 }
 
 /// One stored chat line. `sender`: "user" | "agent" | "peer-user" |
@@ -549,6 +562,82 @@ pub fn has_remember_intent(app: &AppHandle, code: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// ADR-013 P2: standing "Always allow" for ACCOUNT-scope proofs (keyed by
+// the proven installation id — see PairingsDoc::account_remembered)
+// ---------------------------------------------------------------------------
+
+/// Remember an account-scope "Always allow" (the account prompt's Always
+/// choice; durable at click time exactly like [`remember_intent`]).
+pub fn remember_account_intent(app: &AppHandle, installation_id: &str) {
+    let mut doc = read_pairings(app);
+    if remember_account_intent_in_doc(&mut doc, installation_id) {
+        write_pairings(app, &doc);
+    }
+}
+
+fn remember_account_intent_in_doc(doc: &mut PairingsDoc, installation_id: &str) -> bool {
+    let id = installation_id.trim();
+    // Installation ids are base58(SHA-256(pubkey)) — 44 chars today. The
+    // 20..=64 band deliberately sits ABOVE the 16-char signaling ids: the
+    // two trust keys (device id vs installation id) must never be
+    // confusable, so a hex signaling id is rejected on shape alone.
+    let valid = (20..=64).contains(&id.len())
+        && id.bytes().all(|b| b.is_ascii_alphanumeric())
+        && !doc.account_remembered.iter().any(|i| i == id);
+    if !valid {
+        return false;
+    }
+    doc.account_remembered.push(id.to_owned());
+    if doc.account_remembered.len() > REMEMBERED_CAP {
+        doc.account_remembered
+            .drain(..doc.account_remembered.len() - REMEMBERED_CAP);
+    }
+    true
+}
+
+/// Revoke one (explicit Decline on an account prompt).
+pub fn revoke_account_intent(app: &AppHandle, installation_id: &str) {
+    let mut doc = read_pairings(app);
+    let id = installation_id.trim();
+    let before = doc.account_remembered.len();
+    doc.account_remembered.retain(|i| i != id);
+    if doc.account_remembered.len() != before {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Standing account "Always allow" for this installation?
+pub fn has_account_intent(app: &AppHandle, installation_id: &str) -> bool {
+    let id = installation_id.trim();
+    read_pairings(app)
+        .account_remembered
+        .iter()
+        .any(|i| i == id)
+}
+
+/// Security review finding 3: armed account intents are revocable after
+/// all — a machine removed from the account (dashboard revoke) vanishes
+/// from every directory snapshot, and the next successful poll prunes its
+/// intent here. Called ONLY with a fresh, successful snapshot (an empty
+/// cache from a failed poll must never prune). Returns whether the doc
+/// changed.
+pub fn prune_account_intents(app: &AppHandle, present: &[String]) -> bool {
+    if present.is_empty() {
+        return false; // defensive: never wipe trust on an empty read
+    }
+    let mut doc = read_pairings(app);
+    let before = doc.account_remembered.len();
+    doc.account_remembered
+        .retain(|id| present.iter().any(|p| p == id));
+    if doc.account_remembered.len() != before {
+        write_pairings(app, &doc);
+        true
+    } else {
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dead-key purge (2026-10-27 duplicate-list fix)
 // ---------------------------------------------------------------------------
 
@@ -888,6 +977,25 @@ pub fn auto_accept_if_paired(app: &AppHandle, controller_device_id: &str) -> boo
         .is_ok()
 }
 
+/// ADR-013 P2 twin of [`auto_accept_if_paired`] for account-scope proofs:
+/// a verified proof from an installation with a standing account "Always
+/// allow" is silently accepted. `remember: true` on the engine command is
+/// deliberate — it also completes the pairing ceremony when the
+/// controller offers (stronger proof on every later connect), exactly
+/// like a pairing-verified accept.
+pub fn auto_accept_account(app: &AppHandle) -> bool {
+    let services = app.state::<crate::commands::AppServices>();
+    let Ok(slot) = services.engine.lock() else {
+        return false;
+    };
+    let Some(handle) = slot.as_ref() else {
+        return false;
+    };
+    handle
+        .send(crate::engine::EngineCmd::ConsentAccept { remember: true })
+        .is_ok()
+}
+
 /// Controller side of auto-pairing: after `SessionEstablished`, offer
 /// pairing to the host if we have none (or a pending one) with it.
 pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
@@ -922,6 +1030,7 @@ mod tests {
         PairingsDoc {
             pairings: pairs,
             remembered: Vec::new(),
+            account_remembered: Vec::new(),
         }
     }
 
@@ -1325,6 +1434,43 @@ mod tests {
             !remove_pairing_in_doc(&mut d, "abcdef0123456789"),
             "idempotent"
         );
+    }
+
+    #[test]
+    fn account_intents_remember_revoke_and_validate() {
+        let mut d = doc(vec![]);
+        // base58-shaped installation ids land, dedupe, and trim.
+        assert!(remember_account_intent_in_doc(
+            &mut d,
+            " 9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2 "
+        ));
+        assert!(!remember_account_intent_in_doc(
+            &mut d,
+            "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2"
+        ));
+        // A 16-hex SIGNALING id is NOT a valid installation id: the two
+        // trust keys must never be confusable.
+        assert!(!remember_account_intent_in_doc(&mut d, "abcdef0123456789"));
+        assert!(!remember_account_intent_in_doc(&mut d, ""));
+        assert!(!remember_account_intent_in_doc(&mut d, &"x".repeat(65)));
+        // Bounded like the pairing intents.
+        for i in 0..REMEMBERED_CAP {
+            remember_account_intent_in_doc(&mut d, &format!("inst{i:05}"));
+        }
+        assert!(d.account_remembered.len() <= REMEMBERED_CAP);
+    }
+
+    #[test]
+    fn pairings_doc_without_account_field_still_loads() {
+        // Pre-P2 pairings.json (no account_remembered key) must deserialize
+        // via the serde default — the field is additive.
+        let legacy = serde_json::json!({
+            "pairings": [],
+            "remembered": ["abcdef0123456789"]
+        });
+        let d: PairingsDoc = serde_json::from_value(legacy).expect("legacy doc loads");
+        assert!(d.account_remembered.is_empty());
+        assert_eq!(d.remembered.len(), 1);
     }
 
     #[test]

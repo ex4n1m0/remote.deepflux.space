@@ -1,0 +1,32 @@
+{
+  "$note": "REAL profile (not synthetic): Qwen2.5-0.5B-Instruct Q4_K_M GGUF at Qwen/Qwen2.5-0.5B-Instruct-GGUF@9217f5db; hashes resolved from the GGUF artifact itself per ADR-022 by scripts/resolve-candidate.mjs.",
+  "vector": "real-artifact-qwen25-0.5b-q4km",
+  "manifest": {
+    "schema_version": 2,
+    "hf_repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+    "hf_revision": "9217f5db79a29953eb74d5343926648285ec7e67",
+    "artifact_hashes": [
+      {
+        "path": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+      }
+    ],
+    "tokenizer_hash": "a5adafe8431c310a24bb7c8dc69867c8ba9dad33be7cf057800aef827daf6f71",
+    "chat_template_hash": "d5495a1e5db0611132a97e46a65dbb64a642a499421228b9c8b93229097fa9a4",
+    "architecture_hash": "de0876a123e974f4761efae28354c0fe5d267d71a5d8ed8ef8741054aa769d08",
+    "quantization": {
+      "method": "q4_k_m",
+      "bits": 4
+    },
+    "runtime": {
+      "name": "llama.cpp",
+      "version": "b11407",
+      "build_hash": "353c4aab423bff5cb6dc0e1d32e41a447990ab3d69a411b7f58ff48187c91a03"
+    },
+    "decoding_abi_version": 1,
+    "speculative_capabilities": [
+      "proposal_tokens"
+    ]
+  },
+  "expected_profile_id": "msp1:eb0a0d21a61daa85e9c4f382c45ebcc13c6d346cc5e402e22a4b4e38bcd8120c"
+}

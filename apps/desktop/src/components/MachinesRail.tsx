@@ -1,16 +1,18 @@
 /** Machines rail (ADR-005, simplified by ADR-009, discovery restored by
- * ADR-010): the IM-style left column and THE machine list — the
- * trusted-host list (pairings) plus the discovery list (the sealed circle
- * directory), merged one-row-per-machine. Every row is both a chat and a
- * remote-control target; paired machines connect silently, discovered
- * machines connect through the ordinary consent prompt (asked once —
- * "Always allow" makes it permanent). The connect box under the header
- * still reaches any machine by code. Also home to the pinned "This
- * machine" card (host role). */
+ * ADR-010, re-sourced by ADR-013 P2): the IM-style left column and THE
+ * machine list — the trusted-host list (pairings) plus the account
+ * directory (the website account's machines), merged one-row-per-machine.
+ * Every row is both a chat and a remote-control target; paired machines
+ * connect silently, account machines connect through the account-proof
+ * path (asked once — "Always allow" makes it permanent; the controller
+ * proves its installation, the host checks its account). The connect box
+ * under the header still reaches any machine by code. Also home to the
+ * pinned "This machine" card (host role). */
 import { useState } from "react";
 import { hostView } from "../state/mapping";
 import { CopyButton } from "./Common";
-import type { DirectoryMachine, HostStateName, PairingInfo } from "../types";
+import { ACCOUNT_ONLINE_WINDOW_MS } from "../types";
+import type { AccountMachine, HostStateName, PairingInfo } from "../types";
 
 /** A connection code is exactly 16 hex characters (the peer's device id). */
 export function looksLikeCode(value: string): boolean {
@@ -54,57 +56,66 @@ export function machinesFromPairings(
   }));
 }
 
-/** ADR-010: trusted list + discovery list, ONE row per machine — the
- * merge is keyed by device code, so a machine can never appear twice.
- * Pairings win: a paired row keeps its cached name (a placeholder name
- * that is just the bare code adopts the discovered name instead).
- * Presence: a `true` from either source wins — a live session shows
- * online even before the directory catches up, and the directory's live
- * flag (refreshed every 30 s) clears the session-scoped `false` that a
- * past disconnect left behind (sticky-offline bug: only an app restart
- * used to clear it, so a trusted peer showed offline forever). */
+/** ADR-013 P2: trusted list + account directory, ONE row per machine —
+ * the merge is keyed by signaling device code, so a machine can never
+ * appear twice. Pairings win: a paired row keeps its cached name (a
+ * placeholder name that is just the bare code adopts the account label
+ * instead). Presence: a `true` from either source wins — a live session
+ * shows online even before the poll catches up, and the directory's
+ * last-seen flag (refreshed every 30 s) clears the session-scoped `false`
+ * that a past disconnect left behind. Rows without a shared signaling id
+ * (sharing off, or the account machine predates the mapping) stay out —
+ * they cannot be reached at all. */
 export function unifiedMachines(
   pairings: PairingInfo[],
   peerOnline: Record<string, boolean>,
   selectedCode: string | null,
-  directory: DirectoryMachine[] | null,
+  account: AccountMachine[] | null,
+  nowMs: number = Date.now(),
 ): MachineRow[] {
   const rows = machinesFromPairings(pairings, peerOnline, selectedCode);
-  if (!directory) return rows;
+  if (!account) return rows;
   const byCode = new Map(rows.map((r) => [r.code, r]));
-  for (const d of directory) {
-    const existing = byCode.get(d.device);
+  for (const m of account) {
+    if (m.is_self) continue;
+    const device = m.signaling_device_id;
+    if (!device) continue; // online-but-not-controllable: no row
+    const online =
+      m.last_seen_at_ms !== null && nowMs - m.last_seen_at_ms < ACCOUNT_ONLINE_WINDOW_MS;
+    const name = m.label || `${m.installation_id.slice(0, 8)}…`;
+    const existing = byCode.get(device);
     if (existing) {
-      if (existing.name === existing.code && d.name) {
-        existing.name = d.name; // placeholder name — the discovered one is real
+      if (existing.name === existing.code && m.label) {
+        existing.name = m.label; // placeholder name — the account's label is real
       }
-      existing.online = existing.online === true || d.online === true;
+      existing.online = existing.online === true || online;
       continue;
     }
     const row: MachineRow = {
-      id: `dir:${d.device}`,
-      name: d.name || d.device,
-      code: d.device,
-      online: d.online,
-      active: selectedCode === d.device,
+      id: `acct:${m.installation_id}`,
+      name,
+      code: device,
+      online,
+      active: selectedCode === device,
       trusted: false,
       pending: false,
       fromDirectory: true,
     };
-    byCode.set(d.device, row);
+    byCode.set(device, row);
     rows.push(row);
   }
   return rows;
 }
 
-/** Self is not a contact: directory rows for THIS machine never reach the
- * merged list (the pinned "This machine" card represents self). Matches by
- * the backend's `is_self` flag and, belt-and-braces, by device id. */
-export function excludeSelf(
-  machines: DirectoryMachine[],
-  thisDevice: string | null,
-): DirectoryMachine[] {
-  return machines.filter((m) => !m.is_self && m.device !== thisDevice);
+/** Self is not a contact: the account row for THIS machine never reaches
+ * the merged list (the pinned "This machine" card represents self). The
+ * `is_self` flag is authoritative; the caller keeps this belt-and-braces
+ * filter for older payloads. */
+export function excludeSelfAccount(
+  machines: AccountMachine[],
+  thisInstallationId: string | null,
+): AccountMachine[] {
+  return machines.filter((m) => !m.is_self && m.installation_id !== thisInstallationId);
 }
 
 /** Machine-page removal (ADR-009): two-step confirm — forgetting a
@@ -165,6 +176,9 @@ export function MachinesRail({
   thisName,
   hostState,
   sharing,
+  swarmChip,
+  swarmJoinable,
+  onJoinSwarm,
   onPick,
   onConnect,
   onShare,
@@ -176,6 +190,12 @@ export function MachinesRail({
   thisName: string | null;
   hostState: HostStateName;
   sharing: boolean;
+  /** ADR-013: "swarm · <id first 8>…" when this machine is joined to the
+   * account swarm (null otherwise). */
+  swarmChip: string | null;
+  /** ADR-013: whether to offer "Join a swarm" under the connect box. */
+  swarmJoinable: boolean;
+  onJoinSwarm: () => void;
   onPick: (code: string) => void;
   onConnect: (code: string, agent: boolean) => void;
   onShare: () => void;
@@ -254,6 +274,16 @@ export function MachinesRail({
         ) : (
           <p className="hint">the code is on the other machine's "This machine" card</p>
         )}
+        {swarmJoinable ? (
+          <button
+            type="button"
+            className="ghost small rail-join-swarm"
+            onClick={onJoinSwarm}
+            title="Bind this machine to your ModelSwarm account — approve an 8-character code on the website"
+          >
+            Join a swarm
+          </button>
+        ) : null}
       </div>
 
       <input
@@ -305,6 +335,11 @@ export function MachinesRail({
         </div>
         {thisName ? <strong>{thisName}</strong> : null}{" "}
         <span className="chip chip-neutral">{host.status}</span>
+        {swarmChip ? (
+          <span className="chip chip-neutral swarm-chip" title="This machine is joined to your ModelSwarm account">
+            {swarmChip}
+          </span>
+        ) : null}
         <div className="row">
           <code className="code">{thisCode}</code>
           <CopyButton value={thisCode} label="code" />

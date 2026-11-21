@@ -99,6 +99,20 @@ export const signalingBodySchema = z.discriminatedUnion('type', [
     // with the account surface's name schema (any peer can send this
     // field; hosts render it, so the shape is pinned here too).
     requester_name: displayNameSchema.optional(),
+    // ADR-013 P2 additive-optional: the controller's Ed25519 account-scope
+    // proof (same-account trust without a pairing exchange). Same
+    // stripped-if-unknown rule — MUST be a known key. Opaque to the
+    // service (signature verification is the host's job); shapes pinned:
+    // base58 installation id / base58 public key / 128 lowercase hex
+    // Ed25519 signature / signing wall clock.
+    account_proof: z
+      .object({
+        installation_id: z.string().min(8).max(64),
+        pub_key_b58: z.string().min(32).max(64),
+        signature_hex: z.string().regex(/^[0-9a-f]{128}$/, 'expected 128 lowercase hex chars'),
+        ts_ms: z.number().int().nonnegative(),
+      })
+      .optional(),
   }),
   z.object({
     type: z.literal('accept'),

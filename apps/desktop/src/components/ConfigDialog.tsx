@@ -2,14 +2,21 @@
  * place, opened from the Config menu. Reuses the existing sections
  * (SettingsPanel, TrustedMachinesSection) and adds the Assistant section
  * that finally exposes the provider base URL and model (they lived in
- * settings with no UI before). Esc and the backdrop close it. */
+ * settings with no UI before). ADR-013 adds the Swarm section (account
+ * membership). Esc and the backdrop close it. */
 import { useEffect, useRef, useState } from "react";
 import type { AssistantBinding } from "../hooks/useAssistant";
 import { SettingsPanel } from "./IdentityCard";
 import { TrustedMachinesSection } from "./TrustedMachines";
-import type { Settings } from "../types";
+import {
+  SWARM_DASHBOARD_URL,
+  sessionExpiryText,
+  swarmJoinable,
+  swarmStatusLine,
+} from "../state/swarm";
+import type { Settings, SwarmState } from "../types";
 
-export type ConfigSection = "settings" | "trusted" | "assistant";
+export type ConfigSection = "settings" | "trusted" | "assistant" | "swarm";
 
 export interface ConfigDialogProps {
   open: boolean;
@@ -19,6 +26,11 @@ export interface ConfigDialogProps {
   version: string | null;
   assistant: AssistantBinding;
   onRevokedTrusted: () => void;
+  /** ADR-013: swarm membership state + the join/leave verbs. */
+  swarm: SwarmState | null;
+  onJoinSwarm: () => void;
+  onLeaveSwarm: () => void;
+  onRekeySwarm: () => Promise<string>;
   onClose: () => void;
 }
 
@@ -26,6 +38,7 @@ const SECTION_IDS: Array<{ id: ConfigSection; label: string }> = [
   { id: "settings", label: "Settings" },
   { id: "trusted", label: "Trusted machines" },
   { id: "assistant", label: "Assistant" },
+  { id: "swarm", label: "Swarm" },
 ];
 
 export function ConfigDialog({
@@ -36,6 +49,10 @@ export function ConfigDialog({
   version,
   assistant,
   onRevokedTrusted,
+  swarm,
+  onJoinSwarm,
+  onLeaveSwarm,
+  onRekeySwarm,
   onClose,
 }: ConfigDialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +134,9 @@ export function ConfigDialog({
           </section>
           <section id={sectionAnchor("assistant")}>
             <AssistantSection assistant={assistant} />
+          </section>
+          <section id={sectionAnchor("swarm")}>
+            <SwarmSection state={swarm} onJoin={onJoinSwarm} onLeave={onLeaveSwarm} onRekey={onRekeySwarm} />
           </section>
         </div>
       </div>
@@ -232,4 +252,113 @@ export function AssistantSection({ assistant }: { assistant: AssistantBinding })
       </div>
     </div>
   );
+}
+
+/** Swarm membership (ADR-013): one status line, the join/leave/re-key
+ * verbs, and the dashboard link. Join opens the modal that carries the
+ * 8-char pairing code (the Config dialog itself closes — App's
+ * onJoinSwarm). Leave is LOCAL only: the website dashboard's revoke stays
+ * authoritative for the account binding. Re-key (gate (d) recovery)
+ * mints a fresh device identity — the nuclear option when this machine's
+ * never-rotating seed is suspected stolen. */
+export function SwarmSection({
+  state,
+  onJoin,
+  onLeave,
+  onRekey,
+}: {
+  state: SwarmState | null;
+  onJoin: () => void;
+  onLeave: () => void;
+  /** Mint a fresh device identity; receives the NEW installation id (for
+   * the completion copy) once the Rust side has persisted it. */
+  onRekey: () => Promise<string>;
+}) {
+  const joined = state?.status === "joined" ? state : null;
+  const needsRejoin = state?.status === "needs_rejoin";
+  const [rekeyArmed, setRekeyArmed] = useState(false);
+  const [rekeyNote, setRekeyNote] = useState<string | null>(null);
+  return (
+    <div className="settings-section">
+      <h3>Swarm</h3>
+      <p className="muted">{swarmStatusLine(state)}</p>
+      {joined ? (
+        <p className="muted small">Session valid until {sessionExpiryText(joined.session_expires_at_ms)}.</p>
+      ) : null}
+      {needsRejoin ? (
+        <div className="banner banner-info" role="status">
+          <p>This machine needs to rejoin the swarm — start the join again below.</p>
+        </div>
+      ) : null}
+      <div className="row">
+        {swarmJoinable(state) ? (
+          <button type="button" className="primary" onClick={onJoin}>
+            Join a swarm
+          </button>
+        ) : null}
+        {joined ? (
+          <button type="button" className="danger" onClick={onLeave}>
+            Leave this swarm
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => void openDashboard()}
+          title="Open the website's account page in your browser"
+        >
+          Open the dashboard
+        </button>
+      </div>
+      {rekeyArmed ? (
+        <div className="banner banner-warn" role="alert">
+          <p>
+            Reset this machine's device identity? This is the recovery path
+            when its secret key is suspected stolen: the current identity is
+            destroyed locally, and every trust it carried (account binding,
+            consent on other machines) dies with it. You re-enroll from
+            scratch, and the old machine row must be revoked on the dashboard.
+          </p>
+          <div className="row">
+            <button
+              type="button"
+              className="danger"
+              onClick={() => {
+                setRekeyArmed(false);
+                onRekey().then(
+                  (id) => setRekeyNote(`New device identity minted (${id.slice(0, 8)}…) — join a swarm to enroll it.`),
+                  () => setRekeyNote("The identity reset failed — nothing changed."),
+                );
+              }}
+            >
+              Yes, reset the identity
+            </button>
+            <button type="button" className="ghost" onClick={() => setRekeyArmed(false)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="ghost small" onClick={() => setRekeyArmed(true)}>
+          Reset this machine's identity…
+        </button>
+      )}
+      {rekeyNote ? (
+        <p className="hint" role="status">
+          {rekeyNote}
+        </p>
+      ) : null}
+      <p className="hint">
+        Joining asks you to confirm the claiming account here before this
+        machine binds to it. Leaving here only removes the local membership;
+        removing the machine for good happens on the dashboard.
+      </p>
+    </div>
+  );
+}
+
+async function openDashboard(): Promise<void> {
+  // MenuBar precedent: no opener plugin — the site opens in the default
+  // browser via target=_blank.
+  window.open(SWARM_DASHBOARD_URL, "_blank", "noopener");
 }

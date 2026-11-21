@@ -148,6 +148,7 @@ impl NodeObserver for Recorder {
         _pairing_proof_hex: Option<&str>,
         requester_name: Option<&str>,
         _message_id: &str,
+        _account_proof: Option<&protocol::signaling::AccountProof>,
     ) {
         self.prompts.fetch_add(1, Ordering::Relaxed);
         self.log.lock().expect("recorder").push(format!(
@@ -260,7 +261,7 @@ impl TestNode {
     fn controller_connect(&mut self, host: &str) {
         let mut observer = self.recorder.clone();
         self.node
-            .controller_connect(host, None, None, &mut observer);
+            .controller_connect(host, None, None, None, &mut observer);
     }
 
     fn controller_cancel(&mut self) {
@@ -375,7 +376,7 @@ fn requester_name_travels_to_the_consent_prompt() {
     b.clock.set_ms(200);
     let mut observer = a.recorder.clone();
     a.node
-        .controller_connect("device-b", None, Some("Alice Doe"), &mut observer);
+        .controller_connect("device-b", None, Some("Alice Doe"), None, &mut observer);
     settle(&mut a, &mut b);
     assert!(b.recorder.contains("PromptConsent device-a"));
     assert!(b.recorder.contains("name=Alice Doe"));
@@ -386,7 +387,7 @@ fn requester_name_travels_to_the_consent_prompt() {
     settle(&mut a, &mut b);
     let mut observer = a.recorder.clone();
     a.node
-        .controller_connect("device-b", None, None, &mut observer);
+        .controller_connect("device-b", None, None, None, &mut observer);
     settle(&mut a, &mut b);
     // The busy/re-request outcome depends on session state; the assertion
     // that matters is that no prompt ever shows a wrong name.

@@ -5,12 +5,14 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AccountMachine,
   DirectoryMachine,
   EngineStatus,
   Identity,
   MonitorInfo,
   PairingInfo,
   Settings,
+  SwarmState,
 } from "./types";
 
 export const EVENT = {
@@ -41,6 +43,11 @@ export const CHAT_EVENT = "engine://chat";
 
 /** Automatic updates (ADR-008): updater → UI event. */
 export const UPDATE_EVENT = "update://state";
+
+/** Swarm enrollment (ADR-013): membership state push. */
+export const SWARM_EVENT = "swarm://state";
+/** ADR-013 P2 account directory snapshot push (payload: AccountMachine[]). */
+export const ACCOUNT_DIRECTORY_EVENT = "app://account-directory";
 
 export interface UpdateState {
   status:
@@ -119,6 +126,11 @@ export const api = {
   directoryMachines: (): Promise<DirectoryMachine[]> => invoke("directory_machines"),
   directoryRefresh: (): Promise<void> => invoke("directory_refresh"),
 
+  // ADR-013 P2 account directory: the website account's machines (the
+  // connectable discovery source — replaces the circle directory rows in
+  // the rail).
+  accountDirectoryMachines: (): Promise<AccountMachine[]> => invoke("account_directory_machines"),
+
   setQuality: (preset: string): Promise<void> =>
     invoke("set_quality", { args: { preset } }),
   selectMonitor: (monitorId: string): Promise<void> =>
@@ -154,6 +166,19 @@ export const api = {
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
     invoke("chat_send", { args: { code, text, agent } }),
   chatHistory: (code: string): Promise<ChatLine[]> => invoke("chat_history", { code }),
+
+  // Swarm enrollment (ADR-013): join shows the userCode via the state
+  // event; cancel abandons the poll; claimAnswer resolves the gate (a)
+  // account-claim prompt (Allow binds, Deny frees the code); leave drops
+  // the LOCAL membership (the website dashboard's revoke stays
+  // authoritative); rekey mints a fresh device identity (gate (d)
+  // recovery — new installation id, fresh enrollment).
+  swarmStatus: (): Promise<SwarmState> => invoke("swarm_status"),
+  swarmJoin: (): Promise<void> => invoke("swarm_join"),
+  swarmCancelJoin: (): Promise<void> => invoke("swarm_cancel_join"),
+  swarmClaimAnswer: (accept: boolean): Promise<void> => invoke("swarm_claim_answer", { accept }),
+  swarmRekey: (): Promise<string> => invoke("swarm_rekey"),
+  swarmLeave: (): Promise<void> => invoke("swarm_leave"),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

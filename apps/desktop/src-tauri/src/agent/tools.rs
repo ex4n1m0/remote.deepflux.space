@@ -665,6 +665,7 @@ pub fn execute(
                             pairing_secret,
                             requester_name: Some(requester_name),
                             agent: false,
+                            account_prover: None,
                         })
                         .map_err(|e| e.to_string())
                 })
@@ -2130,6 +2131,7 @@ fn fleet_one(
                     pairing_secret,
                     requester_name: Some(requester_name),
                     agent: true,
+                    account_prover: None,
                 })
                 .map_err(|e| e.to_string())
         })

@@ -136,6 +136,38 @@ fn stamp_requester_name(actions: &mut [Action], requester_name: &str) {
     }
 }
 
+/// Stamp the ADR-013 P2 account proof onto a machine-built
+/// `connect_request` `Send` action — the third composition-layer patch of
+/// the same shape (the pure machine holds no keys). The proof binds the
+/// session/message ids, which only exist once the envelope is built.
+fn stamp_account_proof(
+    actions: &mut [Action],
+    prover: &crate::account_proof::AccountProver,
+    host_device_id: &str,
+    now_ms: u64,
+) {
+    for action in actions.iter_mut() {
+        let Action::Send(env) = action else {
+            continue;
+        };
+        let SignalingBody::ConnectRequest { account_proof, .. } = &mut env.body else {
+            continue;
+        };
+        let Some(session_id) = env.session_id.clone() else {
+            continue;
+        };
+        if let Some(proof) = prover.prove(
+            &env.from_device_id,
+            host_device_id,
+            &session_id,
+            &env.message_id,
+            now_ms,
+        ) {
+            *account_proof = Some(proof);
+        }
+    }
+}
+
 /// Stamp the ADR-009 host display name onto a machine-built `accept` `Send`
 /// action (the mirror of `stamp_requester_name`: the pure session machine
 /// cannot know the name, so the composition layer patches it in place).
@@ -166,6 +198,9 @@ pub trait NodeObserver {
     /// its pairing store and decides silent-accept vs prompt.
     /// `requester_name` (ADR-007) is the controller's machine display name
     /// from the wire — advisory, the device id stays the identity.
+    /// `account_proof` (ADR-013 P2) is the controller's Ed25519
+    /// account-scope proof, forwarded verbatim the same way — the app
+    /// layer verifies the signature and checks its account directory.
     #[allow(clippy::too_many_arguments)]
     fn prompt_consent(
         &mut self,
@@ -175,6 +210,7 @@ pub trait NodeObserver {
         _pairing_proof_hex: Option<&str>,
         _requester_name: Option<&str>,
         _message_id: &str,
+        _account_proof: Option<&protocol::signaling::AccountProof>,
     ) {
     }
     /// ADR-009: `peer_name` is the display name learned from the wire for
@@ -440,11 +476,18 @@ impl Node {
     /// `requester_name` (ADR-007, re-scoped by ADR-009): the caller's
     /// machine display name, stamped the same way; the app always sends
     /// one, `None` keeps the field absent for older/test callers.
+    ///
+    /// `account_prover` (ADR-013 P2): when the caller's installation has a
+    /// swarm identity, the node stamps the Ed25519 account proof onto the
+    /// outgoing `connect_request` the same way — the host treats it as
+    /// same-account trust IF it also finds the installation in its account
+    /// directory. A pairing proof still wins where one exists.
     pub fn controller_connect(
         &mut self,
         host_device_id: &str,
         pairing_secret_hex: Option<&str>,
         requester_name: Option<&str>,
+        account_prover: Option<&crate::account_proof::AccountProver>,
         observer: &mut dyn NodeObserver,
     ) {
         if let Some(mut actions) = self.step_controller_raw(
@@ -459,6 +502,9 @@ impl Node {
             }
             if let Some(name) = requester_name {
                 stamp_requester_name(&mut actions, name);
+            }
+            if let Some(prover) = account_prover {
+                stamp_account_proof(&mut actions, prover, host_device_id, self.clock.now_ms());
             }
             self.apply(MachineKind::Controller, actions, observer);
         }
@@ -612,6 +658,7 @@ impl Node {
                 capabilities,
                 pairing_proof_hex,
                 requester_name,
+                account_proof,
             } => {
                 self.step_host(
                     HostEvent::IncomingRequest {
@@ -621,6 +668,7 @@ impl Node {
                         capabilities,
                         pairing_proof_hex,
                         requester_name,
+                        account_proof,
                     },
                     observer,
                 );
@@ -1000,6 +1048,7 @@ impl Node {
                     pairing_proof_hex,
                     requester_name,
                     message_id,
+                    account_proof,
                 } => {
                     observer.prompt_consent(
                         &controller_device_id,
@@ -1008,6 +1057,7 @@ impl Node {
                         pairing_proof_hex.as_deref(),
                         requester_name.as_deref(),
                         &message_id,
+                        account_proof.as_ref(),
                     );
                 }
                 Action::ComposeAnswer { offer_sdp } => {

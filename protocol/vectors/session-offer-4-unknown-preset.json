@@ -1,0 +1,33 @@
+{
+ "name": "session-offer-4-unknown-preset",
+ "description": "ADR-045 (S-1 supersession + the P2 receipt-population contract) fail-closed intake pin: the offer-form-v3 canonical shape carrying a preset OUTSIDE the frozen five-value enum ('turbo'). The canonical bytes are pinned; the object MUST fail SessionOffer deserialization (unknown enum variant) on every implementation \u2014 no session opens, no receipt is produced, the value is never coerced to a nearby tier. Rust-only consumer (modelswarm-session verifydrafts vector tests): the cooperative namespace is hub-blind (msp-cooperative-v1 \u00a75), so no TS parser of SessionOffer exists or may exist; the dual-language duty for ADR-045 rides receipt-v2-2-presets.json.",
+ "adr": "ADR-045 / msp-cooperative-v1 \u00a76 compatibility",
+ "block": {
+  "canonical_json": "{\"budget\":{\"max_endpoint_seconds\":120,\"max_endpoints\":1,\"max_output_tokens\":2048},\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"preset\":\"turbo\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"protocol_version\":\"msp-cooperative-v1\",\"session_id\":\"sess-coop-0004\",\"verifier_backend\":\"cpu\"}",
+  "canonical_json_sha256": "ffd67ffe54c8b855cad635ba38d758ac8d6df6cb60dfad53f4897cea20b7ba29",
+  "fields": {
+   "budget": {
+    "max_endpoint_seconds": 120,
+    "max_endpoints": 1,
+    "max_output_tokens": 2048
+   },
+   "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+   "preset": "turbo",
+   "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+   "protocol_version": "msp-cooperative-v1",
+   "session_id": "sess-coop-0004",
+   "verifier_backend": "cpu"
+  }
+ },
+ "signed": false,
+ "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+ "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+ "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+ "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+ "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+ "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+ "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+ "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+ "fails_deserialization": true,
+ "failure_class": "unknown preset enum variant \u2014 offer fails schema (fail-closed, never coerced)"
+}

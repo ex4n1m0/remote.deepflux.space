@@ -1,0 +1,91 @@
+{
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-032 §7 fixture row 4 (plan §2.2, flag F-2): end-of-generation inside the accepted path. divergence_point null (full acceptance) and correction null PRESENT-AS-NULL — the FIELD is always present, its VALUE is null exactly at EOG; the commit covers the accepted prefix only (committed = window[..3], no correction token) and new_prefix_hash chains over exactly those ids. Prevents second-implementation drift on EOS serialization.",
+  "engine": {
+    "backend": "cpu",
+    "batch_verify": true,
+    "batch_window_max": 32
+  },
+  "expected": {
+    "accepted_prefix_len": 3,
+    "committed": [
+      601,
+      602,
+      603
+    ],
+    "correction": null,
+    "divergence_point": null,
+    "eog": true,
+    "new_prefix_hash": "cfa090edd4e1e23eafe34c82cd28105d05a4a1b29fcb47dfba97639e217634fd",
+    "new_prefix_hash_construction": {
+      "committed_token_ids": [
+        601,
+        602,
+        603
+      ],
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rule": "hex(sha256(raw32(parent_hex) || token ids as little-endian u32 each))"
+    },
+    "outcome": "accepted"
+  },
+  "generation_params": {
+    "canonical_json": "{\"seed\":null,\"temperature\":1,\"top_k\":40,\"top_p\":1}",
+    "seed": null,
+    "sha256_hex": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+    "temperature": 1,
+    "top_k": 40,
+    "top_p": 1
+  },
+  "name": "verifydrafts-4-eos",
+  "request": {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"4a5b6c7d8e9f01b2\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":1,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":12,\"session_id\":\"sess-vd-eos-0001\",\"window_tokens\":[601,602,603]}",
+    "canonical_json_sha256": "7eeb5919198c0e4ae69a2476053307984e1b77069c3368b0c54adc8e270f1719",
+    "fields": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "4a5b6c7d8e9f01b2",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 1,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 12,
+      "session_id": "sess-vd-eos-0001",
+      "signature": "Wh4L1s7Orsbr+8tB4q6EePEdUiZTKnp+SASSzj9DcsVJkmA4cFcXFqwny7u1wT2sEFEOBTSNvHq5hIUYOVTIDA==",
+      "window_tokens": [
+        601,
+        602,
+        603
+      ]
+    },
+    "signature": "Wh4L1s7Orsbr+8tB4q6EePEdUiZTKnp+SASSzj9DcsVJkmA4cFcXFqwny7u1wT2sEFEOBTSNvHq5hIUYOVTIDA=="
+  },
+  "result": {
+    "canonical_json": "{\"accepted_prefix_len\":3,\"correction\":null,\"divergence_point\":null,\"new_prefix_hash\":\"cfa090edd4e1e23eafe34c82cd28105d05a4a1b29fcb47dfba97639e217634fd\",\"nonce_echo\":\"4a5b6c7d8e9f01b2\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":1,\"sender\":\"2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3\",\"seq\":4,\"session_id\":\"sess-vd-eos-0001\",\"verify_pass_ms\":35}",
+    "canonical_json_sha256": "f8a6dab3e1c0fc966a619508305035f29defd6143d6858ade6487cca40a64d56",
+    "fields": {
+      "accepted_prefix_len": 3,
+      "correction": null,
+      "divergence_point": null,
+      "new_prefix_hash": "cfa090edd4e1e23eafe34c82cd28105d05a4a1b29fcb47dfba97639e217634fd",
+      "nonce_echo": "4a5b6c7d8e9f01b2",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 1,
+      "sender": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+      "seq": 4,
+      "session_id": "sess-vd-eos-0001",
+      "signature": "cArWewA2zwPsXDSYdz9EWt9yYZw9Q97V6D27xuI4nvfBVVL5OOFItKv7P+wANdG2er+lAc7AEYUy7t22CelVAQ==",
+      "verify_pass_ms": 35
+    },
+    "signature": "cArWewA2zwPsXDSYdz9EWt9yYZw9Q97V6D27xuI4nvfBVVL5OOFItKv7P+wANdG2er+lAc7AEYUy7t22CelVAQ=="
+  },
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "verify_at": "2026-10-12T00:00:00Z"
+}

@@ -129,6 +129,28 @@ pub fn ensure_signaling_version(version: u16) -> Result<(), SignalingVersionErro
     }
 }
 
+/// ADR-013 P2 account-scope proof riding `connect_request`
+/// (additive-optional within signaling version 1). The controller's swarm
+/// identity (Ed25519, one key per installation) signs the domain string
+/// `"account-proof:v1|{installation_id}|{controller_device}|{host_device}\
+/// |{session_id}|{message_id}|{ts_ms}"`; construction lives in node-runtime
+/// (`account_proof`), verification mirrors `pairing_proof.rs`. The
+/// installation id is self-certifying — `base58(SHA-256(pub_key))` — so a
+/// valid signature proves possession of exactly the named installation's
+/// key; account MEMBERSHIP is the host's own directory cache to judge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountProof {
+    /// base58(SHA-256(pub_key)) — the enrollment wire identity.
+    pub installation_id: String,
+    /// The Ed25519 public key, base58 — hash-bound to `installation_id`.
+    pub pub_key_b58: String,
+    /// Ed25519 signature over the domain string, lowercase hex.
+    pub signature_hex: String,
+    /// Signer wall clock at signing; the signature binds it and the host
+    /// enforces the freshness window (mirrors the pairing-proof v2 rule).
+    pub ts_ms: u64,
+}
+
 /// Discriminated message body. Variant names serialize to snake_case `type`
 /// values; variant fields are snake_case and stable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,12 +180,23 @@ pub enum SignalingBody {
     /// beside the device id in the host's consent prompt. Advisory only —
     /// `from_device_id` stays the identity. Absent on pre-0.8 controllers;
     /// hosts fall back to the bare device id.
+    ///
+    /// `account_proof` (ADR-013 P2, additive-optional within version 1) is
+    /// the controller's Ed25519 proof that it is a specific installation of
+    /// the sender's website account: the host verifies the signature, that
+    /// `installation_id == base58(SHA-256(pub_key))`, and — against its own
+    /// account-directory cache — that the installation shares its account.
+    /// First verified account contact prompts (consent once, remembered per
+    /// installation); pairing proofs still win when both ride. Absent on
+    /// pre-P2 controllers; hosts treat it as absent.
     ConnectRequest {
         capabilities: Capabilities,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pairing_proof_hex: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         requester_name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_proof: Option<AccountProof>,
     },
     /// Host grants the session and hands over the one-time secret.
     ///
@@ -263,6 +296,18 @@ mod tests {
                 capabilities: capabilities_sample(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
+            },
+            SignalingBody::ConnectRequest {
+                capabilities: capabilities_sample(),
+                pairing_proof_hex: None,
+                requester_name: Some("Alice".to_owned()),
+                account_proof: Some(AccountProof {
+                    installation_id: "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2".to_owned(),
+                    pub_key_b58: "4YkZS6qXe7cGz3JvN8mQ5wR1tL0pHbA2sD9uKfE7xM3c".to_owned(),
+                    signature_hex: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_owned(),
+                    ts_ms: 1_695_000_000_000,
+                }),
             },
             SignalingBody::Accept {
                 session_secret: SessionSecret("one-time-secret".to_owned()),
@@ -311,6 +356,7 @@ mod tests {
             capabilities: capabilities_sample(),
             pairing_proof_hex: None,
             requester_name: None,
+            account_proof: None,
         }))
         .expect("serialize");
 
@@ -334,6 +380,7 @@ mod tests {
             capabilities: capabilities_sample(),
             pairing_proof_hex: None,
             requester_name: Some("Alice".to_owned()),
+            account_proof: None,
         }))
         .expect("serialize");
         assert_eq!(value["requester_name"], "Alice");

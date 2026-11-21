@@ -15,6 +15,40 @@ members = [
     # live in apps/desktop/src-tauri/Cargo.toml; the integrator
     # consolidates them into [workspace.dependencies] later.
     "apps/desktop/src-tauri",
+    # ModelSwarm crates imported at the pinned MSP v0.2.42 (ADR-013, D1;
+    # source: MSP repo commit 16995d3). They keep their own edition 2021 /
+    # version 0.2.42 and their inline MSP lint tables (unsafe_code forbid,
+    # clippy all deny) instead of inheriting this workspace's tables, so
+    # Remote's existing lint posture is unchanged. Fixture tree
+    # protocol/vectors/ is copied alongside (referenced by tests and
+    # compile-time include_str!).
+    "crates/modelswarm-types",
+    "crates/modelswarm-identity",
+    "crates/modelswarm-transport",
+    "crates/modelswarm-eligibility",
+    "crates/modelswarm-runtime",
+    "crates/modelswarm-scheduler",
+    "crates/modelswarm-session",
+    "crates/modelswarm-speculation",
+    "crates/modelswarm-store",
+    "crates/modelswarm-gateway",
+    "crates/modelswarm-telemetry",
+    "crates/modelswarm-winjob",
+    "crates/modelswarm-resource",
+    # OnlyHumans protocol ported at the pinned v1.2.0 (ADR-013, D4; source:
+    # OnlyHumans-app repo tag v1.2.0, commit 427ec0a — the standalone product
+    # is untouched). Verbatim mechanical pin, MSP-import style: keeps its own
+    # edition 2024 / version 1.2.0. Two deliberate deviations from the source
+    # tree: (1) src/gk_channel.bin re-minted — DeepMulti's own room universe,
+    # no shared channel/secrets with the standalone product (D4); (2) the
+    # crate-local Cargo.lock dropped — the workspace lock governs. (3) the
+    # tree rustfmt-normalized under the workspace toolchain (rustfmt 1.11.0,
+    # mechanical whitespace/wrap changes only — the source's fmt predates it).
+    # (4) rusqlite aligned 0.40.2 -> 0.32 to share the single libsqlite3-sys
+    # generation modelswarm-store pins (Cargo forbids two `links = "sqlite3"`
+    # copies); store.rs's surface is pre-0.32-stable API only.
+    # build.rs writes its per-clone secret to crates/secrets/ (gitignored).
+    "crates/onlyhumans-core",
 ]
 
 [workspace.package]
