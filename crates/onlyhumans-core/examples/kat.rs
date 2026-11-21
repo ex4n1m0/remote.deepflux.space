@@ -13,10 +13,10 @@ use sha2::{Digest, Sha256};
 
 fn main() {
     // Fixed test GK — independent of any release channel key.
-    let gk: crypto::Key = Sha256::digest(b"kat-gk-v1").try_into().unwrap();
+    let gk: crypto::Key = Sha256::digest(b"kat-gk-v1").into();
 
     // Fixed deterministic Ed25519 identity.
-    let seed: [u8; 32] = Sha256::digest(b"kat-peer-seed").try_into().unwrap();
+    let seed: [u8; 32] = Sha256::digest(b"kat-peer-seed").into();
     let kp = Keypair::ed25519_from_bytes(seed).expect("fixed seed is valid");
     let peer_id = libp2p::PeerId::from(kp.public()).to_string();
     let pub_b64 = crypto::base64_encode(&kp.public().encode_protobuf());
@@ -31,7 +31,7 @@ fn main() {
     let proof = crypto::admission_proof(&earth, &peer_id, &nonce);
 
     // Room key + host->guest delivery seal under the effective GK.
-    let room_key: crypto::Key = Sha256::digest(b"kat-room-key").try_into().unwrap();
+    let room_key: crypto::Key = Sha256::digest(b"kat-room-key").into();
     let room_id: crypto::RoomId = hex::decode(&room_hex).unwrap().try_into().unwrap();
     let key_ct_epoch: u64 = 1;
     let key_ct = crypto::seal_room_key(&earth, &room_id, key_ct_epoch, &peer_id, &room_key);
