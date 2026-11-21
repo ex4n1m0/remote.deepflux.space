@@ -238,8 +238,12 @@ public launch, woven through the phases):**
   pending claim → the device confirms via signed
   `/auth/device/claim-confirm`; binds happen only on that confirm,
   bind-before-approve per the P2 security review); (b) 14-day session
-  TTL + "sign out everywhere"; (c) awaiting the PR click — the CI
-  `integration-postgres` job runs the Pg suites incl. the new SQL;
+  TTL + "sign out everywhere"; (c) closed 2026-11-21 — tracker PR #1
+  merged to the tracker repo's main (`8d8a80c`); the CI
+  `integration-postgres` job ran the Pg suites incl. the new SQL green
+  on the merged tree, with the full rust/tracker suites re-verified on
+  the Rust-identical head `9988121` (the msp-v1.md claim-handshake
+  amendment rode in on the same merge);
   (d) `docs/security/device-seed-theft.md` + the `swarm_rekey` command.
   The feature itself: Ed25519 account proof on `connect_request`
   (additive-optional; pairing proofs still win), host trust = valid
