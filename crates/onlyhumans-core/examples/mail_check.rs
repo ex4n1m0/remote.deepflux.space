@@ -3,7 +3,7 @@
 //! sealed items addressed to ourselves, drain them back, verify
 //! signatures, and prove the drain is empty afterwards.
 //!   cargo run -p onlyhumans_core --example mail_check
-use onlyhumans_core::hub::{mail_canonical, verify_mail_item, HubClient, MailItem, DEFAULT_HUB};
+use onlyhumans_core::hub::{DEFAULT_HUB, HubClient, MailItem, mail_canonical, verify_mail_item};
 use onlyhumans_core::identity::Identity;
 
 #[tokio::main]
@@ -14,7 +14,8 @@ async fn main() -> anyhow::Result<()> {
     let hub = HubClient::new(DEFAULT_HUB);
 
     // Drain authorization checks the REGISTERED key, so register first.
-    hub.register(&id, vec!["/ip4/127.0.0.1/tcp/1".to_string()]).await?;
+    hub.register(&id, vec!["/ip4/127.0.0.1/tcp/1".to_string()])
+        .await?;
     println!("registered {}", id.id_string());
 
     let to = id.id_string();
@@ -37,7 +38,13 @@ async fn main() -> anyhow::Result<()> {
     // Push through the real endpoint (client signs the same way the node does).
     let client = reqwest::Client::new();
     let url = format!("{DEFAULT_HUB}/api/inbox");
-    let resp: serde_json::Value = client.post(&url).json(&serde_json::json!({ "items": items })).send().await?.json().await?;
+    let resp: serde_json::Value = client
+        .post(&url)
+        .json(&serde_json::json!({ "items": items }))
+        .send()
+        .await?
+        .json()
+        .await?;
     println!("push: {resp}");
     assert_eq!(resp["ok"], serde_json::json!(true), "push failed");
 

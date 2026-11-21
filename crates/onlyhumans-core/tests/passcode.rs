@@ -3,7 +3,7 @@
 //! full working lifecycle; a different word -> a different room; the
 //! passcode room is never the main room.
 
-use onlyhumans_core::net::{spawn, Command, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{Command, NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -62,13 +62,20 @@ async fn same_word_meets_different_word_isolates() {
         }
     };
     let lair_hex = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            ..
+        } => room,
         other => panic!("A should found the lair, got {other:?}"),
     };
 
     // The lair is not the main room of this binary's GK.
     let main_hex = onlyhumans_core::rooms::global_room_hex(&onlyhumans_core::global_key());
-    assert_ne!(lair_hex, main_hex, "passcode room must differ from the main room");
+    assert_ne!(
+        lair_hex, main_hex,
+        "passcode room must differ from the main room"
+    );
 
     // C founds the "cave": a different universe entirely.
     let (c_tx, mut c_rx) = mpsc::unbounded_channel();
@@ -112,22 +119,33 @@ async fn same_word_meets_different_word_isolates() {
     // Offline mode has no hub: B learns A the way the loopback harness
     // does — an explicit dial of A's captured QUIC address.
     b.cmd_tx
-        .send(Command::Dial { addr: a_addr.parse().unwrap() })
+        .send(Command::Dial {
+            addr: a_addr.parse().unwrap(),
+        })
         .await
         .unwrap();
     let b_hex = match next_event(&mut b_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: false, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: false,
+            ..
+        } => room,
         other => panic!("B should join the lair, got {other:?}"),
     };
     assert_eq!(b_hex, lair_hex, "same word must address the same room");
 
     // Chat inside the lair.
     b.cmd_tx
-        .send(Command::SendMessage { room: lair_hex.clone(), text: "who's there".into() })
+        .send(Command::SendMessage {
+            room: lair_hex.clone(),
+            text: "who's there".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut a_rx, "message").await {
-        NodeEvent::Message { room, sender, body, .. } => {
+        NodeEvent::Message {
+            room, sender, body, ..
+        } => {
             assert_eq!(room, lair_hex);
             assert_eq!(sender, b.peer_id.to_string());
             assert_eq!(body, "who's there");

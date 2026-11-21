@@ -7,7 +7,7 @@
 //! the browser crypto mirrors this core byte for byte.
 
 use libp2p::identity::Keypair;
-use onlyhumans_core::crypto::{self, kinds, RoomCrypto};
+use onlyhumans_core::crypto::{self, RoomCrypto, kinds};
 use onlyhumans_core::rooms::{effective_gk, global_room_hex};
 use sha2::{Digest, Sha256};
 

@@ -7,7 +7,7 @@
 use futures::prelude::*;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{identify, identity, noise, ping, relay, tcp, yamux, Multiaddr, PeerId, SwarmBuilder};
+use libp2p::{Multiaddr, PeerId, SwarmBuilder, identify, identity, noise, ping, relay, tcp, yamux};
 use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
@@ -31,7 +31,11 @@ async fn main() -> anyhow::Result<()> {
     let relay_id = PeerId::from(relay_key.public());
     let mut relay = SwarmBuilder::with_existing_identity(relay_key)
         .with_tokio()
-        .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
+        .with_tcp(
+            tcp::Config::default(),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_behaviour(|key| RelayBehaviour {
             relay: relay::Behaviour::new(key.public().to_peer_id(), Default::default()),
             ping: ping::Behaviour::new(ping::Config::new()),
@@ -42,9 +46,13 @@ async fn main() -> anyhow::Result<()> {
         })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(600)))
         .build();
-    relay.listen_on(Multiaddr::empty()
-        .with(Protocol::from("127.0.0.1".parse::<std::net::Ipv4Addr>().unwrap()))
-        .with(Protocol::Tcp(0)))?;
+    relay.listen_on(
+        Multiaddr::empty()
+            .with(Protocol::from(
+                "127.0.0.1".parse::<std::net::Ipv4Addr>().unwrap(),
+            ))
+            .with(Protocol::Tcp(0)),
+    )?;
 
     let mut relay_addr = None;
     loop {
@@ -62,7 +70,11 @@ async fn main() -> anyhow::Result<()> {
     let client_key = identity::Keypair::generate_ed25519();
     let mut client = SwarmBuilder::with_existing_identity(client_key)
         .with_tokio()
-        .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
+        .with_tcp(
+            tcp::Config::default(),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|key, relay_client| ClientBehaviour {
             relay_client,
@@ -77,11 +89,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Official pattern: dial the relay directly first so both sides learn
     // addresses via the identify exchange.
-    client.dial(
-        relay_addr
-            .clone()
-            .with(Protocol::P2p(relay_id)),
-    )?;
+    client.dial(relay_addr.clone().with(Protocol::P2p(relay_id)))?;
     // Wait for the identify exchange before reserving.
     let deadline0 = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {

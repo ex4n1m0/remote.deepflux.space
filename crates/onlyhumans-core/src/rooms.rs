@@ -41,10 +41,14 @@ pub enum Envelope {
     },
     /// Host -> members: the current member list, sealed under the room key
     /// (only members may learn membership).
-    Members { frame: Sealed },
+    Members {
+        frame: Sealed,
+    },
     /// Any member: a sealed chat frame (main room: sent to every member;
     /// DMs: sent only to the peer).
-    Chat { frame: Sealed },
+    Chat {
+        frame: Sealed,
+    },
     /// Peer -> peer: open (or re-open) a private two-person room. The key
     /// is GK-sealed for the recipient only; delivered directly, never
     /// fanned out, so other members learn nothing.
@@ -53,15 +57,23 @@ pub enum Envelope {
         key_ct_b64: String,
     },
     /// Host -> members: rotation payload sealed under the current key.
-    Rotate { frame: Sealed },
+    Rotate {
+        frame: Sealed,
+    },
     /// Any member: request that everyone wipes their local message history
     /// for this room. Sealed like a chat frame (kind `clear`) so only room
     /// members can issue it.
-    Clear { frame: Sealed },
+    Clear {
+        frame: Sealed,
+    },
     /// Member -> members: leaving the room.
-    Leave { room_id_hex: String },
+    Leave {
+        room_id_hex: String,
+    },
     Ack,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,21 +152,44 @@ pub struct Rooms {
 #[derive(Debug, Clone)]
 pub enum RoomEvent {
     /// Outgoing envelope for the transport to deliver to `peer`.
-    Send { peer: PeerId, envelope: Envelope },
+    Send {
+        peer: PeerId,
+        envelope: Envelope,
+    },
     /// The room became usable (key installed / minted).
-    RoomReady { room_id_hex: String, host: PeerId, role: Role, epoch: u64 },
+    RoomReady {
+        room_id_hex: String,
+        host: PeerId,
+        role: Role,
+        epoch: u64,
+    },
     /// Plaintext chat message received.
-    Message { room_id_hex: String, sender: String, body: Vec<u8>, epoch: u64 },
+    Message {
+        room_id_hex: String,
+        sender: String,
+        body: Vec<u8>,
+        epoch: u64,
+    },
     /// The member list changed.
-    MembersChanged { room_id_hex: String, members: Vec<MemberInfo> },
+    MembersChanged {
+        room_id_hex: String,
+        members: Vec<MemberInfo>,
+    },
     /// Every participant should wipe its local message history.
-    MessagesCleared { room_id_hex: String },
+    MessagesCleared {
+        room_id_hex: String,
+    },
     /// A key rotation was applied.
-    Rotated { room_id_hex: String, new_epoch: u64 },
+    Rotated {
+        room_id_hex: String,
+        new_epoch: u64,
+    },
     /// The host refused our join: the room was sealed by a key rotation
     /// and we are not one of its members.
     Sealed,
-    ProtocolError { context: String },
+    ProtocolError {
+        context: String,
+    },
 }
 
 /// Deterministic room id for a global key: hex(SHA256("OH1-room-v1" | gk)
@@ -194,8 +229,7 @@ pub fn effective_gk(gk: &Key, word: Option<&str>) -> Key {
     h.update(gk);
     h.update(word.as_bytes());
     let salt = h.finalize();
-    let params =
-        argon2::Params::new(65_536, 3, 1, Some(32)).expect("valid Argon2id parameters");
+    let params = argon2::Params::new(65_536, 3, 1, Some(32)).expect("valid Argon2id parameters");
     let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut out = Key::default();
     argon
@@ -213,7 +247,16 @@ impl Rooms {
     pub fn new(gk: Key, my_id: String, my_name: String) -> Self {
         let my_name = sanitize_name(&my_name);
         let room_hex = global_room_hex(&gk);
-        Self { gk, my_id, my_name, room_hex, room: None, dms: HashMap::new(), expect_host: None, sealed: false }
+        Self {
+            gk,
+            my_id,
+            my_name,
+            room_hex,
+            room: None,
+            dms: HashMap::new(),
+            expect_host: None,
+            sealed: false,
+        }
     }
 
     /// Record the host a Join envelope is being sent to (gates the first
@@ -264,7 +307,10 @@ impl Rooms {
     }
 
     pub fn is_host(&self) -> bool {
-        self.room.as_ref().map(|st| st.role == Role::Host).unwrap_or(false)
+        self.room
+            .as_ref()
+            .map(|st| st.role == Role::Host)
+            .unwrap_or(false)
     }
 
     pub fn members(&self) -> Vec<MemberInfo> {
@@ -276,7 +322,11 @@ impl Rooms {
                     .map(|(peer, name)| MemberInfo {
                         peer: peer.clone(),
                         // Our own entry always carries OUR name.
-                        name: if peer == &self.my_id { self.my_name.clone() } else { name.clone() },
+                        name: if peer == &self.my_id {
+                            self.my_name.clone()
+                        } else {
+                            name.clone()
+                        },
                     })
                     .collect()
             })
@@ -304,7 +354,13 @@ impl Rooms {
             .my_id
             .parse::<PeerId>()
             .expect("my_id is a valid peer id");
-        self.room = Some(RoomState::new(crypto, Role::Host, host_id, &self.my_id, true));
+        self.room = Some(RoomState::new(
+            crypto,
+            Role::Host,
+            host_id,
+            &self.my_id,
+            true,
+        ));
     }
 
     /// Restore a member list (from the contacts store) into a restored
@@ -334,19 +390,39 @@ impl Rooms {
     pub fn open_dm(&mut self, peer: PeerId) -> (String, Envelope) {
         let hex = self.dm_hex(&peer.to_string());
         if !self.dms.contains_key(&hex) {
-            let room_id: RoomId = hex::decode(&hex).ok().and_then(|v| v.try_into().ok()).expect("dm hex");
+            let room_id: RoomId = hex::decode(&hex)
+                .ok()
+                .and_then(|v| v.try_into().ok())
+                .expect("dm hex");
             let mut key = Key::default();
             rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut key);
             self.dms.insert(
                 hex.clone(),
-                DmRoom { peer, crypto: RoomCrypto::from_delivered(room_id, key), my_seq: now_seed(), seen_seq: 0 },
+                DmRoom {
+                    peer,
+                    crypto: RoomCrypto::from_delivered(room_id, key),
+                    my_seq: now_seed(),
+                    seen_seq: 0,
+                },
             );
         }
         let dm = &self.dms[&hex];
         // DM rooms never rotate and the DmInvite envelope carries no epoch
         // field, so the delivery seal is pinned to epoch 1 on both sides.
-        let ct = crypto::seal_room_key(&self.gk, &dm.crypto.room_id, 1, &peer.to_string(), dm.crypto.room_key());
-        (hex.clone(), Envelope::DmInvite { room_id_hex: hex, key_ct_b64: crypto::base64_encode(&ct) })
+        let ct = crypto::seal_room_key(
+            &self.gk,
+            &dm.crypto.room_id,
+            1,
+            &peer.to_string(),
+            dm.crypto.room_key(),
+        );
+        (
+            hex.clone(),
+            Envelope::DmInvite {
+                room_id_hex: hex,
+                key_ct_b64: crypto::base64_encode(&ct),
+            },
+        )
     }
 
     /// Build the Join envelope with a fresh GK proof.
@@ -372,11 +448,17 @@ impl Rooms {
                 return None; // still joining
             }
             st.my_seq += 1;
-            return Some(st.crypto.seal(&self.my_id, st.my_seq, crypto::kinds::CHAT, body));
+            return Some(
+                st.crypto
+                    .seal(&self.my_id, st.my_seq, crypto::kinds::CHAT, body),
+            );
         }
         let dm = self.dms.get_mut(room_hex)?;
         dm.my_seq += 1;
-        Some(dm.crypto.seal(&self.my_id, dm.my_seq, crypto::kinds::CHAT, body))
+        Some(
+            dm.crypto
+                .seal(&self.my_id, dm.my_seq, crypto::kinds::CHAT, body),
+        )
     }
 
     /// Build the sealed clear-history frame (one per member fan-out).
@@ -386,7 +468,10 @@ impl Rooms {
             return None;
         }
         st.my_seq += 1;
-        Some(st.crypto.seal(&self.my_id, st.my_seq, crypto::kinds::CLEAR, b""))
+        Some(
+            st.crypto
+                .seal(&self.my_id, st.my_seq, crypto::kinds::CLEAR, b""),
+        )
     }
 
     /// Host: rotate the room key. Returns the sealed rotation frame (to
@@ -399,7 +484,9 @@ impl Rooms {
         let secret = st.crypto.prepare_rotation();
         let payload = serde_json::to_vec(&secret).expect("serialize rotation");
         st.my_seq += 1;
-        let frame = st.crypto.seal(&self.my_id, st.my_seq, crypto::kinds::ROTATE, &payload);
+        let frame = st
+            .crypto
+            .seal(&self.my_id, st.my_seq, crypto::kinds::ROTATE, &payload);
         st.crypto.commit_rotation(&secret).ok()?;
         Some(frame)
     }
@@ -435,11 +522,17 @@ impl Rooms {
                 if room_id_hex != self.room_hex {
                     out.push(RoomEvent::Send {
                         peer: from,
-                        envelope: Envelope::Error { message: "unknown room".into() },
+                        envelope: Envelope::Error {
+                            message: "unknown room".into(),
+                        },
                     });
                     return out;
                 }
-                let is_host = self.room.as_ref().map(|st| st.role == Role::Host).unwrap_or(false);
+                let is_host = self
+                    .room
+                    .as_ref()
+                    .map(|st| st.role == Role::Host)
+                    .unwrap_or(false);
                 if !is_host {
                     out.push(RoomEvent::Send {
                         peer: from,
@@ -591,20 +684,18 @@ impl Rooms {
             Envelope::Members { frame } => {
                 let room_hex = frame.room_id_hex.clone();
                 match self.open_frame(&frame, crypto::kinds::MEMBERS) {
-                    Ok((body, _, _)) => {
-                        match serde_json::from_slice::<MembersPayload>(&body) {
-                            Ok(p) => {
-                                if let Some(st) = self.room.as_mut() {
-                                    st.members = sanitize_members(p.members, &self.my_id);
-                                }
-                                out.push(RoomEvent::MembersChanged {
-                                    room_id_hex: room_hex,
-                                    members: self.members(),
-                                });
+                    Ok((body, _, _)) => match serde_json::from_slice::<MembersPayload>(&body) {
+                        Ok(p) => {
+                            if let Some(st) = self.room.as_mut() {
+                                st.members = sanitize_members(p.members, &self.my_id);
                             }
-                            Err(e) => out.push(err(&format!("bad members payload: {e}"))),
+                            out.push(RoomEvent::MembersChanged {
+                                room_id_hex: room_hex,
+                                members: self.members(),
+                            });
                         }
-                    }
+                        Err(e) => out.push(err(&format!("bad members payload: {e}"))),
+                    },
                     Err(e) => out.push(err(&format!("members: {e}"))),
                 }
             }
@@ -621,7 +712,9 @@ impl Rooms {
                         // A frame for a room we don't hold: for DMs this
                         // means the peer lost it (restart) — tell them so
                         // they re-invite us.
-                        if e.to_string().contains("unknown room") || e.to_string().contains("no room state") {
+                        if e.to_string().contains("unknown room")
+                            || e.to_string().contains("no room state")
+                        {
                             out.push(RoomEvent::Send {
                                 peer: from,
                                 envelope: Envelope::Error {
@@ -633,7 +726,10 @@ impl Rooms {
                     }
                 }
             }
-            Envelope::DmInvite { room_id_hex, key_ct_b64 } => {
+            Envelope::DmInvite {
+                room_id_hex,
+                key_ct_b64,
+            } => {
                 if room_id_hex == self.room_hex {
                     return out; // never via DM mechanics
                 }
@@ -641,7 +737,10 @@ impl Rooms {
                     Ok(c) => c,
                     Err(_) => return out,
                 };
-                let room_id: RoomId = match hex::decode(&room_id_hex).ok().and_then(|v| v.try_into().ok()) {
+                let room_id: RoomId = match hex::decode(&room_id_hex)
+                    .ok()
+                    .and_then(|v| v.try_into().ok())
+                {
                     Some(r) => r,
                     None => return out,
                 };
@@ -659,7 +758,12 @@ impl Rooms {
                 }
                 self.dms.insert(
                     room_id_hex.clone(),
-                    DmRoom { peer: from, crypto: RoomCrypto::from_delivered(room_id, key), my_seq: now_seed(), seen_seq: 0 },
+                    DmRoom {
+                        peer: from,
+                        crypto: RoomCrypto::from_delivered(room_id, key),
+                        my_seq: now_seed(),
+                        seen_seq: 0,
+                    },
                 );
                 out.push(RoomEvent::RoomReady {
                     room_id_hex,
@@ -684,7 +788,10 @@ impl Rooms {
                                 if let Some(st) = self.room.as_mut() {
                                     let new_epoch = secret.next_epoch;
                                     if st.crypto.apply_rotation(&secret).is_ok() {
-                                        out.push(RoomEvent::Rotated { room_id_hex: room_hex, new_epoch });
+                                        out.push(RoomEvent::Rotated {
+                                            room_id_hex: room_hex,
+                                            new_epoch,
+                                        });
                                     } else {
                                         out.push(err("rotation rejected (epoch mismatch?)"));
                                     }
@@ -699,7 +806,9 @@ impl Rooms {
             Envelope::Clear { frame } => {
                 let room_hex = frame.room_id_hex.clone();
                 match self.open_frame(&frame, crypto::kinds::CLEAR) {
-                    Ok(_) => out.push(RoomEvent::MessagesCleared { room_id_hex: room_hex }),
+                    Ok(_) => out.push(RoomEvent::MessagesCleared {
+                        room_id_hex: room_hex,
+                    }),
                     Err(e) => out.push(err(&format!("clear: {e}"))),
                 }
             }
@@ -794,18 +903,23 @@ impl Rooms {
     /// admitted guest gets the list in KeyDelivery already, but a single
     /// uniform broadcast keeps everyone in sync).
     fn broadcast_members(&mut self) -> Vec<RoomEvent> {
-        let Some(st) = self.room.as_ref() else { return vec![] };
+        let Some(st) = self.room.as_ref() else {
+            return vec![];
+        };
         if st.role != Role::Host || !st.has_key {
             return vec![];
         }
         let _ = st;
-        let payload = MembersPayload { members: self.members() };
+        let payload = MembersPayload {
+            members: self.members(),
+        };
         let body = serde_json::to_vec(&payload).expect("serialize members");
         // borrow gymnastics: seal needs &self.crypto, events need member ids
         let frame = {
             let st = self.room.as_mut().unwrap();
             st.my_seq += 1;
-            st.crypto.seal(&self.my_id, st.my_seq, crypto::kinds::MEMBERS, &body)
+            st.crypto
+                .seal(&self.my_id, st.my_seq, crypto::kinds::MEMBERS, &body)
         };
         let peers: Vec<PeerId> = self
             .room
@@ -821,13 +935,21 @@ impl Rooms {
             .collect();
         peers
             .into_iter()
-            .map(|peer| RoomEvent::Send { peer, envelope: Envelope::Members { frame: frame.clone() } })
+            .map(|peer| RoomEvent::Send {
+                peer,
+                envelope: Envelope::Members {
+                    frame: frame.clone(),
+                },
+            })
             .collect()
     }
 
     /// The mesh send set: every member's PeerId.
     pub fn member_peers(&self) -> Vec<PeerId> {
-        self.members().iter().filter_map(|m| m.peer.parse().ok()).collect()
+        self.members()
+            .iter()
+            .filter_map(|m| m.peer.parse().ok())
+            .collect()
     }
 
     fn open_frame(
@@ -900,7 +1022,9 @@ fn now_seed() -> u64 {
 }
 
 fn err(context: &str) -> RoomEvent {
-    RoomEvent::ProtocolError { context: context.to_string() }
+    RoomEvent::ProtocolError {
+        context: context.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -933,7 +1057,10 @@ mod passcode_tests {
     fn words_partition_the_room_universe() {
         let base = gk();
         // Determinism.
-        assert_eq!(effective_gk(&base, Some("lair")), effective_gk(&base, Some("lair")));
+        assert_eq!(
+            effective_gk(&base, Some("lair")),
+            effective_gk(&base, Some("lair"))
+        );
         // Different words, different keys and room ids; neither is the
         // main room.
         let lair = effective_gk(&base, Some("lair"));
@@ -971,14 +1098,20 @@ mod seal_tests {
     /// First Error envelope the host would send back, if any.
     fn sent_error(events: &[RoomEvent]) -> Option<String> {
         events.iter().find_map(|ev| match ev {
-            RoomEvent::Send { envelope: Envelope::Error { message }, .. } => Some(message.clone()),
+            RoomEvent::Send {
+                envelope: Envelope::Error { message },
+                ..
+            } => Some(message.clone()),
             _ => None,
         })
     }
 
     fn delivered_key(events: &[RoomEvent]) -> Option<u64> {
         events.iter().find_map(|ev| match ev {
-            RoomEvent::Send { envelope: Envelope::KeyDelivery { epoch, .. }, .. } => Some(*epoch),
+            RoomEvent::Send {
+                envelope: Envelope::KeyDelivery { epoch, .. },
+                ..
+            } => Some(*epoch),
             _ => None,
         })
     }
@@ -993,7 +1126,10 @@ mod seal_tests {
         let events = host.handle(spid, stranger.join_envelope());
         let err = sent_error(&events).expect("stranger must be refused");
         assert!(err.starts_with("room-sealed"), "got: {err}");
-        assert!(delivered_key(&events).is_none(), "no key may leak to a stranger");
+        assert!(
+            delivered_key(&events).is_none(),
+            "no key may leak to a stranger"
+        );
         assert!(stranger.sealed == false); // latch flips on the GUEST side, below
     }
 
@@ -1006,7 +1142,8 @@ mod seal_tests {
         let (mut guest, gpid) = node("guest");
         // Guest receives the host's refusal the transport would deliver.
         let refusal = Envelope::Error {
-            message: "room-sealed: the room key was rotated — only current members keep access".into(),
+            message: "room-sealed: the room key was rotated — only current members keep access"
+                .into(),
         };
         let events = guest.handle(host_id(&host), refusal);
         assert!(matches!(events.as_slice(), [RoomEvent::Sealed]));
@@ -1028,8 +1165,15 @@ mod seal_tests {
         // The member restarts / missed the rotation: their re-join (valid
         // GK proof, already on the member list) must still be admitted.
         let events = host.handle(mpid, member.join_envelope());
-        assert!(sent_error(&events).is_none(), "member re-join must not be refused");
-        assert_eq!(delivered_key(&events), Some(2), "member gets the current key");
+        assert!(
+            sent_error(&events).is_none(),
+            "member re-join must not be refused"
+        );
+        assert_eq!(
+            delivered_key(&events),
+            Some(2),
+            "member gets the current key"
+        );
         let _ = hpid;
     }
 
@@ -1059,18 +1203,31 @@ mod seal_tests {
             room_id_hex: host.room_hex().to_string(),
             epoch: 1,
             key_ct_b64: crypto::base64_encode(&ct),
-            members: vec![MemberInfo { peer: stranger.my_id().to_string(), name: "evil".into() }],
+            members: vec![MemberInfo {
+                peer: stranger.my_id().to_string(),
+                name: "evil".into(),
+            }],
         };
         let events = guest.handle(spid, poison);
-        assert!(guest.state().is_none(), "stranger delivery must not install a room");
-        assert!(events.iter().any(|ev| matches!(ev, RoomEvent::ProtocolError { .. })));
+        assert!(
+            guest.state().is_none(),
+            "stranger delivery must not install a room"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, RoomEvent::ProtocolError { .. }))
+        );
 
         // The REAL host's delivery still seats us.
         let events = host.handle(gpid, guest.join_envelope());
         let delivery = events
             .iter()
             .find_map(|ev| match ev {
-                RoomEvent::Send { peer, envelope: env @ Envelope::KeyDelivery { .. } } => Some((*peer, env.clone())),
+                RoomEvent::Send {
+                    peer,
+                    envelope: env @ Envelope::KeyDelivery { .. },
+                } => Some((*peer, env.clone())),
                 _ => None,
             })
             .expect("host must deliver the key");
@@ -1093,7 +1250,10 @@ mod seal_tests {
         let delivery = events
             .iter()
             .find_map(|ev| match ev {
-                RoomEvent::Send { envelope: env @ Envelope::KeyDelivery { .. }, .. } => Some(env.clone()),
+                RoomEvent::Send {
+                    envelope: env @ Envelope::KeyDelivery { .. },
+                    ..
+                } => Some(env.clone()),
                 _ => None,
             })
             .unwrap();
@@ -1115,10 +1275,17 @@ mod seal_tests {
             room_id_hex: host.room_hex().to_string(),
             epoch: 5,
             key_ct_b64: crypto::base64_encode(&ct),
-            members: vec![MemberInfo { peer: stranger.my_id().to_string(), name: "evil".into() }],
+            members: vec![MemberInfo {
+                peer: stranger.my_id().to_string(),
+                name: "evil".into(),
+            }],
         };
         guest.handle(spid, poison);
-        assert_eq!(guest.members(), members_before, "non-host must not change members");
+        assert_eq!(
+            guest.members(),
+            members_before,
+            "non-host must not change members"
+        );
         assert_eq!(guest.state().unwrap().crypto.epoch, epoch_before);
     }
 
@@ -1136,7 +1303,10 @@ mod seal_tests {
         let delivery = events
             .iter()
             .find_map(|ev| match ev {
-                RoomEvent::Send { envelope: env @ Envelope::KeyDelivery { .. }, .. } => Some(env.clone()),
+                RoomEvent::Send {
+                    envelope: env @ Envelope::KeyDelivery { .. },
+                    ..
+                } => Some(env.clone()),
                 _ => None,
             })
             .unwrap();
@@ -1150,7 +1320,10 @@ mod seal_tests {
         let redelivery = events
             .iter()
             .find_map(|ev| match ev {
-                RoomEvent::Send { envelope: env @ Envelope::KeyDelivery { .. }, .. } => Some(env.clone()),
+                RoomEvent::Send {
+                    envelope: env @ Envelope::KeyDelivery { .. },
+                    ..
+                } => Some(env.clone()),
                 _ => None,
             })
             .unwrap();
@@ -1159,7 +1332,10 @@ mod seal_tests {
 
         let st = guest.state().unwrap();
         assert_eq!(st.crypto.epoch, 2, "guest must adopt the rotated epoch");
-        assert_eq!(st.crypto.room_key(), host.state().unwrap().crypto.room_key());
+        assert_eq!(
+            st.crypto.room_key(),
+            host.state().unwrap().crypto.room_key()
+        );
     }
 
     fn host_id(host: &Rooms) -> PeerId {

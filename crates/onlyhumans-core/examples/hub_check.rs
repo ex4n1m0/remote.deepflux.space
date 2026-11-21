@@ -28,10 +28,15 @@ async fn main() -> anyhow::Result<()> {
     let reg = got.unwrap();
     assert_eq!(reg.peer_id, id.id_string());
     assert_eq!(reg.addrs, addrs);
-    println!("lookup  : OK ({} addrs, re-verified signature locally)", reg.addrs.len());
+    println!(
+        "lookup  : OK ({} addrs, re-verified signature locally)",
+        reg.addrs.len()
+    );
 
     // Tampering check: a lookup for someone else's id must be empty.
-    let other = hub.lookup("12D3KooWNonexistentPeerIdForNegativeTest000000000000000").await?;
+    let other = hub
+        .lookup("12D3KooWNonexistentPeerIdForNegativeTest000000000000000")
+        .await?;
     assert!(other.is_none());
     println!("negative: OK (unknown peer -> None)");
 

@@ -24,7 +24,9 @@ async fn main() -> anyhow::Result<()> {
     let _ = std::fs::remove_dir_all(&dir);
     let id = Identity::load_or_create(&dir)?;
     let addrs = vec!["/ip4/203.0.113.7/udp/4001/quic-v1".to_string()];
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u64;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as u64;
     let pub_b64 = crypto::base64_encode(&id.public_key_bytes());
     let sig = id.sign(&canonical(&id.id_string(), &pub_b64, &addrs, ts))?;
 
@@ -35,10 +37,15 @@ async fn main() -> anyhow::Result<()> {
         ts_ms: ts,
         sig_b64: crypto::base64_encode(&sig),
     };
-    let out = std::env::args().nth(1).unwrap_or_else(|| "reg_dump.json".into());
+    let out = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "reg_dump.json".into());
     std::fs::write(&out, serde_json::to_string_pretty(&reg)?)?;
     println!("wrote {out} (peer {})", reg.peer_id);
-    println!("canonical hex: {}", hex::encode(canonical(&reg.peer_id, &reg.public_key_b64, &reg.addrs, ts)));
+    println!(
+        "canonical hex: {}",
+        hex::encode(canonical(&reg.peer_id, &reg.public_key_b64, &reg.addrs, ts))
+    );
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }

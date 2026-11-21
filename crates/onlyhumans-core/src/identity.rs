@@ -1,8 +1,8 @@
 //! Device identity: a libp2p Ed25519 keypair persisted in the app data
 //! directory. The derived PeerId is the user's public address-book ID.
 
-use libp2p::identity::Keypair;
 use libp2p::PeerId;
+use libp2p::identity::Keypair;
 use std::path::Path;
 
 #[derive(Clone)]

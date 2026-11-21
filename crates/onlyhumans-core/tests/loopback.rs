@@ -5,7 +5,7 @@
 //! everywhere (including the host's own UI) -> membership lists agree ->
 //! DMs stay private -> clear wipes every store.
 
-use onlyhumans_core::net::{spawn, Command, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{Command, NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -72,7 +72,10 @@ async fn wait_members(rx: &mut mpsc::UnboundedReceiver<NodeEvent>, expect: &[Str
 async fn wait_clear(rx: &mut mpsc::UnboundedReceiver<NodeEvent>) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
-        assert!(tokio::time::Instant::now() < deadline, "clear never arrived");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "clear never arrived"
+        );
         let ev = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out mid-wait")
@@ -107,7 +110,12 @@ async fn three_nodes_one_room_full_lifecycle() {
         }
     };
     let room_hex = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, epoch, .. } => {
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            epoch,
+            ..
+        } => {
             assert_eq!(epoch, 1);
             room
         }
@@ -166,7 +174,11 @@ async fn three_nodes_one_room_full_lifecycle() {
     next_event(&mut c_rx, "room_ready").await;
 
     // Membership settles on all three nodes.
-    let all = vec![a.peer_id.to_string(), b.peer_id.to_string(), c.peer_id.to_string()];
+    let all = vec![
+        a.peer_id.to_string(),
+        b.peer_id.to_string(),
+        c.peer_id.to_string(),
+    ];
     wait_members(&mut a_rx, &all, "A").await;
     wait_members(&mut b_rx, &all, "B").await;
     wait_members(&mut c_rx, &all, "C").await;
@@ -182,12 +194,20 @@ async fn three_nodes_one_room_full_lifecycle() {
 
     // --- Chat: A -> everyone (mesh fan-out) ---
     a.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "hello room".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "hello room".into(),
+        })
         .await
         .unwrap();
     for (name, rx) in [("b", &mut b_rx), ("c", &mut c_rx)] {
         match next_event(rx, "message").await {
-            NodeEvent::Message { body, sender, epoch, .. } => {
+            NodeEvent::Message {
+                body,
+                sender,
+                epoch,
+                ..
+            } => {
                 assert_eq!(body, "hello room", "{name} must receive the host message");
                 assert_eq!(sender, a.peer_id.to_string());
                 assert_eq!(epoch, 1);
@@ -198,7 +218,10 @@ async fn three_nodes_one_room_full_lifecycle() {
 
     // --- Chat: B -> everyone (guest sends to the mesh) ---
     b.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "hi from b".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "hi from b".into(),
+        })
         .await
         .unwrap();
     for (name, rx) in [("a", &mut a_rx), ("c", &mut c_rx)] {
@@ -221,7 +244,10 @@ async fn three_nodes_one_room_full_lifecycle() {
     }
 
     a.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "epoch 2".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "epoch 2".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut c_rx, "message").await {
@@ -249,7 +275,12 @@ async fn three_nodes_one_room_full_lifecycle() {
     assert!(saw_refusal, "guest rotate must be refused");
 
     // --- Private rooms: A clicks B -----------------------------------
-    a.cmd_tx.send(Command::OpenDm { peer: b.peer_id.to_string() }).await.unwrap();
+    a.cmd_tx
+        .send(Command::OpenDm {
+            peer: b.peer_id.to_string(),
+        })
+        .await
+        .unwrap();
     let dm_ready = next_event(&mut b_rx, "room_ready").await;
     let dm_hex = match dm_ready {
         NodeEvent::RoomReady { room, .. } => room,
@@ -258,7 +289,13 @@ async fn three_nodes_one_room_full_lifecycle() {
     assert_ne!(dm_hex, room_hex, "dm must be a separate room");
     let _ = next_event(&mut a_rx, "room_ready").await;
 
-    a.cmd_tx.send(Command::SendMessage { room: dm_hex.clone(), text: "private hello".into() }).await.unwrap();
+    a.cmd_tx
+        .send(Command::SendMessage {
+            room: dm_hex.clone(),
+            text: "private hello".into(),
+        })
+        .await
+        .unwrap();
     match next_event(&mut b_rx, "message").await {
         NodeEvent::Message { room, body, .. } => {
             assert_eq!(room, dm_hex);
@@ -266,7 +303,13 @@ async fn three_nodes_one_room_full_lifecycle() {
         }
         other => panic!("expected dm message at B, got {other:?}"),
     }
-    b.cmd_tx.send(Command::SendMessage { room: dm_hex.clone(), text: "private back".into() }).await.unwrap();
+    b.cmd_tx
+        .send(Command::SendMessage {
+            room: dm_hex.clone(),
+            text: "private back".into(),
+        })
+        .await
+        .unwrap();
     match next_event(&mut a_rx, "message").await {
         NodeEvent::Message { room, body, .. } => {
             assert_eq!(room, dm_hex);
@@ -278,9 +321,13 @@ async fn three_nodes_one_room_full_lifecycle() {
         let mut leaked = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
-            if let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(200), c_rx.recv()).await {
+            if let Ok(Some(ev)) =
+                tokio::time::timeout(Duration::from_millis(200), c_rx.recv()).await
+            {
                 if let NodeEvent::Message { room, .. } = ev {
-                    if room == dm_hex { leaked = true; }
+                    if room == dm_hex {
+                        leaked = true;
+                    }
                 }
             }
         }
@@ -298,8 +345,10 @@ async fn three_nodes_one_room_full_lifecycle() {
         let st = Store::open(&temp_path(name)).unwrap();
         st.messages(&room_hex, 500).unwrap().len()
     };
-    assert!(msg_count("a") > 0 && msg_count("b") > 0 && msg_count("c") > 0,
-        "all three must have history before the clear");
+    assert!(
+        msg_count("a") > 0 && msg_count("b") > 0 && msg_count("c") > 0,
+        "all three must have history before the clear"
+    );
     b.cmd_tx.send(Command::ClearHistory).await.unwrap();
     wait_clear(&mut a_rx).await;
     wait_clear(&mut c_rx).await;

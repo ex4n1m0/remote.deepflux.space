@@ -2,7 +2,7 @@
 //! restores the room from the encrypted store — same identity, same room
 //! key — so the chat continues without a new join round.
 
-use onlyhumans_core::net::{spawn, Command, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{Command, NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -65,7 +65,11 @@ async fn host_room_survives_restart() {
         }
     };
     let room_hex = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            ..
+        } => room,
         other => panic!("A should found the room, got {other:?}"),
     };
 
@@ -95,7 +99,10 @@ async fn host_room_survives_restart() {
     }
 
     a.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "before restart".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "before restart".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut b_rx, "message").await {
@@ -114,12 +121,19 @@ async fn host_room_survives_restart() {
     // and race the rejoin.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
-        assert!(tokio::time::Instant::now() < deadline, "B never saw A leave");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "B never saw A leave"
+        );
         let ev = tokio::time::timeout(Duration::from_secs(5), b_rx.recv())
             .await
             .expect("timed out waiting for b events")
             .expect("node task died");
-        if let NodeEvent::ConnectionStateChanged { peer, connected: false } = &ev {
+        if let NodeEvent::ConnectionStateChanged {
+            peer,
+            connected: false,
+        } = &ev
+        {
             if *peer == a.peer_id.to_string() {
                 break;
             }
@@ -151,7 +165,12 @@ async fn host_room_survives_restart() {
     let a2_addr = loop {
         match next_event(&mut a2_rx, "listening").await {
             NodeEvent::Listening { addr } if addr.contains("quic") => break addr,
-            NodeEvent::RoomReady { room, we_are_host: true, epoch, .. } => {
+            NodeEvent::RoomReady {
+                room,
+                we_are_host: true,
+                epoch,
+                ..
+            } => {
                 assert_eq!(room, room_hex, "restart must restore the same room");
                 assert_eq!(epoch, 1);
                 a2_ready_seen = true;
@@ -161,7 +180,12 @@ async fn host_room_survives_restart() {
     };
     if !a2_ready_seen {
         match next_event(&mut a2_rx, "room_ready").await {
-            NodeEvent::RoomReady { room, we_are_host: true, epoch, .. } => {
+            NodeEvent::RoomReady {
+                room,
+                we_are_host: true,
+                epoch,
+                ..
+            } => {
                 assert_eq!(room, room_hex, "restart must restore the same room");
                 assert_eq!(epoch, 1);
             }
@@ -172,7 +196,10 @@ async fn host_room_survives_restart() {
     // B reconnects to A's new listener; its message decrypts with the
     // key both sides restored/persisted — no new join round.
     b.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "after restart".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "after restart".into(),
+        })
         .await
         .unwrap();
     b.cmd_tx
@@ -182,7 +209,9 @@ async fn host_room_survives_restart() {
         .await
         .unwrap();
     match next_event(&mut a2_rx, "message").await {
-        NodeEvent::Message { room, body, sender, .. } => {
+        NodeEvent::Message {
+            room, body, sender, ..
+        } => {
             assert_eq!(room, room_hex);
             assert_eq!(body, "after restart");
             assert_eq!(sender, b.peer_id.to_string());
@@ -191,7 +220,10 @@ async fn host_room_survives_restart() {
     }
 
     a2.cmd_tx
-        .send(Command::SendMessage { room: room_hex, text: "host back".into() })
+        .send(Command::SendMessage {
+            room: room_hex,
+            text: "host back".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut b_rx, "message").await {

@@ -6,7 +6,7 @@
 //!
 //! cargo test -p onlyhumans_core --test hub_live -- --ignored --nocapture
 
-use onlyhumans_core::net::{spawn, Command, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{Command, NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -52,14 +52,13 @@ fn temp_dir(name: &str) -> std::path::PathBuf {
     d
 }
 
-async fn wait_members(
-    rx: &mut mpsc::UnboundedReceiver<NodeEvent>,
-    expect: &[String],
-    secs: u64,
-) {
+async fn wait_members(rx: &mut mpsc::UnboundedReceiver<NodeEvent>, expect: &[String], secs: u64) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(secs);
     loop {
-        assert!(tokio::time::Instant::now() < deadline, "members never settled");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "members never settled"
+        );
         let ev = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out waiting for members")
@@ -94,7 +93,11 @@ async fn room_election_and_join_through_live_hub() {
     .unwrap();
 
     let a_room = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            ..
+        } => room,
         other => panic!("A should found the room, got {other:?}"),
     };
     eprintln!("  room = {a_room}");
@@ -113,7 +116,11 @@ async fn room_election_and_join_through_live_hub() {
     .unwrap();
 
     match next_event(&mut b_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: false, .. } => {
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: false,
+            ..
+        } => {
             assert_eq!(room, a_room, "B must land in the same global room");
         }
         other => panic!("B should join via the hub record, got {other:?}"),
@@ -123,7 +130,13 @@ async fn room_election_and_join_through_live_hub() {
     wait_members(&mut a_rx, &both, 120).await;
     wait_members(&mut b_rx, &both, 360).await;
 
-    a.cmd_tx.send(Command::SendMessage { room: a_room.clone(), text: "from founder".into() }).await.unwrap();
+    a.cmd_tx
+        .send(Command::SendMessage {
+            room: a_room.clone(),
+            text: "from founder".into(),
+        })
+        .await
+        .unwrap();
     match next_event(&mut b_rx, "message").await {
         NodeEvent::Message { body, sender, .. } => {
             assert_eq!(body, "from founder");
@@ -131,7 +144,13 @@ async fn room_election_and_join_through_live_hub() {
         }
         other => panic!("expected message, got {other:?}"),
     }
-    b.cmd_tx.send(Command::SendMessage { room: a_room, text: "from joiner".into() }).await.unwrap();
+    b.cmd_tx
+        .send(Command::SendMessage {
+            room: a_room,
+            text: "from joiner".into(),
+        })
+        .await
+        .unwrap();
     match next_event(&mut a_rx, "message").await {
         NodeEvent::Message { body, sender, .. } => {
             assert_eq!(body, "from joiner");
@@ -178,7 +197,11 @@ async fn join_listenerless_host_via_site_mailbox() {
     .unwrap();
 
     let a_room = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            ..
+        } => room,
         other => panic!("A should found the room, got {other:?}"),
     };
     eprintln!("  room = {a_room} (word {word})");
@@ -202,7 +225,11 @@ async fn join_listenerless_host_via_site_mailbox() {
     .unwrap();
 
     let b_room = match next_event_within(&mut b_rx, "room_ready", long).await {
-        NodeEvent::RoomReady { room, we_are_host: false, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: false,
+            ..
+        } => room,
         other => panic!("B should join via the site mailbox, got {other:?}"),
     };
     assert_eq!(b_room, a_room, "B must land in A's word room");
@@ -211,7 +238,13 @@ async fn join_listenerless_host_via_site_mailbox() {
     wait_members(&mut a_rx, &both, 120).await;
     wait_members(&mut b_rx, &both, 360).await;
 
-    b.cmd_tx.send(Command::SendMessage { room: b_room.clone(), text: "from mailbox joiner".into() }).await.unwrap();
+    b.cmd_tx
+        .send(Command::SendMessage {
+            room: b_room.clone(),
+            text: "from mailbox joiner".into(),
+        })
+        .await
+        .unwrap();
     match next_event_within(&mut a_rx, "message", long).await {
         NodeEvent::Message { body, sender, .. } => {
             assert_eq!(body, "from mailbox joiner");
@@ -219,7 +252,13 @@ async fn join_listenerless_host_via_site_mailbox() {
         }
         other => panic!("expected message at host, got {other:?}"),
     }
-    a.cmd_tx.send(Command::SendMessage { room: b_room, text: "from mailbox host".into() }).await.unwrap();
+    a.cmd_tx
+        .send(Command::SendMessage {
+            room: b_room,
+            text: "from mailbox host".into(),
+        })
+        .await
+        .unwrap();
     match next_event_within(&mut b_rx, "message", long).await {
         NodeEvent::Message { body, sender, .. } => {
             assert_eq!(body, "from mailbox host");
@@ -243,9 +282,8 @@ async fn join_listenerless_host_via_site_mailbox() {
 #[tokio::test]
 #[ignore = "live browser interop: set OH_TEST_WORD to the word the portal tab hosts"]
 async fn join_portal_hosted_room() {
-    let word = std::env::var("OH_TEST_WORD").unwrap_or_else(|_| {
-        panic!("set OH_TEST_WORD to the room word the browser tab is hosting")
-    });
+    let word = std::env::var("OH_TEST_WORD")
+        .unwrap_or_else(|_| panic!("set OH_TEST_WORD to the room word the browser tab is hosting"));
     let long = 360;
 
     let (g_tx, mut g_rx) = mpsc::unbounded_channel();
@@ -263,24 +301,41 @@ async fn join_portal_hosted_room() {
     .unwrap();
 
     let room = match next_event_within(&mut g_rx, "room_ready", long).await {
-        NodeEvent::RoomReady { room, we_are_host: false, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: false,
+            ..
+        } => room,
         other => panic!("app guest should join the portal-hosted room, got {other:?}"),
     };
     eprintln!("  joined portal-hosted room {room} (word {word})");
 
     match next_event_within(&mut g_rx, "members", long).await {
         NodeEvent::MembersChanged { members, .. } => {
-            assert!(members.len() >= 2, "portal host and app guest must see each other, got {members:?}");
+            assert!(
+                members.len() >= 2,
+                "portal host and app guest must see each other, got {members:?}"
+            );
         }
         other => panic!("expected members, got {other:?}"),
     }
 
     // One message out; the human (or automation) on the portal tab replies,
     // which shows up as a Message event in this test's log.
-    g.cmd_tx.send(Command::SendMessage { room, text: "hello from the desktop app".into() }).await.unwrap();
+    g.cmd_tx
+        .send(Command::SendMessage {
+            room,
+            text: "hello from the desktop app".into(),
+        })
+        .await
+        .unwrap();
     match next_event_within(&mut g_rx, "message", long).await {
         NodeEvent::Message { body, sender, .. } => {
-            assert_ne!(sender, g.peer_id.to_string(), "reply must come from the portal host");
+            assert_ne!(
+                sender,
+                g.peer_id.to_string(),
+                "reply must come from the portal host"
+            );
             eprintln!("  portal replied: {body}");
         }
         other => panic!("expected a reply from the portal host, got {other:?}"),

@@ -79,7 +79,10 @@ mod tests {
         // Same channel, different secrets -> different GK -> different room.
         assert_ne!(derive_gk(GK_CHANNEL, &s1), derive_gk(GK_CHANNEL, &s2));
         // Different channels with the same secret also isolate rooms.
-        assert_ne!(derive_gk(b"other-channel-xx", &s1), derive_gk(GK_CHANNEL, &s1));
+        assert_ne!(
+            derive_gk(b"other-channel-xx", &s1),
+            derive_gk(GK_CHANNEL, &s1)
+        );
         // Determinism: same inputs, same key.
         assert_eq!(derive_gk(GK_CHANNEL, &s1), derive_gk(GK_CHANNEL, &s1));
     }

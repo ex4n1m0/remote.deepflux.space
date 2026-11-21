@@ -12,7 +12,7 @@ use crate::store::Store;
 use futures::prelude::*;
 use libp2p::request_response::{self, Codec as _, ProtocolSupport};
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
-use libp2p::{dcutr, identify, multiaddr::Protocol, ping, relay, Multiaddr, PeerId, Swarm};
+use libp2p::{Multiaddr, PeerId, Swarm, dcutr, identify, multiaddr::Protocol, ping, relay};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::str::FromStr;
@@ -85,13 +85,20 @@ async fn read_json<T: futures::AsyncRead + Unpin + Send>(io: &mut T) -> std::io:
     io.read_exact(&mut len).await?;
     let n = u32::from_be_bytes(len) as usize;
     if n > 4 * 1024 * 1024 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "frame too large"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "frame too large",
+        ));
     }
     let mut buf = vec![0u8; n];
     io.read_exact(&mut buf).await?;
     let env: Envelope = serde_json::from_slice(&buf)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    tracing::info!("codec read ok: {} bytes: {}", buf.len(), String::from_utf8_lossy(&buf[..buf.len().min(90)]));
+    tracing::info!(
+        "codec read ok: {} bytes: {}",
+        buf.len(),
+        String::from_utf8_lossy(&buf[..buf.len().min(90)])
+    );
     Ok(env)
 }
 
@@ -101,7 +108,11 @@ async fn write_json<T: futures::AsyncWrite + Unpin + Send>(
 ) -> std::io::Result<()> {
     let bytes = serde_json::to_vec(env)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    tracing::info!("codec write: {} bytes: {}", bytes.len(), String::from_utf8_lossy(&bytes[..bytes.len().min(90)]));
+    tracing::info!(
+        "codec write: {} bytes: {}",
+        bytes.len(),
+        String::from_utf8_lossy(&bytes[..bytes.len().min(90)])
+    );
     io.write_all(&(bytes.len() as u32).to_be_bytes()).await?;
     io.write_all(&bytes).await?;
     io.close().await?;
@@ -154,22 +165,57 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum NodeEvent {
-    Listening { addr: String },
+    Listening {
+        addr: String,
+    },
     /// Progress of the automatic join flow, for the UI status line.
-    JoinStatus { status: String },
-    RoomReady { room: String, peer: String, we_are_host: bool, epoch: u64 },
-    Message { room: String, sender: String, body: String, epoch: u64, via_site: bool },
-    MembersChanged { room: String, members: Vec<crate::rooms::MemberInfo> },
-    MessagesCleared { room: String },
-    Rotated { room: String, new_epoch: u64 },
-    ConnectionStateChanged { peer: String, connected: bool },
+    JoinStatus {
+        status: String,
+    },
+    RoomReady {
+        room: String,
+        peer: String,
+        we_are_host: bool,
+        epoch: u64,
+    },
+    Message {
+        room: String,
+        sender: String,
+        body: String,
+        epoch: u64,
+        via_site: bool,
+    },
+    MembersChanged {
+        room: String,
+        members: Vec<crate::rooms::MemberInfo>,
+    },
+    MessagesCleared {
+        room: String,
+    },
+    Rotated {
+        room: String,
+        new_epoch: u64,
+    },
+    ConnectionStateChanged {
+        peer: String,
+        connected: bool,
+    },
     /// Site link: our anonymous presence beacon landed (the site's public
     /// counter now includes us) or failed. `online` is the count the hub
     /// reported (0 when unknown/rate-limited — still linked).
-    Presence { linked: bool, online: u64 },
-    Log { message: String },
+    Presence {
+        linked: bool,
+        online: u64,
+    },
+    Log {
+        message: String,
+    },
 }
 
 #[derive(Clone)]
@@ -260,20 +306,14 @@ pub async fn spawn(
             libp2p::yamux::Config::default,
         )?
         .with_quic()
-        .with_relay_client(
-            libp2p::noise::Config::new,
-            libp2p::yamux::Config::default,
-        )?
+        .with_relay_client(libp2p::noise::Config::new, libp2p::yamux::Config::default)?
         .with_behaviour(|key, relay_client| {
             let identify = identify::Behaviour::new(identify::Config::new(
                 "onlyhumans/1".to_string(),
                 key.public(),
             ));
             let ping = ping::Behaviour::new(ping::Config::new());
-            let relay = relay::Behaviour::new(
-                key.public().to_peer_id(),
-                relay::Config::default(),
-            );
+            let relay = relay::Behaviour::new(key.public().to_peer_id(), relay::Config::default());
             let dcutr = dcutr::Behaviour::new(key.public().to_peer_id());
             let rooms = request_response::Behaviour::with_codec(
                 EnvelopeCodec,
@@ -297,7 +337,9 @@ pub async fn spawn(
     if let Some(port) = cfg.listen_quic {
         swarm.listen_on(
             Multiaddr::empty()
-                .with(Protocol::from("0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap()))
+                .with(Protocol::from(
+                    "0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap(),
+                ))
                 .with(Protocol::Udp(port))
                 .with(Protocol::QuicV1),
         )?;
@@ -311,7 +353,9 @@ pub async fn spawn(
     if let Some(port) = cfg.listen_tcp {
         swarm.listen_on(
             Multiaddr::empty()
-                .with(Protocol::from("0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap()))
+                .with(Protocol::from(
+                    "0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap(),
+                ))
                 .with(Protocol::Tcp(port)),
         )?;
     }
@@ -350,7 +394,8 @@ pub async fn spawn(
                     // works immediately; the host's list re-converges as
                     // members re-join.
                     if let Ok(cs) = store.contacts() {
-                        rooms.restore_members(cs.into_iter().map(|c| (c.peer_id, c.name)).collect());
+                        rooms
+                            .restore_members(cs.into_iter().map(|c| (c.peer_id, c.name)).collect());
                     }
                 }
             }
@@ -681,10 +726,7 @@ fn flush_outbox(
     if let Some(q) = outbox.get_mut(&peer) {
         while let Some(env) = q.pop_front() {
             track_inflight(inflight, peer, env.clone());
-            swarm
-                .behaviour_mut()
-                .rooms
-                .send_request(&peer, env);
+            swarm.behaviour_mut().rooms.send_request(&peer, env);
         }
     }
 }
@@ -714,18 +756,22 @@ async fn flush_or_redial(
 /// result as a Presence event for the UI's site-link indicator. Rides the
 /// registration cadence (the beacon is meaningless if we can't reach the
 /// hub at all).
-async fn beat_presence(
-    hub: &HubClient,
-    token: &str,
-    event_tx: &mpsc::UnboundedSender<NodeEvent>,
-) {
+async fn beat_presence(hub: &HubClient, token: &str, event_tx: &mpsc::UnboundedSender<NodeEvent>) {
     match hub.presence(token).await {
         Ok(n) => {
-            let _ = event_tx.send(NodeEvent::Presence { linked: true, online: n });
+            let _ = event_tx.send(NodeEvent::Presence {
+                linked: true,
+                online: n,
+            });
         }
         Err(e) => {
-            let _ = event_tx.send(NodeEvent::Presence { linked: false, online: 0 });
-            let _ = event_tx.send(NodeEvent::Log { message: format!("presence: {e}") });
+            let _ = event_tx.send(NodeEvent::Presence {
+                linked: false,
+                online: 0,
+            });
+            let _ = event_tx.send(NodeEvent::Log {
+                message: format!("presence: {e}"),
+            });
         }
     }
 }
@@ -748,7 +794,9 @@ async fn drain_mailbox(
     let items = match hub.mail_drain(identity).await {
         Ok(items) => items,
         Err(e) => {
-            let _ = event_tx.send(NodeEvent::Log { message: format!("mailbox drain: {e}") });
+            let _ = event_tx.send(NodeEvent::Log {
+                message: format!("mailbox drain: {e}"),
+            });
             return;
         }
     };
@@ -762,18 +810,25 @@ async fn drain_mailbox(
         let from = match crate::hub::verify_mail_item(&item) {
             Ok(p) => p,
             Err(e) => {
-                let _ = event_tx.send(NodeEvent::Log { message: format!("mailbox item rejected: {e}") });
+                let _ = event_tx.send(NodeEvent::Log {
+                    message: format!("mailbox item rejected: {e}"),
+                });
                 continue;
             }
         };
         let env: Envelope = match serde_json::from_str(&item.env_json) {
             Ok(e) => e,
             Err(e) => {
-                let _ = event_tx.send(NodeEvent::Log { message: format!("mailbox item unparsable: {e}") });
+                let _ = event_tx.send(NodeEvent::Log {
+                    message: format!("mailbox item unparsable: {e}"),
+                });
                 continue;
             }
         };
-        tracing::info!("mailbox item from {from}: {}", &item.env_json[..item.env_json.len().min(60)]);
+        tracing::info!(
+            "mailbox item from {from}: {}",
+            &item.env_json[..item.env_json.len().min(60)]
+        );
         let events = rooms.handle(from, env);
         process_room_events(rooms, store, &from, &events, event_tx);
         for ev in events {
@@ -835,7 +890,12 @@ async fn register_with_hub(
     // Explicit public address (port-forwarded hosts) goes FIRST — it is
     // the one address a peer behind another NAT can actually dial.
     if let Some(pa) = public_addr.map(str::trim).filter(|s| !s.is_empty()) {
-        let host = pa.trim_start_matches("//").split(':').next().unwrap_or("").to_string();
+        let host = pa
+            .trim_start_matches("//")
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_string();
         if !host.is_empty() {
             let host_proto = host
                 .parse::<std::net::Ipv4Addr>()
@@ -843,10 +903,21 @@ async fn register_with_hub(
                 .map(Protocol::from)
                 .unwrap_or_else(|| Protocol::Dns4(host.clone().into()));
             if let Some(p) = quic_port {
-                push(&mut addrs, &mut seen, Multiaddr::empty().with(host_proto.clone()).with(Protocol::Udp(p)).with(Protocol::QuicV1));
+                push(
+                    &mut addrs,
+                    &mut seen,
+                    Multiaddr::empty()
+                        .with(host_proto.clone())
+                        .with(Protocol::Udp(p))
+                        .with(Protocol::QuicV1),
+                );
             }
             if let Some(p) = tcp_port {
-                push(&mut addrs, &mut seen, Multiaddr::empty().with(host_proto).with(Protocol::Tcp(p)));
+                push(
+                    &mut addrs,
+                    &mut seen,
+                    Multiaddr::empty().with(host_proto).with(Protocol::Tcp(p)),
+                );
             }
         }
     }
@@ -866,17 +937,33 @@ async fn register_with_hub(
     // (120s) rather than an immediate second PUT.
     if let Some(ip) = *observed_ip {
         if let Some(p) = quic_port {
-            push(&mut addrs, &mut seen, Multiaddr::empty().with(Protocol::from(ip)).with(Protocol::Udp(p)).with(Protocol::QuicV1));
+            push(
+                &mut addrs,
+                &mut seen,
+                Multiaddr::empty()
+                    .with(Protocol::from(ip))
+                    .with(Protocol::Udp(p))
+                    .with(Protocol::QuicV1),
+            );
         }
         if let Some(p) = tcp_port {
-            push(&mut addrs, &mut seen, Multiaddr::empty().with(Protocol::from(ip)).with(Protocol::Tcp(p)));
+            push(
+                &mut addrs,
+                &mut seen,
+                Multiaddr::empty()
+                    .with(Protocol::from(ip))
+                    .with(Protocol::Tcp(p)),
+            );
         }
     }
     if addrs.is_empty() && !mailbox_only {
         anyhow::bail!("no listening addresses yet");
     }
     let observed = hub.register(identity, addrs).await?;
-    if let Some(ip) = observed.as_deref().and_then(|s| s.trim().parse::<std::net::Ipv4Addr>().ok()) {
+    if let Some(ip) = observed
+        .as_deref()
+        .and_then(|s| s.trim().parse::<std::net::Ipv4Addr>().ok())
+    {
         let o = ip.octets();
         let link_local = o[0] == 169 && o[1] == 254; // 169.254.0.0/16
         if !ip.is_private() && !ip.is_loopback() && !link_local {
@@ -925,7 +1012,9 @@ async fn handle_command(
         Command::ResetRoom => {}
         Command::Dial { addr } => {
             if let Err(e) = swarm.dial(addr.clone()) {
-                let _ = event_tx.send(NodeEvent::Log { message: format!("dial failed: {e}") });
+                let _ = event_tx.send(NodeEvent::Log {
+                    message: format!("dial failed: {e}"),
+                });
             }
         }
         Command::SendMessage { room, text } => {
@@ -933,24 +1022,35 @@ async fn handle_command(
                 // The main room persists history; DMs are memory-only.
                 if room == rooms.room_hex() {
                     let epoch = rooms.state().map(|st| st.crypto.epoch).unwrap_or(1);
-                    let _ = store
-                        .lock()
-                        .unwrap()
-                        .append_message(&room, &identity.id_string(), text.as_str(), epoch, true);
+                    let _ = store.lock().unwrap().append_message(
+                        &room,
+                        &identity.id_string(),
+                        text.as_str(),
+                        epoch,
+                        true,
+                    );
                 }
                 // DM frames go only to the peer; main room fans out.
                 if let Some(dm) = rooms.dm(&room) {
                     let peer = dm.peer;
                     enqueue(outbox, peer, Envelope::Chat { frame });
-                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer).await;
+                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer)
+                        .await;
                     return;
                 }
                 for peer in rooms.member_peers() {
                     if peer == identity.peer_id() {
                         continue;
                     }
-                    enqueue(outbox, peer, Envelope::Chat { frame: frame.clone() });
-                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer).await;
+                    enqueue(
+                        outbox,
+                        peer,
+                        Envelope::Chat {
+                            frame: frame.clone(),
+                        },
+                    );
+                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer)
+                        .await;
                 }
             } else {
                 let _ = event_tx.send(NodeEvent::Log {
@@ -973,8 +1073,15 @@ async fn handle_command(
                     if peer == identity.peer_id() {
                         continue;
                     }
-                    enqueue(outbox, peer, Envelope::Rotate { frame: frame.clone() });
-                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer).await;
+                    enqueue(
+                        outbox,
+                        peer,
+                        Envelope::Rotate {
+                            frame: frame.clone(),
+                        },
+                    );
+                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer)
+                        .await;
                 }
             } else {
                 let _ = event_tx.send(NodeEvent::Log {
@@ -984,7 +1091,9 @@ async fn handle_command(
         }
         Command::OpenDm { peer } => {
             let Ok(pid) = PeerId::from_str(&peer) else {
-                let _ = event_tx.send(NodeEvent::Log { message: format!("invalid peer id: {peer}") });
+                let _ = event_tx.send(NodeEvent::Log {
+                    message: format!("invalid peer id: {peer}"),
+                });
                 return;
             };
             let (hex, invite) = rooms.open_dm(pid);
@@ -1007,8 +1116,15 @@ async fn handle_command(
                     if peer == identity.peer_id() {
                         continue;
                     }
-                    enqueue(outbox, peer, Envelope::Clear { frame: frame.clone() });
-                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer).await;
+                    enqueue(
+                        outbox,
+                        peer,
+                        Envelope::Clear {
+                            frame: frame.clone(),
+                        },
+                    );
+                    flush_or_redial(swarm, hub, identity, cfg, event_tx, outbox, inflight, peer)
+                        .await;
                 }
             } else {
                 let _ = event_tx.send(NodeEvent::Log {
@@ -1037,7 +1153,9 @@ async fn handle_command(
             } else {
                 "searching"
             };
-            let _ = event_tx.send(NodeEvent::JoinStatus { status: status.to_string() });
+            let _ = event_tx.send(NodeEvent::JoinStatus {
+                status: status.to_string(),
+            });
             if rooms.is_ready() {
                 let st = rooms.state().expect("ready implies state");
                 let _ = event_tx.send(NodeEvent::RoomReady {
@@ -1095,7 +1213,9 @@ async fn room_orchestration(
                         *join_mail = None;
                         let _ = store.lock().unwrap().clear_conversation(room_hex);
                         let _ = event_tx.send(NodeEvent::Log {
-                            message: "another live host holds the room record — yielding, rejoining".into(),
+                            message:
+                                "another live host holds the room record — yielding, rejoining"
+                                    .into(),
                         });
                         return;
                     }
@@ -1104,7 +1224,11 @@ async fn room_orchestration(
             *announced = true;
             let st = rooms.state().expect("ready implies state");
             let _ = event_tx.send(NodeEvent::JoinStatus {
-                status: if rooms.is_host() { "hosting".into() } else { "connected".into() },
+                status: if rooms.is_host() {
+                    "hosting".into()
+                } else {
+                    "connected".into()
+                },
             });
             let _ = event_tx.send(NodeEvent::RoomReady {
                 room: room_hex.to_string(),
@@ -1230,7 +1354,9 @@ async fn room_orchestration(
     // the "first to join creates the room" election.
     match hub.lookup_room(room_hex).await {
         Ok(Some(rec)) => {
-            let _ = event_tx.send(NodeEvent::JoinStatus { status: "joining".into() });
+            let _ = event_tx.send(NodeEvent::JoinStatus {
+                status: "joining".into(),
+            });
             if let Ok(host) = PeerId::from_str(&rec.host_peer_id) {
                 *join_target = Some(host);
                 // Always queue the Join for this host, not only when we
@@ -1267,7 +1393,9 @@ async fn room_orchestration(
             if *left == 0 {
                 // Nobody hosts: found the room. NX on the hub makes a
                 // concurrent founding race resolve to one winner.
-                let _ = event_tx.send(NodeEvent::JoinStatus { status: "founding".into() });
+                let _ = event_tx.send(NodeEvent::JoinStatus {
+                    status: "founding".into(),
+                });
                 rooms.become_host(None, 1);
                 match hub.register_room(identity, room_hex).await {
                     Ok(true) => {
@@ -1301,11 +1429,15 @@ async fn room_orchestration(
                 });
             } else {
                 *left -= 1;
-                let _ = event_tx.send(NodeEvent::JoinStatus { status: "searching".into() });
+                let _ = event_tx.send(NodeEvent::JoinStatus {
+                    status: "searching".into(),
+                });
             }
         }
         Err(e) => {
-            let _ = event_tx.send(NodeEvent::Log { message: format!("room lookup: {e}") });
+            let _ = event_tx.send(NodeEvent::Log {
+                message: format!("room lookup: {e}"),
+            });
         }
     }
 }
@@ -1385,9 +1517,13 @@ fn handle_swarm_event(
             if address.iter().any(|p| matches!(p, Protocol::P2pCircuit)) {
                 eprintln!("[onlyhumans] circuit listener up: {address}");
             }
-            let _ = event_tx.send(NodeEvent::Listening { addr: address.to_string() });
+            let _ = event_tx.send(NodeEvent::Listening {
+                addr: address.to_string(),
+            });
         }
-        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+        SwarmEvent::ConnectionEstablished {
+            peer_id, endpoint, ..
+        } => {
             tracing::info!("connection established: {peer_id} via {endpoint:?}");
             connected.insert(peer_id, true);
             let _ = event_tx.send(NodeEvent::ConnectionStateChanged {
@@ -1396,18 +1532,25 @@ fn handle_swarm_event(
             });
             flush_outbox(swarm, outbox, inflight, peer_id);
         }
-        SwarmEvent::ConnectionClosed { peer_id, endpoint, num_established, cause, .. } => {
-            tracing::info!("connection closed: {peer_id} via {endpoint:?} (remaining {num_established}) cause {cause:?}");
+        SwarmEvent::ConnectionClosed {
+            peer_id,
+            endpoint,
+            num_established,
+            cause,
+            ..
+        } => {
+            tracing::info!(
+                "connection closed: {peer_id} via {endpoint:?} (remaining {num_established}) cause {cause:?}"
+            );
             connected.insert(peer_id, false);
             let _ = event_tx.send(NodeEvent::ConnectionStateChanged {
                 peer: peer_id.to_string(),
                 connected: false,
             });
         }
-        SwarmEvent::Behaviour(BehaviourEvent::RelayClient(relay::client::Event::ReservationReqAccepted {
-            relay_peer_id,
-            ..
-        })) => {
+        SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
+            relay::client::Event::ReservationReqAccepted { relay_peer_id, .. },
+        )) => {
             // Record the full dialable circuit address for the hub.
             // circuit_addrs already contains the attempted circuit from
             // try_reserve; nothing to add — just log the confirmation.
@@ -1415,22 +1558,34 @@ fn handle_swarm_event(
                 message: format!("relay reservation accepted via {relay_peer_id}"),
             });
         }
-        SwarmEvent::Behaviour(BehaviourEvent::Relay(relay::Event::ReservationReqAccepted { src_peer_id, .. })) => {
+        SwarmEvent::Behaviour(BehaviourEvent::Relay(relay::Event::ReservationReqAccepted {
+            src_peer_id,
+            ..
+        })) => {
             let _ = event_tx.send(NodeEvent::Log {
                 message: format!("now relaying for {src_peer_id}"),
             });
         }
-        SwarmEvent::Behaviour(BehaviourEvent::Relay(relay::Event::ReservationReqDenied { src_peer_id, status })) => {
-            eprintln!("[onlyhumans] relay server: reservation DENIED from {src_peer_id}, status {status:?}");
+        SwarmEvent::Behaviour(BehaviourEvent::Relay(relay::Event::ReservationReqDenied {
+            src_peer_id,
+            status,
+        })) => {
+            eprintln!(
+                "[onlyhumans] relay server: reservation DENIED from {src_peer_id}, status {status:?}"
+            );
         }
         SwarmEvent::Behaviour(BehaviourEvent::Rooms(rr_ev)) => match rr_ev {
             request_response::Event::Message { peer, message, .. } => {
                 match message {
-                    request_response::Message::Request { request, channel, .. } => {
+                    request_response::Message::Request {
+                        request, channel, ..
+                    } => {
                         let events = rooms.handle(peer, request);
                         process_room_events(rooms, &store, &peer, &events, event_tx);
                         for ev in events {
-                            dispatch_room_event(swarm, outbox, inflight, &peer, ev, false, event_tx);
+                            dispatch_room_event(
+                                swarm, outbox, inflight, &peer, ev, false, event_tx,
+                            );
                         }
                         // Always acknowledge requests.
                         let _ = swarm
@@ -1442,7 +1597,9 @@ fn handle_swarm_event(
                         let events = rooms.handle(peer, response);
                         process_room_events(rooms, &store, &peer, &events, event_tx);
                         for ev in events {
-                            dispatch_room_event(swarm, outbox, inflight, &peer, ev, false, event_tx);
+                            dispatch_room_event(
+                                swarm, outbox, inflight, &peer, ev, false, event_tx,
+                            );
                         }
                     }
                 }
@@ -1483,9 +1640,9 @@ fn handle_swarm_event(
             }
             // Learn addresses for future dials and relay reservations.
             for ma in info.listen_addrs {
-                let usable = ma.iter().any(|p| {
-                    matches!(p, Protocol::Ip4(ip) if !ip.is_loopback() && !ip.is_unspecified())
-                });
+                let usable = ma.iter().any(
+                    |p| matches!(p, Protocol::Ip4(ip) if !ip.is_loopback() && !ip.is_unspecified()),
+                );
                 if !usable {
                     continue;
                 }
@@ -1528,16 +1685,24 @@ fn process_room_events(
             RoomEvent::MessagesCleared { room_id_hex } => {
                 let _ = store.lock().unwrap().clear_messages(room_id_hex);
             }
-            RoomEvent::Message { room_id_hex, sender, body, epoch } => {
+            RoomEvent::Message {
+                room_id_hex,
+                sender,
+                body,
+                epoch,
+            } => {
                 // Persist inbound history in the core (UI-independent);
                 // DMs are memory-only by design.
                 if room_id_hex == rooms.room_hex() {
                     let outgoing = sender == rooms.my_id();
                     let text = String::from_utf8_lossy(body).into_owned();
-                    let _ = store
-                        .lock()
-                        .unwrap()
-                        .append_message(room_id_hex, sender, &text, *epoch, outgoing);
+                    let _ = store.lock().unwrap().append_message(
+                        room_id_hex,
+                        sender,
+                        &text,
+                        *epoch,
+                        outgoing,
+                    );
                 }
             }
             RoomEvent::MembersChanged { members, .. } => {
@@ -1547,7 +1712,8 @@ fn process_room_events(
                         let _ = s.set_shared_name(&m.peer, &m.name);
                     }
                 }
-            }            _ => {}
+            }
+            _ => {}
         }
     }
     let _ = event_tx;
@@ -1567,7 +1733,12 @@ fn dispatch_room_event(
             enqueue(outbox, peer, envelope);
             flush_outbox(swarm, outbox, inflight, peer);
         }
-        RoomEvent::RoomReady { room_id_hex, host, role, epoch } => {
+        RoomEvent::RoomReady {
+            room_id_hex,
+            host,
+            role,
+            epoch,
+        } => {
             let _ = event_tx.send(NodeEvent::RoomReady {
                 room: room_id_hex,
                 peer: host.to_string(),
@@ -1575,7 +1746,12 @@ fn dispatch_room_event(
                 epoch,
             });
         }
-        RoomEvent::Message { room_id_hex, sender, body, epoch } => {
+        RoomEvent::Message {
+            room_id_hex,
+            sender,
+            body,
+            epoch,
+        } => {
             let _ = event_tx.send(NodeEvent::Message {
                 room: room_id_hex,
                 sender,
@@ -1584,20 +1760,34 @@ fn dispatch_room_event(
                 via_site,
             });
         }
-        RoomEvent::MembersChanged { room_id_hex, members } => {
-            let _ = event_tx.send(NodeEvent::MembersChanged { room: room_id_hex, members });
+        RoomEvent::MembersChanged {
+            room_id_hex,
+            members,
+        } => {
+            let _ = event_tx.send(NodeEvent::MembersChanged {
+                room: room_id_hex,
+                members,
+            });
         }
         RoomEvent::MessagesCleared { room_id_hex } => {
             let _ = event_tx.send(NodeEvent::MessagesCleared { room: room_id_hex });
         }
-        RoomEvent::Rotated { room_id_hex, new_epoch } => {
-            let _ = event_tx.send(NodeEvent::Rotated { room: room_id_hex, new_epoch });
+        RoomEvent::Rotated {
+            room_id_hex,
+            new_epoch,
+        } => {
+            let _ = event_tx.send(NodeEvent::Rotated {
+                room: room_id_hex,
+                new_epoch,
+            });
         }
         RoomEvent::ProtocolError { context } => {
             let _ = event_tx.send(NodeEvent::Log { message: context });
         }
         RoomEvent::Sealed => {
-            let _ = event_tx.send(NodeEvent::JoinStatus { status: "sealed".into() });
+            let _ = event_tx.send(NodeEvent::JoinStatus {
+                status: "sealed".into(),
+            });
         }
     }
     let _ = from;
@@ -1612,7 +1802,10 @@ mod tests {
     /// contract); assert the exact JSON shape every consumer sees.
     #[test]
     fn presence_event_serializes_camel_case() {
-        let ev = NodeEvent::Presence { linked: true, online: 3 };
+        let ev = NodeEvent::Presence {
+            linked: true,
+            online: 3,
+        };
         let j = serde_json::to_string(&ev).unwrap();
         assert_eq!(j, r#"{"kind":"presence","linked":true,"online":3}"#);
     }

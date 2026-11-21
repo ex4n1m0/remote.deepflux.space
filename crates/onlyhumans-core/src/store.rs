@@ -5,7 +5,7 @@
 use crate::crypto::{self, Key};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key as AeadKey, XChaCha20Poly1305, XNonce};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 pub struct Store {
@@ -25,7 +25,10 @@ fn seal_local(key: &Key, what: &[u8], data: &[u8]) -> Vec<u8> {
         &cipher
             .encrypt(
                 &XNonce::from(nonce),
-                Payload { msg: data, aad: &aad },
+                Payload {
+                    msg: data,
+                    aad: &aad,
+                },
             )
             .expect("local seal"),
     );
@@ -35,7 +38,9 @@ fn seal_local(key: &Key, what: &[u8], data: &[u8]) -> Vec<u8> {
 fn open_local(key: &Key, what: &[u8], blob: &[u8]) -> anyhow::Result<Vec<u8>> {
     let derived = crypto::admission_proof(key, "local-storage", &[0u8; 16]);
     // nonce is the first 24 bytes of the blob
-    let (n, ct) = blob.split_at_checked(24).ok_or_else(|| anyhow::anyhow!("short blob"))?;
+    let (n, ct) = blob
+        .split_at_checked(24)
+        .ok_or_else(|| anyhow::anyhow!("short blob"))?;
     let cipher = XChaCha20Poly1305::new(AeadKey::from_slice(&derived));
     let mut aad = b"OH1-store".to_vec();
     aad.extend_from_slice(what);
@@ -140,9 +145,16 @@ impl Store {
     }
 
     pub fn contacts(&self) -> anyhow::Result<Vec<Contact>> {
-        let mut stmt = self.conn.prepare("SELECT peer_id, name FROM contacts ORDER BY name")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT peer_id, name FROM contacts ORDER BY name")?;
         let rows = stmt
-            .query_map([], |r| Ok(Contact { peer_id: r.get(0)?, name: r.get(1)? }))?
+            .query_map([], |r| {
+                Ok(Contact {
+                    peer_id: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -150,7 +162,10 @@ impl Store {
     /// Delete every stored message of a room (the room itself survives).
     pub fn clear_messages(&self, room_id_hex: &str) -> anyhow::Result<()> {
         self.conn
-            .execute("DELETE FROM messages WHERE room_id_hex=?1", params![room_id_hex])
+            .execute(
+                "DELETE FROM messages WHERE room_id_hex=?1",
+                params![room_id_hex],
+            )
             .map(|_| ())
             .map_err(Into::into)
     }
@@ -380,7 +395,8 @@ mod tests {
 
         s.append_message("deadbeef", "peerX", "hello world", 2, false)
             .unwrap();
-        s.append_message("deadbeef", "me", "hi alice", 2, true).unwrap();
+        s.append_message("deadbeef", "me", "hi alice", 2, true)
+            .unwrap();
         let msgs = s.messages("deadbeef", 50).unwrap();
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].body, "hello world");
@@ -404,8 +420,10 @@ impl Store {
     /// used when yielding to a live foreign host record and by the
     /// manual "reset room" recovery action.
     pub fn clear_conversation(&self, room_id_hex: &str) -> anyhow::Result<()> {
-        self.conn
-            .execute("DELETE FROM conversations WHERE room_id_hex = ?1", params![room_id_hex])?;
+        self.conn.execute(
+            "DELETE FROM conversations WHERE room_id_hex = ?1",
+            params![room_id_hex],
+        )?;
         Ok(())
     }
 }

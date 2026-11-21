@@ -145,7 +145,11 @@ impl HubClient {
     /// Register our addresses. Returns the public IP the hub OBSERVED on
     /// its HTTPS socket (mini-STUN) when it reports one — advisory data
     /// from the response, never stored server-side.
-    pub async fn register(&self, id: &Identity, addrs: Vec<String>) -> anyhow::Result<Option<String>> {
+    pub async fn register(
+        &self,
+        id: &Identity,
+        addrs: Vec<String>,
+    ) -> anyhow::Result<Option<String>> {
         let ts_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
         let pub_b64 = crate::crypto::base64_encode(&id.public_key_bytes());
         let canon = canonical(&id.id_string(), &pub_b64, &addrs, ts_ms);
@@ -164,7 +168,11 @@ impl HubClient {
             .send()
             .await?;
         if !resp.status().is_success() {
-            anyhow::bail!("hub register failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+            anyhow::bail!(
+                "hub register failed: {} {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
         }
         #[derive(serde::Deserialize, Default)]
         struct RegResp {
@@ -174,7 +182,9 @@ impl HubClient {
             observed_ip_camel: Option<String>,
         }
         let r: RegResp = resp.json().await.unwrap_or_default();
-        Ok(r.observed_ip.or(r.observed_ip_camel).filter(|s| !s.trim().is_empty()))
+        Ok(r.observed_ip
+            .or(r.observed_ip_camel)
+            .filter(|s| !s.trim().is_empty()))
     }
 
     /// Anonymous presence beacon for the site's live counter. The token is
@@ -185,7 +195,10 @@ impl HubClient {
         let resp = self
             .http
             .post(format!("{}/api/presence", self.base))
-            .json(&PresencePing { token, leave: false })
+            .json(&PresencePing {
+                token,
+                leave: false,
+            })
             .send()
             .await?;
         if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
@@ -194,7 +207,11 @@ impl HubClient {
             return Ok(0);
         }
         if !resp.status().is_success() {
-            anyhow::bail!("presence failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+            anyhow::bail!(
+                "presence failed: {} {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
         }
         let r: PresenceResp = resp.json().await.unwrap_or_default();
         Ok(r.online)
@@ -249,7 +266,11 @@ impl HubClient {
             .send()
             .await?;
         if !resp.status().is_success() {
-            anyhow::bail!("mail push failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+            anyhow::bail!(
+                "mail push failed: {} {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
         }
         Ok(())
     }
@@ -261,11 +282,18 @@ impl HubClient {
         let sig = crate::crypto::base64_encode(&id.sign(&drain_canonical(&peer, ts_ms))?);
         let resp = self
             .http
-            .get(format!("{}/api/inbox/{peer}?ts_ms={ts_ms}&sig_b64={sig}", self.base))
+            .get(format!(
+                "{}/api/inbox/{peer}?ts_ms={ts_ms}&sig_b64={sig}",
+                self.base
+            ))
             .send()
             .await?;
         if !resp.status().is_success() {
-            anyhow::bail!("mail drain failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+            anyhow::bail!(
+                "mail drain failed: {} {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
         }
         #[derive(serde::Deserialize, Default)]
         struct DrainResp {
@@ -334,7 +362,11 @@ impl HubClient {
         match resp.status() {
             s if s.is_success() => Ok(true),
             reqwest::StatusCode::CONFLICT => Ok(false),
-            s => anyhow::bail!("room register failed: {} {}", s, resp.text().await.unwrap_or_default()),
+            s => anyhow::bail!(
+                "room register failed: {} {}",
+                s,
+                resp.text().await.unwrap_or_default()
+            ),
         }
     }
 
@@ -354,7 +386,12 @@ impl HubClient {
         let rec: RoomHostRecord = resp.json().await?;
         let pub_bytes = crate::crypto::base64_decode(&rec.host_public_key_b64)?;
         let sig = crate::crypto::base64_decode(&rec.sig_b64)?;
-        let canon = room_canonical(&rec.room_id, &rec.host_peer_id, &rec.host_public_key_b64, rec.ts_ms);
+        let canon = room_canonical(
+            &rec.room_id,
+            &rec.host_peer_id,
+            &rec.host_public_key_b64,
+            rec.ts_ms,
+        );
         if rec.room_id != room_id {
             anyhow::bail!("hub returned a different room id than requested");
         }
@@ -386,11 +423,7 @@ mod tests {
         let ts = 1234567890u64;
         let canon = canonical(&id.id_string(), &pub_b64, &addrs, ts);
         let sig = id.sign(&canon).unwrap();
-        assert!(Identity::verify(
-            &id.public_key_bytes(),
-            &canon,
-            &sig
-        ));
+        assert!(Identity::verify(&id.public_key_bytes(), &canon, &sig));
         // Tampered addrs must fail
         let canon2 = canonical(&id.id_string(), &pub_b64, &["/ip4/9.9.9.9".to_string()], ts);
         assert!(!Identity::verify(&id.public_key_bytes(), &canon2, &sig));
@@ -425,7 +458,11 @@ mod mail_tests {
     #[test]
     fn mail_item_verifies_and_derives_sender() {
         let (id, dir) = tmp_identity("ok");
-        let item = item_from(&id, "12D3KooWTargetTargetTargetTargetTargetTarge", r#"{"Ack":"Ack"}"#);
+        let item = item_from(
+            &id,
+            "12D3KooWTargetTargetTargetTargetTargetTarge",
+            r#"{"Ack":"Ack"}"#,
+        );
         let from = verify_mail_item(&item).unwrap();
         assert_eq!(from, id.peer_id());
         let _ = std::fs::remove_dir_all(dir);
@@ -434,7 +471,11 @@ mod mail_tests {
     #[test]
     fn tampered_envelope_fails() {
         let (id, dir) = tmp_identity("tamper");
-        let mut item = item_from(&id, "12D3KooWTargetTargetTargetTargetTargetTarge", r#"{"Ack":"Ack"}"#);
+        let mut item = item_from(
+            &id,
+            "12D3KooWTargetTargetTargetTargetTargetTarge",
+            r#"{"Ack":"Ack"}"#,
+        );
         item.env_json = r#"{"Join":{}}"#.to_string();
         assert!(verify_mail_item(&item).is_err());
         let _ = std::fs::remove_dir_all(dir);
@@ -445,7 +486,11 @@ mod mail_tests {
         // Signed by A, but claims to be B: the key must derive `from`.
         let (a, da) = tmp_identity("signer");
         let (b, db) = tmp_identity("claimed");
-        let mut item = item_from(&a, "12D3KooWTargetTargetTargetTargetTargetTarge", r#"{"Ack":"Ack"}"#);
+        let mut item = item_from(
+            &a,
+            "12D3KooWTargetTargetTargetTargetTargetTarge",
+            r#"{"Ack":"Ack"}"#,
+        );
         item.from = b.id_string();
         assert!(verify_mail_item(&item).is_err());
         let _ = std::fs::remove_dir_all(da);
@@ -458,7 +503,14 @@ mod mail_tests {
         let (id, dir) = tmp_identity("serde");
         let item = item_from(&id, "peer-x", "{}");
         let j = serde_json::to_string(&item).unwrap();
-        for f in ["\"to\"", "\"from\"", "\"public_key_b64\"", "\"env_json\"", "\"ts_ms\"", "\"sig_b64\""] {
+        for f in [
+            "\"to\"",
+            "\"from\"",
+            "\"public_key_b64\"",
+            "\"env_json\"",
+            "\"ts_ms\"",
+            "\"sig_b64\"",
+        ] {
             assert!(j.contains(f), "missing {f} in {j}");
         }
         let _ = std::fs::remove_dir_all(dir);

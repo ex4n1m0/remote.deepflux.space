@@ -8,7 +8,7 @@
 use futures::prelude::*;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{identify, identity, noise, ping, relay, tcp, yamux, Multiaddr, PeerId, SwarmBuilder};
+use libp2p::{Multiaddr, PeerId, SwarmBuilder, identify, identity, noise, ping, relay, tcp, yamux};
 use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
@@ -46,7 +46,11 @@ async fn run_relay() -> anyhow::Result<()> {
     let relay_peer_id = PeerId::from(key.public());
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
+        .with_tcp(
+            tcp::Config::default(),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_behaviour(|key| RelayBehaviour {
             relay: relay::Behaviour::new(key.public().to_peer_id(), Default::default()),
             ping: ping::Behaviour::new(ping::Config::new()),
@@ -58,7 +62,9 @@ async fn run_relay() -> anyhow::Result<()> {
         .build();
     swarm.listen_on(
         Multiaddr::empty()
-            .with(Protocol::from("127.0.0.1".parse::<std::net::Ipv4Addr>().unwrap()))
+            .with(Protocol::from(
+                "127.0.0.1".parse::<std::net::Ipv4Addr>().unwrap(),
+            ))
             .with(Protocol::Tcp(0)),
     )?;
     loop {
@@ -66,8 +72,9 @@ async fn run_relay() -> anyhow::Result<()> {
             libp2p::swarm::SwarmEvent::NewListenAddr { address, .. } => {
                 println!("RELAY_ADDR={address}/p2p/{relay_peer_id}");
             }
-            libp2p::swarm::SwarmEvent::Behaviour(
-                RelayBehaviourEvent::Identify(identify::Event::Received { info, .. })) => {
+            libp2p::swarm::SwarmEvent::Behaviour(RelayBehaviourEvent::Identify(
+                identify::Event::Received { info, .. },
+            )) => {
                 // Official relay-server pattern: learn our external address,
                 // which auto-enables the HOP service.
                 swarm.add_external_address(info.observed_addr.clone());
@@ -82,7 +89,11 @@ async fn run_client(relay_addr: Multiaddr) -> anyhow::Result<()> {
     let key = identity::Keypair::generate_ed25519();
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_tcp(tcp::Config::default().nodelay(true), noise::Config::new, yamux::Config::default)?
+        .with_tcp(
+            tcp::Config::default().nodelay(true),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|key, relay_client| ClientBehaviour {
             relay_client,

@@ -2,7 +2,7 @@
 //! found->join handshake with full libp2p tracing (RUST_LOG).
 //!   cargo run -p onlyhumans_core --example netdiag -- host <dir> <word>
 //!   cargo run -p onlyhumans_core --example netdiag -- guest <dir> <word>
-use onlyhumans_core::net::{spawn, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -33,23 +33,31 @@ async fn main() {
         let line = match &ev {
             NodeEvent::Log { message } => format!("LOG {message}"),
             NodeEvent::JoinStatus { status } => format!("STATUS {status}"),
-            NodeEvent::RoomReady { room, peer, we_are_host, epoch } =>
-                format!("READY {room} host={peer} we_host={we_are_host} epoch={epoch}"),
+            NodeEvent::RoomReady {
+                room,
+                peer,
+                we_are_host,
+                epoch,
+            } => format!("READY {room} host={peer} we_host={we_are_host} epoch={epoch}"),
             NodeEvent::MembersChanged { members, .. } => format!(
                 "MEMBERS {}",
-                members.iter().map(|m| format!("{}:{}", &m.peer[..8.min(m.peer.len())], m.name)).collect::<Vec<_>>().join(",")
+                members
+                    .iter()
+                    .map(|m| format!("{}:{}", &m.peer[..8.min(m.peer.len())], m.name))
+                    .collect::<Vec<_>>()
+                    .join(",")
             ),
-            NodeEvent::Message { sender, body, .. } => format!(
-                "MSG {} {:?}",
-                &sender[..8.min(sender.len())],
-                body.clone()
-            ),
+            NodeEvent::Message { sender, body, .. } => {
+                format!("MSG {} {:?}", &sender[..8.min(sender.len())], body.clone())
+            }
             NodeEvent::ConnectionStateChanged { peer, connected } => format!(
                 "CONN {} {}",
                 &peer[..8.min(peer.len())],
                 if *connected { "up" } else { "down" }
             ),
-            NodeEvent::Presence { linked, online } => format!("PRESENCE linked={linked} online={online}"),
+            NodeEvent::Presence { linked, online } => {
+                format!("PRESENCE linked={linked} online={online}")
+            }
             _ => format!("{ev:?}"),
         };
         println!("[{role} +{:>5}s] {line}", t0.elapsed().as_secs());
@@ -57,5 +65,8 @@ async fn main() {
             break;
         }
     }
-    let _ = node.cmd_tx.send(onlyhumans_core::net::Command::Shutdown).await;
+    let _ = node
+        .cmd_tx
+        .send(onlyhumans_core::net::Command::Shutdown)
+        .await;
 }

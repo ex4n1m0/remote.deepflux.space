@@ -41,12 +41,7 @@ pub fn admission_proof(gk: &Key, prover_id: &str, nonce: &[u8; 16]) -> Key {
     hkdf_sha256(gk, &[], &ikm)
 }
 
-pub fn verify_admission_proof(
-    gk: &Key,
-    prover_id: &str,
-    nonce: &[u8; 16],
-    proof: &Key,
-) -> bool {
+pub fn verify_admission_proof(gk: &Key, prover_id: &str, nonce: &[u8; 16], proof: &Key) -> bool {
     let expect = admission_proof(gk, prover_id, nonce);
     // Constant-time compare — proof bytes cross the network.
     let mut diff = 0u8;
@@ -59,7 +54,13 @@ pub fn verify_admission_proof(
 /// Encrypt a room key for delivery to a participant, under the GK.
 /// The keystream is bound to (GK, room, epoch, recipient) and the AAD to
 /// the same, so no two delivery targets ever share cipher output.
-pub fn seal_room_key(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str, key: &Key) -> Vec<u8> {
+pub fn seal_room_key(
+    gk: &Key,
+    room_id: &RoomId,
+    epoch: u64,
+    recipient: &str,
+    key: &Key,
+) -> Vec<u8> {
     let (nonce, cipher) = gk_cipher(gk, room_id, epoch, recipient);
     let aad = aad_bytes(b"gk-deliv", room_id, epoch, recipient, 0);
     cipher
@@ -73,14 +74,17 @@ pub fn seal_room_key(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str, ke
         .expect("seal_room_key encrypt")
 }
 
-pub fn open_room_key(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str, ct: &[u8]) -> anyhow::Result<Key> {
+pub fn open_room_key(
+    gk: &Key,
+    room_id: &RoomId,
+    epoch: u64,
+    recipient: &str,
+    ct: &[u8],
+) -> anyhow::Result<Key> {
     let (nonce, cipher) = gk_cipher(gk, room_id, epoch, recipient);
     let aad = aad_bytes(b"gk-deliv", room_id, epoch, recipient, 0);
     let pt = cipher
-        .decrypt(
-            &nonce,
-            Payload { msg: ct, aad: &aad },
-        )
+        .decrypt(&nonce, Payload { msg: ct, aad: &aad })
         .map_err(|_| anyhow::anyhow!("room key delivery failed GK authentication"))?;
     let k: Key = pt
         .as_slice()
@@ -97,7 +101,12 @@ pub fn open_room_key(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str, ct
 /// captured deliveries could XOR out the newer key. Replay within the
 /// same (epoch, recipient) still yields the identical frame, which the
 /// idempotent delivery path already tolerates.
-fn gk_cipher(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str) -> (XNonce, XChaCha20Poly1305) {
+fn gk_cipher(
+    gk: &Key,
+    room_id: &RoomId,
+    epoch: u64,
+    recipient: &str,
+) -> (XNonce, XChaCha20Poly1305) {
     let mut info = Vec::with_capacity(12 + 8 + recipient.len());
     info.extend_from_slice(b"gk-deliv-v2|");
     info.extend_from_slice(&epoch.to_le_bytes());
@@ -110,7 +119,10 @@ fn gk_cipher(gk: &Key, room_id: &RoomId, epoch: u64, recipient: &str) -> (XNonce
     let mut n = [0u8; 24];
     n.copy_from_slice(&nonce_bytes[..24]);
     let key_bytes = hkdf_sha256(gk, room_id, &info_k);
-    (XNonce::from(n), XChaCha20Poly1305::new(AeadKey::from_slice(&key_bytes)))
+    (
+        XNonce::from(n),
+        XChaCha20Poly1305::new(AeadKey::from_slice(&key_bytes)),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -166,9 +178,13 @@ fn pad(body: &[u8]) -> Vec<u8> {
 }
 
 fn unpad(padded: &[u8]) -> anyhow::Result<&[u8]> {
-    let (len_b, rest) = padded.split_at_checked(4).ok_or_else(|| anyhow::anyhow!("short pad"))?;
+    let (len_b, rest) = padded
+        .split_at_checked(4)
+        .ok_or_else(|| anyhow::anyhow!("short pad"))?;
     let len = u32::from_le_bytes(len_b.try_into().unwrap()) as usize;
-    let body = rest.get(..len).ok_or_else(|| anyhow::anyhow!("pad length out of range"))?;
+    let body = rest
+        .get(..len)
+        .ok_or_else(|| anyhow::anyhow!("pad length out of range"))?;
     Ok(body)
 }
 
@@ -179,12 +195,20 @@ impl RoomCrypto {
         rand::thread_rng().fill_bytes(&mut room_id);
         let mut key = Key::default();
         rand::thread_rng().fill_bytes(&mut key);
-        Self { room_id, epoch: 1, key }
+        Self {
+            room_id,
+            epoch: 1,
+            key,
+        }
     }
 
     /// Participant side: adopt a delivered key.
     pub fn from_delivered(room_id: RoomId, key: Key) -> Self {
-        Self { room_id, epoch: 1, key }
+        Self {
+            room_id,
+            epoch: 1,
+            key,
+        }
     }
 
     pub fn room_id_hex(&self) -> String {
@@ -228,7 +252,10 @@ impl RoomCrypto {
         let ct = cipher
             .encrypt(
                 &XNonce::from(nonce),
-                Payload { msg: &padded, aad: &aad },
+                Payload {
+                    msg: &padded,
+                    aad: &aad,
+                },
             )
             .expect("aead encrypt never fails on valid input");
         Sealed {
@@ -262,7 +289,10 @@ impl RoomCrypto {
         let padded = cipher
             .decrypt(
                 &XNonce::from(nonce),
-                Payload { msg: &ct, aad: &aad },
+                Payload {
+                    msg: &ct,
+                    aad: &aad,
+                },
             )
             .map_err(|_| anyhow::anyhow!("frame failed authentication"))?;
         unpad(&padded).map(|s| s.to_vec())
@@ -321,7 +351,8 @@ pub fn base64_decode(s: &str) -> anyhow::Result<Vec<u8>> {
 fn hkdf_sha256(ikm: &[u8], salt: &[u8], info: &[u8]) -> Key {
     let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
     let mut out = Key::default();
-    hk.expand(info, &mut out).expect("32 bytes is valid HKDF size");
+    hk.expand(info, &mut out)
+        .expect("32 bytes is valid HKDF size");
     out
 }
 
@@ -330,7 +361,11 @@ fn base64(data: &[u8]) -> String {
     const ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(ALPHA[(n >> 18) as usize & 63] as char);
         out.push(ALPHA[(n >> 12) as usize & 63] as char);
@@ -499,9 +534,18 @@ mod tests {
         assert_ne!(ct_e1, ct_other, "recipients must not share ciphertexts");
 
         // All are individually sound.
-        assert_eq!(open_room_key(&gk, &host.room_id, 1, "peer-b", &ct_e1).unwrap(), k1);
-        assert_eq!(open_room_key(&gk, &host.room_id, 2, "peer-b", &ct_e2).unwrap(), k2);
-        assert_eq!(open_room_key(&gk, &host.room_id, 1, "peer-c", &ct_other).unwrap(), k1);
+        assert_eq!(
+            open_room_key(&gk, &host.room_id, 1, "peer-b", &ct_e1).unwrap(),
+            k1
+        );
+        assert_eq!(
+            open_room_key(&gk, &host.room_id, 2, "peer-b", &ct_e2).unwrap(),
+            k2
+        );
+        assert_eq!(
+            open_room_key(&gk, &host.room_id, 1, "peer-c", &ct_other).unwrap(),
+            k1
+        );
     }
 
     #[test]

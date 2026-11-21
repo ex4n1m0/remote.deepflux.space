@@ -9,7 +9,7 @@
 //!
 //! A --(circuit via R)--> B must complete the full room lifecycle.
 
-use onlyhumans_core::net::{spawn, Command, NodeConfig, NodeEvent};
+use onlyhumans_core::net::{Command, NodeConfig, NodeEvent, spawn};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -39,10 +39,7 @@ async fn next_event(rx: &mut mpsc::UnboundedReceiver<NodeEvent>, want: &str) -> 
     }
 }
 
-async fn wait_for_log(
-    rx: &mut mpsc::UnboundedReceiver<NodeEvent>,
-    needle: &str,
-) -> bool {
+async fn wait_for_log(rx: &mut mpsc::UnboundedReceiver<NodeEvent>, needle: &str) -> bool {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         let ev = tokio::time::timeout_at(deadline, rx.recv()).await;
@@ -106,7 +103,11 @@ async fn chat_through_peer_relay() {
     .await
     .unwrap();
     let room_hex = match next_event(&mut a_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: true, .. } => room,
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: true,
+            ..
+        } => room,
         other => panic!("A should found the room, got {other:?}"),
     };
 
@@ -127,12 +128,16 @@ async fn chat_through_peer_relay() {
     .unwrap();
     let dial = format!("{r_addr}/p2p/{}", r.peer_id);
     b.cmd_tx
-        .send(Command::Dial { addr: dial.parse().unwrap() })
+        .send(Command::Dial {
+            addr: dial.parse().unwrap(),
+        })
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_secs(3)).await;
     b.cmd_tx
-        .send(Command::ReserveWith { addr: dial.parse().unwrap() })
+        .send(Command::ReserveWith {
+            addr: dial.parse().unwrap(),
+        })
         .await
         .unwrap();
     assert!(
@@ -143,17 +148,26 @@ async fn chat_through_peer_relay() {
     // --- A dials B through the circuit; B's tick then sends its Join ---
     let circuit = format!("{r_addr}/p2p/{}/p2p-circuit/p2p/{}", r.peer_id, b.peer_id);
     a.cmd_tx
-        .send(Command::Dial { addr: circuit.parse().unwrap() })
+        .send(Command::Dial {
+            addr: circuit.parse().unwrap(),
+        })
         .await
         .unwrap();
 
     match next_event(&mut b_rx, "room_ready").await {
-        NodeEvent::RoomReady { room, we_are_host: false, .. } => assert_eq!(room, room_hex),
+        NodeEvent::RoomReady {
+            room,
+            we_are_host: false,
+            ..
+        } => assert_eq!(room, room_hex),
         other => panic!("B should join via relay, got {other:?}"),
     }
 
     a.cmd_tx
-        .send(Command::SendMessage { room: room_hex.clone(), text: "hello via relay".into() })
+        .send(Command::SendMessage {
+            room: room_hex.clone(),
+            text: "hello via relay".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut b_rx, "message").await {
@@ -161,7 +175,10 @@ async fn chat_through_peer_relay() {
         other => panic!("expected message, got {other:?}"),
     }
     b.cmd_tx
-        .send(Command::SendMessage { room: room_hex, text: "relayed back".into() })
+        .send(Command::SendMessage {
+            room: room_hex,
+            text: "relayed back".into(),
+        })
         .await
         .unwrap();
     match next_event(&mut a_rx, "message").await {
