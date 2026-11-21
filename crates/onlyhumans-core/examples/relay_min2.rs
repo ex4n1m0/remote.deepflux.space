@@ -5,6 +5,10 @@
 //! Server prints its listen address and exits on Ctrl-C; client reserves and
 //! prints the outcome. Mirrors the official relay-server/dcutr examples.
 
+// NetworkBehaviour derive expansion trips rustc unreachable-code (libp2p
+// macro artifact); module-scoped allow covers the derive-attributed lint.
+#![allow(unreachable_code)]
+
 use futures::prelude::*;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::NetworkBehaviour;

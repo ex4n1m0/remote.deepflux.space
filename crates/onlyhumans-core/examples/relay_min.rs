@@ -4,6 +4,10 @@
 //! relay swarm (server Enable, fixed port) + client swarm (listen_on circuit).
 //! Expected: client prints `ReservationReqAccepted`.
 
+// NetworkBehaviour derive expansion trips rustc unreachable-code (libp2p
+// macro artifact); module-scoped allow covers the derive-attributed lint.
+#![allow(unreachable_code)]
+
 use futures::prelude::*;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::NetworkBehaviour;
