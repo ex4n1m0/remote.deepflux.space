@@ -1,0 +1,18 @@
+[package]
+name = "modelswarm-telemetry"
+description = "Structured metrics and secret/prompt-redacted logging"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[dependencies]
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

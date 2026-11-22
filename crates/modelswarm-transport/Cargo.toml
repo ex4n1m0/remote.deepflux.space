@@ -1,0 +1,71 @@
+[package]
+name = "modelswarm-transport"
+description = "Signed-frame loopback transport (ADR-018 Phase C staging); libp2p at Phase F"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[features]
+# F11 (Phase F stretch): rust-libp2p backend — QUIC (peer-authenticated by
+# its libp2p TLS handshake) with keys from the InstallationIdentity seed.
+# Optional and experimental; the workspace stays green without it (ADR-018:
+# the trait is the swap point). Since ADR-038 the feature also gates the
+# relay-ticket pre-flight (modelswarm-eligibility parses the cached
+# ticket's expiry for the renewal re-presentation rule).
+libp2p-backend = ["dep:libp2p", "dep:futures", "dep:modelswarm-eligibility"]
+
+[dependencies]
+modelswarm-identity = { path = "../modelswarm-identity" }
+# ADR-038 §6.4 row 7: the pre-flight reads the CACHED ticket's expiry
+# (strict from_wire — syntax only, no signature work on our own cache) to
+# drive the renewal re-presentation rule. Feature-gated under
+# libp2p-backend with the rest of the relay client.
+modelswarm-eligibility = { path = "../modelswarm-eligibility", optional = true }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bytes = "1"
+# Signing the P2P handshake. Key material and id derivation come from
+# modelswarm-identity (whose raw-sign helper is crate-private); we rebuild the
+# ed25519 SigningKey from the identity seed, so no identity logic is duplicated.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+base64 = "0.22"
+futures = { version = "0.3", optional = true }
+libp2p = { version = "0.57", optional = true, features = [
+    "tokio",
+    "quic",
+    "noise",
+    "yamux",
+    "identify",
+    "ping",
+    "macros",
+] }
+
+[dev-dependencies]
+# ADR-038 §6.2 test 5: minting fixture tickets (RFC-3339 timestamps) for
+# the pre-flight presentation tests.
+time = { version = "0.3", features = ["formatting", "parsing"] }
+# F2B test double: the relay binary's exact rust-libp2p relay stack, built
+# in-process to prove wire interop of the hand-rolled circuit-relay v2
+# client (src/relay_client.rs) against the real behaviour — dev-only; the
+# production client shares no code with it.
+libp2p = { version = "0.57", features = [
+    "tokio",
+    "quic",
+    "noise",
+    "yamux",
+    "identify",
+    "ping",
+    "relay",
+    "macros",
+] }
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

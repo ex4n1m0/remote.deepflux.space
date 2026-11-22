@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
-use crate::agent::{schedule, startup, winctl};
+use crate::agent::{audit, schedule, startup, winctl};
 use crate::engine::{self, AgentInput};
 use crate::store::AppSettings;
 use schedule::Trigger;
@@ -205,12 +205,14 @@ pub fn tool_specs() -> Vec<Value> {
         ),
         f(
             "fleet_run",
-            "Run the same instruction on several paired machines at once: connects \
-             to each (chat-only agent session, silent via pairing), sends the \
-             instruction to that machine's assistant, waits for its answer, and \
-             returns a collected report. Machines default to all paired (max 4 \
-             per call for bounded runtime); each has a 2-minute answer window. \
-             The hosts' agents act with their own powers.",
+            "Run the same instruction on several paired machines at once over the \
+             sealed inbox (no session takeover — works even while a session is \
+             live): each machine's assistant wakes if it opted in to remote agent \
+             instructions, acts with its own powers, and seals its answer back. \
+             Returns a JSON report: the fleet call id plus one row per machine \
+             (status ok / error / timeout / not-opted-in, bounded reply snippet). \
+             Machines default to all paired (max 32 per call); replies are \
+             collected for up to 90 seconds.",
             json!({
                 "type": "object",
                 "properties": {
@@ -546,6 +548,70 @@ pub fn tool_specs() -> Vec<Value> {
     ]
 }
 
+/// Turn origin (security review FIX 1): a remotely-woken turn (a paired
+/// machine's assistant instructed this one) must not be able to propagate
+/// instructions to OTHER machines or persist recurring tasks — prompt
+/// wording is not a guard. Local turns (the human, or a scheduled task the
+/// human created) keep the full surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnOrigin {
+    Local,
+    Remote,
+}
+
+/// Tools a Remote-origin turn may never execute: `fleet_run` is the
+/// amplification vector (one remote instruction fans out to every paired
+/// machine), `schedule` the persistence vector (a remote instruction arms
+/// a recurring full-power turn). Everything else stays available — acting
+/// on THIS machine is the intended fleet behavior (bounded by the opt-in
+/// and the wake budget).
+pub const REMOTE_FORBIDDEN_TOOLS: &[&str] = &["fleet_run", "schedule"];
+
+/// The advertised tool surface for one turn: a Remote turn never even
+/// SEES the forbidden tools (the model cannot call what is not
+/// advertised). Local turns get the full set, unchanged.
+pub fn tool_specs_for(origin: TurnOrigin) -> Vec<Value> {
+    let specs = tool_specs();
+    match origin {
+        TurnOrigin::Local => specs,
+        TurnOrigin::Remote => specs
+            .into_iter()
+            .filter(|s| {
+                let name = s["function"]["name"].as_str().unwrap_or("");
+                !REMOTE_FORBIDDEN_TOOLS.contains(&name)
+            })
+            .collect(),
+    }
+}
+
+/// Defense in depth (FIX 1): even if a forbidden tool call reaches the
+/// dispatcher (a stale advertisement, a crafted tool_calls array), a
+/// Remote-origin turn is refused BEFORE any side effect. Pure core of the
+/// execute() boundary check — None means the call proceeds normally.
+fn remote_origin_refusal(origin: TurnOrigin, name: &str) -> Option<String> {
+    if origin == TurnOrigin::Remote && REMOTE_FORBIDDEN_TOOLS.contains(&name) {
+        return Some(format!(
+            "{name} refused: a remotely-woken turn may act on this machine only — \
+             it cannot instruct other machines (fleet_run) or create scheduled tasks (schedule)"
+        ));
+    }
+    None
+}
+
+/// Security review F1: the agent-addressed form of chat_send is a propagation
+/// vector for a remotely-woken turn (connect -> chat_send(to_agent) -> recurse),
+/// so refuse it on Remote origin. Plain human-visible chat_send stays available.
+fn remote_agent_chat_refusal(origin: TurnOrigin, to_agent: bool) -> Option<String> {
+    if origin == TurnOrigin::Remote && to_agent {
+        return Some(
+            "chat_send with to_agent=true refused: a remotely-woken turn may act on \
+             this machine only — it cannot instruct another machine's assistant"
+                .to_string(),
+        );
+    }
+    None
+}
+
 /// Coordinate + key tables shared with the MCP bridge's semantics.
 fn to_normalized(px: f64, dim: u32) -> u16 {
     ((px / f64::from(dim.max(1))) * 65_535.0)
@@ -585,13 +651,21 @@ fn key_scan_code(name: &str) -> Option<(u16, bool)> {
 }
 
 /// Execute one tool call. `last_shot` carries the coordinate space of the
-/// most recent screenshot (click needs it).
+/// most recent screenshot (click needs it). `origin` is the turn's
+/// authority (FIX 1): a Remote turn is refused the amplification and
+/// persistence tools at this boundary, before any side effect.
 pub fn execute(
     app: &AppHandle,
     name: &str,
     args: &Value,
     last_shot: &mut Option<(u32, u32)>,
+    origin: TurnOrigin,
 ) -> ToolOutput {
+    // FIX 1 dispatch boundary (defense in depth behind the advertisement
+    // filter): a Remote-origin turn never executes fleet_run / schedule.
+    if let Some(refusal) = remote_origin_refusal(origin, name) {
+        return ToolOutput::text(refusal);
+    }
     match name {
         "status" => {
             let status = with_engine(app, |handle| {
@@ -665,6 +739,7 @@ pub fn execute(
                             pairing_secret,
                             requester_name: Some(requester_name),
                             agent: false,
+                            account_prover: None,
                         })
                         .map_err(|e| e.to_string())
                 })
@@ -1290,6 +1365,11 @@ pub fn execute(
                 .get("to_agent")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            // Security review F1: refuse the agent-addressed form on Remote turns
+            // (connect -> chat_send(to_agent) -> recurse is a propagation wave).
+            if let Some(msg) = remote_agent_chat_refusal(origin, to_agent) {
+                return ToolOutput::text(msg);
+            }
             let result = (|| -> Result<(), String> {
                 let (base_url, token, me) = {
                     let services = app.state::<crate::commands::AppServices>();
@@ -2003,22 +2083,26 @@ fn kill_process(pid: u64) -> Result<String, String> {
 // -- ADR-012 next tier: Windows Update, fleet, (startup lives in its
 // module) ---------------------------------------------------------------
 
-/// Per-machine cap for one fleet_run call (bounded runtime: each machine
-/// can hold the wire for its whole answer window).
-const FLEET_MAX_MACHINES: usize = 4;
-/// Wait for each machine to connect.
-const FLEET_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-/// Wait for each machine's answer after sending the instruction.
-const FLEET_ANSWER_TIMEOUT: Duration = Duration::from_secs(120);
-/// Whole-call deadline — exceeded machines report as timed out.
+/// Per-machine cap for one fleet_run call (slice 3: inbox fan-out — the
+/// machines act in parallel on their own clocks, so the bound is the
+/// shared reply window, not a per-machine wire hold).
+const FLEET_MAX_MACHINES: usize = 32;
+/// Reply window: every slave polls its inbox independently (5 s poller),
+/// wakes, runs its turn, and seals the reply back; the master collects
+/// by history scan until this deadline. `pub(crate)` so the durable
+/// pending-fleet registry (chat.rs, FIX 2) can derive its suppression
+/// window from the SAME constant — the two must never drift apart.
+pub(crate) const FLEET_REPLY_TIMEOUT: Duration = Duration::from_secs(90);
+/// Collection scan interval while replies are outstanding.
+const FLEET_POLL_INTERVAL: Duration = Duration::from_millis(1000);
+/// Bounded per-machine send retries on a transient transport error.
+const FLEET_SEND_RETRIES: usize = 2;
+/// Reply snippet bound (chars) in the per-machine result rows.
+const FLEET_REPLY_SNIPPET: usize = 600;
+/// Whole-call outer bound (the serial engine's discipline, kept): a
+/// black-holed transport must not stall the assistant indefinitely —
+/// fan-out stops at this deadline and the reply window sits inside it.
 const FLEET_TOTAL_TIMEOUT: Duration = Duration::from_secs(600);
-
-/// True when any session machinery is live (either role) — mirrors the
-/// engine's QUIET_STATES discipline from the updater install gate.
-fn engine_in_session(s: &engine::EngineStatus) -> bool {
-    const QUIET: [&str; 4] = ["Idle", "Registering", "Online", "Disconnected"];
-    !QUIET.contains(&s.host_state.as_str()) || !QUIET.contains(&s.controller_state.as_str())
-}
 
 enum WindowsUpdateVerb {
     Check,
@@ -2070,126 +2154,223 @@ fn windows_update(verb: WindowsUpdateVerb, timeout: Duration) -> String {
     run_command(&mut cmd, timeout).unwrap_or_else(|e| format!("windows update failed: {e}"))
 }
 
-/// Run one instruction across `targets` sequentially: agent-connect to
-/// each (silent via pairing), send the instruction to its assistant,
-/// wait for its answer, disconnect. The collected report names what each
-/// machine's agent answered. Whole-call deadline bounded.
-fn fleet_run(app: &AppHandle, instruction: &str, targets: &[String]) -> String {
-    // Refuse over ANY live session (review blocking 2): the per-machine
-    // Disconnect must only ever tear down fleet's own connections — run
-    // mid-session it would kill the user's control session, and the
-    // role_conflict would burn every machine's connect timeout.
-    let busy = with_engine(app, |handle| {
-        let s = handle.status();
-        Ok(engine_in_session(&s))
-    })
-    .unwrap_or(true);
-    if busy {
-        return "a remote session is live on this machine — finish it first (fleet takes over the connection for each target)"
-            .to_owned();
-    }
-    let started = std::time::Instant::now();
-    let mut report = Vec::new();
-    for code in targets {
-        if started.elapsed() >= FLEET_TOTAL_TIMEOUT {
-            report.push(format!("{code}: SKIPPED — fleet deadline reached"));
-            continue;
-        }
-        report.push(format!(
-            "{code}: {}",
-            fleet_one(app, code, instruction, started)
-        ));
-        // Always drop the session before moving on — one at a time.
-        let _ = with_engine(app, |handle| handle.send(engine::EngineCmd::Disconnect));
-    }
-    report.join("\n")
+/// Unique correlation id for one fleet call (slice 3): CSPRNG hex via
+/// the engine id helper — the same material as device ids, collision-
+/// free for the call window. Rides INSIDE the sealed v2 payload both
+/// ways (instruction out, reply back).
+fn mint_fleet_call_id() -> String {
+    format!("fleet-{}", crate::engine::ids::new_device_id())
 }
 
-fn fleet_one(
-    app: &AppHandle,
-    code: &str,
-    instruction: &str,
-    started: std::time::Instant,
-) -> String {
-    // 1. Connect (chat-only agent session; pairing makes it silent).
-    let requester_name = {
-        let services = app.state::<crate::AppServices>();
-        let store = services.store.lock().expect("store");
-        crate::commands::display_name(store.settings())
-    };
-    let pairing_secret =
-        crate::chat::pairing_for(app, code).map(|p| crate::chat::PairingSecret(p.secret_hex));
-    let connect = crate::commands::start_engine(app).and_then(|_| {
-        with_engine(app, |handle| {
-            handle
-                .send(engine::EngineCmd::ControllerStart)
-                .map_err(|e| e.to_string())?;
-            handle
-                .send(engine::EngineCmd::Connect {
-                    code: code.to_owned(),
-                    pairing_secret,
-                    requester_name: Some(requester_name),
-                    agent: true,
-                })
-                .map_err(|e| e.to_string())
-        })
-    });
-    if let Err(err) = connect {
-        return format!("connect failed: {err}");
-    }
-    // 2. Wait for Connected.
-    let deadline = std::time::Instant::now() + FLEET_CONNECT_TIMEOUT;
-    loop {
-        if std::time::Instant::now() >= deadline || started.elapsed() >= FLEET_TOTAL_TIMEOUT {
-            return "timed out connecting (host offline or prompt unanswered?)".into();
+/// One machine's row in the fleet report (slice 3).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+struct FleetRow {
+    machine: String,
+    /// "ok" | "error" | "timeout" | "not-opted-in".
+    status: String,
+    /// Bounded reply snippet for "ok"; the error or note text otherwise.
+    reply: String,
+}
+
+/// One target's state through the call: the send-phase outcome and the
+/// correlated reply once the collection scan finds it. `opted_in` is the
+/// slave's opt-in state WHEN DISCOVERABLE — today no wire surface exposes
+/// it (the setting is local to each machine), so the live path leaves it
+/// None and an unanswered machine reports "timeout" with a note naming
+/// the possible causes (offline, busy, not opted in).
+#[derive(Debug, Clone)]
+struct FleetTarget {
+    code: String,
+    send_error: Option<String>,
+    reply: Option<String>,
+    opted_in: Option<bool>,
+}
+
+/// Bounded send retries (pure core): attempt the send, retrying up to
+/// `retries` extra times. inbox_send_agent failures are transport errors
+/// (network/HTTP/seal) or a permanent refusal (no pairing) — retrying a
+/// refusal fails identically and keeps the rule simple; the last error
+/// becomes the machine's row.
+fn fleet_send_with_retries(
+    retries: usize,
+    mut send: impl FnMut() -> Result<(), String>,
+) -> Result<(), String> {
+    let mut err = String::new();
+    for _ in 0..=retries {
+        match send() {
+            Ok(()) => return Ok(()),
+            Err(e) => err = e,
         }
-        let connected = with_engine(app, |handle| {
-            let s = handle.status();
-            Ok(s.controller_state == "Connected")
+    }
+    Err(err)
+}
+
+/// This call's correlated reply in a target's stored history: the newest
+/// non-empty "peer-agent" line carrying our fleet id (the id is unique
+/// per call; the slave's reply arrives sealed with it — slice 3 reply
+/// threading). v1 lines and ordinary chat carry no id and never match.
+fn fleet_reply_in(history: &[crate::chat::ChatLine], fleet_call_id: &str) -> Option<String> {
+    history
+        .iter()
+        .rev()
+        .find(|l| {
+            l.sender == "peer-agent"
+                && l.fleet_call_id.as_deref() == Some(fleet_call_id)
+                && !l.body.is_empty()
         })
-        .unwrap_or(false);
-        if connected {
+        .map(|l| l.body.clone())
+}
+
+/// Classify one machine's outcome (pure core of the collection phase).
+/// A permanent send failure is "error"; a correlated reply is "ok" with
+/// a bounded snippet; no reply is "not-opted-in" when the slave's opt-in
+/// state is discoverably false, else "timeout" with a note (the live
+/// path cannot discover the setting — see [`FleetTarget`]).
+fn fleet_classify(
+    send_error: Option<&str>,
+    reply: Option<&str>,
+    opted_in: Option<bool>,
+) -> (&'static str, String) {
+    if let Some(err) = send_error {
+        return ("error", err.to_owned());
+    }
+    if let Some(body) = reply {
+        return ("ok", body.chars().take(FLEET_REPLY_SNIPPET).collect());
+    }
+    if opted_in == Some(false) {
+        return (
+            "not-opted-in",
+            "delivered, but the machine has not opted in to remote agent instructions".to_owned(),
+        );
+    }
+    (
+        "timeout",
+        "no reply within the window — the machine may be offline, its assistant busy, \
+         or not opted in to remote agent instructions"
+            .to_owned(),
+    )
+}
+
+/// Final per-machine rows in target order (pure core).
+fn fleet_finalize(targets: &[FleetTarget]) -> Vec<FleetRow> {
+    targets
+        .iter()
+        .map(|t| {
+            let (status, reply) =
+                fleet_classify(t.send_error.as_deref(), t.reply.as_deref(), t.opted_in);
+            FleetRow {
+                machine: t.code.clone(),
+                status: status.to_owned(),
+                reply,
+            }
+        })
+        .collect()
+}
+
+/// Audit outcome summary: counts per status — bounded metadata only
+/// (never instruction or reply content, invariant 6).
+fn fleet_outcome_summary(rows: &[FleetRow]) -> String {
+    let count = |status: &str| rows.iter().filter(|r| r.status == status).count();
+    format!(
+        "ok:{} error:{} timeout:{} not-opted-in:{}",
+        count("ok"),
+        count("error"),
+        count("timeout"),
+        count("not-opted-in")
+    )
+}
+
+/// The structured report the calling assistant reads: the fleet call id
+/// plus one row per machine (ToolOutput text convention — JSON as text).
+fn fleet_report_json(fleet_call_id: &str, rows: &[FleetRow]) -> String {
+    json!({ "fleet_call_id": fleet_call_id, "results": rows }).to_string()
+}
+
+/// Run one instruction across `targets` in parallel over the sealed
+/// inbox (ADR-013 P3 slice 3): fan out a sealed agent-bit instruction
+/// carrying a fresh fleet call id to every paired target, then collect
+/// each machine's correlated reply by history scan until the deadline.
+/// No engine takeover — each slave polls its inbox and acts on its own
+/// clock, so a live session on THIS machine is irrelevant (the serial
+/// connect/Disconnect path and its busy-refusal are gone).
+fn fleet_run(app: &AppHandle, instruction: &str, targets: &[String]) -> String {
+    let fleet_call_id = mint_fleet_call_id();
+    let started = std::time::Instant::now();
+    let (base_url, token, me) = {
+        let services = app.state::<crate::commands::AppServices>();
+        let store = services.store.lock().expect("store");
+        let s = store.settings().clone();
+        (s.signaling_base_url, s.device_token, s.device_id)
+    };
+    // Fan out. The marker line is recorded BEFORE the send so a fast
+    // reply can never outrun it (the wake gate suppresses replies to our
+    // own call by id). The sends run sequentially here, but the machines
+    // act in PARALLEL — each polls + runs its turn independently; the
+    // bounded retries absorb a transient transport blip per machine.
+    let mut state: Vec<FleetTarget> = Vec::new();
+    for code in targets {
+        if started.elapsed() >= FLEET_TOTAL_TIMEOUT {
+            state.push(FleetTarget {
+                code: code.clone(),
+                send_error: Some("skipped: fleet send deadline reached".to_owned()),
+                reply: None,
+                opted_in: None,
+            });
+            continue;
+        }
+        crate::chat::record_outgoing_fleet(app, code, instruction, &fleet_call_id);
+        let send_error = fleet_send_with_retries(FLEET_SEND_RETRIES, || {
+            crate::chat::inbox_send_agent(
+                app,
+                &base_url,
+                &token,
+                &me,
+                code,
+                instruction,
+                true,
+                Some(&fleet_call_id),
+            )
+        })
+        .err();
+        state.push(FleetTarget {
+            code: code.clone(),
+            send_error,
+            reply: None,
+            opted_in: None, // not discoverable over the wire (see FleetTarget)
+        });
+    }
+    // Collect: scan each pending target's history for the correlated
+    // reply until every machine answered or the window closes. The inbox
+    // poller (a separate thread) stores the sealed replies; this loop
+    // only reads. The window sits inside the whole-call outer bound.
+    let deadline = (started + FLEET_REPLY_TIMEOUT).min(started + FLEET_TOTAL_TIMEOUT);
+    loop {
+        let mut pending = false;
+        for t in state.iter_mut() {
+            if t.send_error.is_some() || t.reply.is_some() {
+                continue;
+            }
+            t.reply = fleet_reply_in(&crate::chat::history(app, &t.code), &fleet_call_id);
+            pending |= t.reply.is_none();
+        }
+        if !pending || std::time::Instant::now() >= deadline {
             break;
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(FLEET_POLL_INTERVAL);
     }
-    // 3. Send the instruction to that machine's assistant (agent bit).
-    // Answer detection is ID-based (review blocking 1): stored ts_ms is
-    // the SENDER's engine-uptime ms, never comparable to local clocks —
-    // a timestamp predicate could never match. Snapshot the peer-agent
-    // line ids already stored; the answer is a NEW peer-agent id.
-    let before: std::collections::HashSet<u64> = crate::chat::history(app, code)
-        .iter()
-        .filter(|l| l.sender == "peer-agent")
-        .map(|l| l.id)
-        .collect();
-    if let Err(err) = with_engine(app, |handle| {
-        handle.send(engine::EngineCmd::ChatSend {
-            body: instruction.to_owned(),
-            agent: true,
-        })
-    }) {
-        return format!("send failed: {err}");
-    }
-    crate::chat::record_outgoing(app, code, "to-agent", instruction);
-    // 4. Wait for the machine's assistant answer (a new peer-agent line).
-    let deadline = std::time::Instant::now() + FLEET_ANSWER_TIMEOUT;
-    loop {
-        if std::time::Instant::now() >= deadline || started.elapsed() >= FLEET_TOTAL_TIMEOUT {
-            return "no answer within the window (its assistant may be busy)".into();
-        }
-        let history = crate::chat::history(app, code);
-        if let Some(answer) = history
-            .iter()
-            .rev()
-            .find(|l| l.sender == "peer-agent" && !before.contains(&l.id) && !l.body.is_empty())
-            .map(|l| l.body.clone())
-        {
-            let clipped: String = answer.chars().take(600).collect();
-            return format!("answered: {clipped}");
-        }
-        std::thread::sleep(Duration::from_millis(1000));
-    }
+    let rows = fleet_finalize(&state);
+    // Master-side audit (slice 3): one fleet-level row per call — the
+    // tool funnel's "tool" row still records the call itself; this row
+    // carries the per-machine outcome summary. Each slave's own rail
+    // records its remote-wake turn (the PeerAgent arm in agent/mod.rs,
+    // which fires for inbox-driven wakes too).
+    audit::AuditLog::shared(app).record(audit::AuditEntry::new(
+        "local-assistant",
+        "fleet",
+        &format!("fleet_run:{}targets", targets.len()),
+        fleet_outcome_summary(&rows),
+    ));
+    fleet_report_json(&fleet_call_id, &rows)
 }
 
 fn title_arg(args: &Value) -> Result<&str, String> {
@@ -2854,5 +3035,264 @@ mod tests {
             assert!(spec["function"]["description"].is_string());
             assert!(spec["function"]["parameters"].is_object());
         }
+    }
+
+    #[test]
+    fn remote_turns_never_see_or_execute_the_amplification_tools() {
+        // Security review FIX 1: a Remote turn's advertised surface
+        // excludes fleet_run (amplification) and schedule (persistence)
+        // and keeps everything else — acting on the slave itself is the
+        // intended fleet behavior.
+        let remote = tool_specs_for(TurnOrigin::Remote);
+        let names: Vec<&str> = remote
+            .iter()
+            .map(|s| s["function"]["name"].as_str().unwrap())
+            .collect();
+        assert!(!names.contains(&"fleet_run"));
+        assert!(!names.contains(&"schedule"));
+        assert!(names.contains(&"run_shell"), "local-action tools stay");
+        assert!(names.contains(&"chat_send"));
+        assert!(names.contains(&"schedule_list"), "read-only tools stay");
+        // Local turns keep the full surface, unchanged.
+        let local = tool_specs_for(TurnOrigin::Local);
+        assert_eq!(local.len(), tool_specs().len());
+        assert!(local.iter().any(|s| s["function"]["name"] == "fleet_run"));
+        assert!(local.iter().any(|s| s["function"]["name"] == "schedule"));
+        assert_eq!(remote.len(), local.len() - REMOTE_FORBIDDEN_TOOLS.len());
+
+        // Defense in depth: the dispatch boundary (execute()'s FIRST
+        // check) refuses a Remote call even if it arrives crafted, and
+        // lets a Local call through to the normal arm.
+        for tool in REMOTE_FORBIDDEN_TOOLS {
+            let refusal = remote_origin_refusal(TurnOrigin::Remote, tool).expect("refused");
+            assert!(refusal.contains(tool), "{refusal}");
+            assert!(
+                remote_origin_refusal(TurnOrigin::Local, tool).is_none(),
+                "Local turns keep {tool}"
+            );
+        }
+        // Other tools are unaffected on Remote turns.
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "run_shell").is_none());
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "status").is_none());
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "unknown_tool").is_none());
+    }
+
+    #[test]
+    fn remote_turns_cannot_address_another_assistant_via_chat_send() {
+        // Security review F1: the agent-addressed form of chat_send is a
+        // propagation vector (connect -> chat_send(to_agent) -> recurse), so a
+        // Remote turn is refused; plain human-visible chat_send and all Local
+        // turns are unaffected.
+        assert!(remote_agent_chat_refusal(TurnOrigin::Remote, true).is_some());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Remote, false).is_none());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Local, true).is_none());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Local, false).is_none());
+    }
+
+    // ---- ADR-013 P3 fleet slice 3: inbox fan-out engine ----
+
+    fn fleet_line(
+        sender: &str,
+        id: u64,
+        fleet_id: Option<&str>,
+        body: &str,
+    ) -> crate::chat::ChatLine {
+        crate::chat::ChatLine {
+            id,
+            ts_ms: id,
+            sender: sender.to_owned(),
+            body: body.to_owned(),
+            fleet_call_id: fleet_id.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn fleet_cap_is_32_and_the_spec_advertises_it() {
+        assert_eq!(FLEET_MAX_MACHINES, 32);
+        let specs = tool_specs();
+        let fleet = specs
+            .iter()
+            .find(|s| s["function"]["name"] == "fleet_run")
+            .expect("fleet_run spec");
+        let desc = fleet["function"]["description"].as_str().unwrap();
+        assert!(desc.contains("max 32 per call"), "{desc}");
+        assert!(
+            desc.contains("inbox"),
+            "spec describes the inbox path: {desc}"
+        );
+    }
+
+    #[test]
+    fn fleet_call_ids_are_unique_and_prefixed() {
+        let a = mint_fleet_call_id();
+        let b = mint_fleet_call_id();
+        assert!(a.starts_with("fleet-"));
+        assert_eq!(a.len(), "fleet-".len() + 16, "CSPRNG hex suffix");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fleet_send_retries_are_bounded() {
+        // Transient failure then success: exactly retries+1 attempts.
+        let mut attempts = 0;
+        let ok = fleet_send_with_retries(2, || {
+            attempts += 1;
+            if attempts < 3 {
+                Err("inbox send: connection reset".to_owned())
+            } else {
+                Ok(())
+            }
+        });
+        assert!(ok.is_ok());
+        assert_eq!(attempts, 3);
+        // Permanent failure: the last error surfaces after the bound.
+        attempts = 0;
+        let err = fleet_send_with_retries(2, || {
+            attempts += 1;
+            Err("inbox send: HTTP 503".to_owned())
+        });
+        assert_eq!(err.unwrap_err(), "inbox send: HTTP 503");
+        assert_eq!(attempts, 3);
+        // Zero retries: a single attempt.
+        attempts = 0;
+        let _ = fleet_send_with_retries(0, || {
+            attempts += 1;
+            Err("x".to_owned())
+        });
+        assert_eq!(attempts, 1);
+        // Immediate success: no retry burned.
+        attempts = 0;
+        assert!(
+            fleet_send_with_retries(2, || {
+                attempts += 1;
+                Ok(())
+            })
+            .is_ok()
+        );
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn fleet_reply_scan_correlates_by_id() {
+        let history = vec![
+            fleet_line("to-agent", 1, Some("fleet-42"), "free some disk space"),
+            fleet_line("peer-user", 2, None, "unrelated human chat"),
+            fleet_line(
+                "peer-agent",
+                3,
+                Some("fleet-OTHER"),
+                "a different call's reply",
+            ),
+            fleet_line("peer-agent", 4, None, "ordinary agent chat (v1, no id)"),
+            fleet_line("peer-agent", 5, Some("fleet-42"), ""), // empty body ignored
+            fleet_line("peer-agent", 6, Some("fleet-42"), "done: freed 2 GB"),
+        ];
+        assert_eq!(
+            fleet_reply_in(&history, "fleet-42").as_deref(),
+            Some("done: freed 2 GB")
+        );
+        // Newest matching reply wins.
+        let mut later = history.clone();
+        later.push(fleet_line(
+            "peer-agent",
+            7,
+            Some("fleet-42"),
+            "actually 3 GB",
+        ));
+        assert_eq!(
+            fleet_reply_in(&later, "fleet-42").as_deref(),
+            Some("actually 3 GB")
+        );
+        // No matching id → no reply (the instruction line itself is
+        // "to-agent", never a reply).
+        assert_eq!(fleet_reply_in(&history, "fleet-99"), None);
+        assert_eq!(fleet_reply_in(&[], "fleet-42"), None);
+    }
+
+    #[test]
+    fn fleet_rows_cover_every_status_in_target_order() {
+        let targets = vec![
+            FleetTarget {
+                code: "a".into(),
+                send_error: None,
+                reply: Some("done".into()),
+                opted_in: None,
+            },
+            FleetTarget {
+                code: "b".into(),
+                send_error: Some("inbox send: HTTP 503".into()),
+                reply: None,
+                opted_in: None,
+            },
+            FleetTarget {
+                code: "c".into(),
+                send_error: None,
+                reply: None,
+                opted_in: None,
+            },
+            FleetTarget {
+                code: "d".into(),
+                send_error: None,
+                reply: None,
+                opted_in: Some(false),
+            },
+        ];
+        let rows = fleet_finalize(&targets);
+        assert_eq!(
+            rows.iter().map(|r| r.machine.as_str()).collect::<Vec<_>>(),
+            ["a", "b", "c", "d"]
+        );
+        assert_eq!(rows[0].status, "ok");
+        assert_eq!(rows[0].reply, "done");
+        assert_eq!(rows[1].status, "error");
+        assert_eq!(rows[1].reply, "inbox send: HTTP 503");
+        assert_eq!(rows[2].status, "timeout");
+        assert!(
+            rows[2].reply.contains("not opted in"),
+            "the note names the opt-in cause: {}",
+            rows[2].reply
+        );
+        assert_eq!(rows[3].status, "not-opted-in");
+        // Ok snippets are bounded; a send error outranks a (stale) reply.
+        let long = "x".repeat(FLEET_REPLY_SNIPPET + 50);
+        let (status, snippet) = fleet_classify(None, Some(&long), None);
+        assert_eq!(status, "ok");
+        assert_eq!(snippet.chars().count(), FLEET_REPLY_SNIPPET);
+        let (status, _) = fleet_classify(Some("err"), Some("reply"), None);
+        assert_eq!(status, "error");
+    }
+
+    #[test]
+    fn fleet_report_json_and_audit_summary() {
+        let rows = fleet_finalize(&[
+            FleetTarget {
+                code: "a".into(),
+                send_error: None,
+                reply: Some("done".into()),
+                opted_in: None,
+            },
+            FleetTarget {
+                code: "b".into(),
+                send_error: None,
+                reply: None,
+                opted_in: None,
+            },
+        ]);
+        let report = fleet_report_json("fleet-42", &rows);
+        let v: Value = serde_json::from_str(&report).expect("report is JSON");
+        assert_eq!(v["fleet_call_id"], "fleet-42");
+        let results = v["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["machine"], "a");
+        assert_eq!(results[0]["status"], "ok");
+        assert_eq!(results[0]["reply"], "done");
+        assert_eq!(results[1]["status"], "timeout");
+        assert_eq!(
+            fleet_outcome_summary(&rows),
+            "ok:1 error:0 timeout:1 not-opted-in:0"
+        );
+        // The audit action label stays inside the rail's 64-char bound.
+        let action = format!("fleet_run:{}targets", FLEET_MAX_MACHINES);
+        assert!(action.chars().count() <= 64);
     }
 }

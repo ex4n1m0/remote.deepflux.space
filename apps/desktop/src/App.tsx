@@ -12,24 +12,33 @@
  * configurable lives in the top menu bar (File / Config / Help).
  *
  * 0.11.0 (ADR-010): the discovery list is back — machines running the
- * app appear in the rail on their own (sealed circle directory), merged
- * one-row-per-machine with the trusted list; pairing ("Always allow"
- * once) stays the only trust. */
+ * app appear in the rail on their own, merged one-row-per-machine with
+ * the trusted list; pairing ("Always allow" once) stays the only trust.
+ *
+ * P2 (ADR-013): the discovery source is the ACCOUNT directory — the
+ * website account's machines (account-proof connect, consent once per
+ * installation). The sealed circle directory is retired from the rail;
+ * sealed machine-chat and pairings stay. */
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEngine } from "./hooks/useEngine";
 import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
-import { useDirectory } from "./hooks/useDirectory";
+import { useAccountDirectory } from "./hooks/useAccountDirectory";
+import { useSwarm, useSwarmJoinModal } from "./hooks/useSwarm";
+import { useHumanRooms } from "./hooks/useHumanRooms";
 import {
   MachinesRail,
   RemoveMachineButton,
-  excludeSelf,
+  excludeSelfAccount,
   unifiedMachines,
 } from "./components/MachinesRail";
+import { HumanRoomConversation } from "./components/HumanRoomConversation";
+import { HumanRoomJoinModal } from "./components/HumanRoomJoinModal";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
+import { SwarmJoinModal } from "./components/SwarmJoinModal";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { AgentChat } from "./components/AgentChat";
 import { Conversation } from "./components/Conversation";
@@ -40,19 +49,39 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { useUpdate } from "./hooks/useUpdate";
 import { api, normalizeCode } from "./ipc";
 import { controllerView, disconnectCopy, engineErrorCopy, hostView } from "./state/mapping";
+import { swarmChipText, swarmJoinable } from "./state/swarm";
 import mark from "./assets/mark.png";
 
 export default function App() {
   const engine = useEngine();
   const [ui, uiDispatch] = engine.ui;
   const assistant = useAssistant();
-  // ADR-010: the discovery list (decrypted circle directory) — pulled at
-  // mount, pushed by the 30 s poller.
-  const directory = useDirectory();
-  const [directoryUi] = directory.ui;
+  // ADR-013 P2: the account directory (the website account's machines) —
+  // pulled at mount, pushed by the swarm heartbeat thread's 30 s poll.
+  const accountDirectory = useAccountDirectory();
   // ADR-008 update flow: banner states + the user verbs. Declared with
   // the other hooks (never conditional); jsdom keeps state null.
   const update = useUpdate();
+  // ADR-013 swarm enrollment: membership state + join/cancel/leave. The
+  // join modal's open/close wiring lives in `useSwarmJoinModal` (closes
+  // on the join resolving, on any failed state — with or without ever
+  // entering "joining" — and on an invoke-level rejection).
+  const swarm = useSwarm();
+  const swarmJoin = useSwarmJoinModal(swarm);
+  const [dismissedSwarmError, setDismissedSwarmError] = useState<string | null>(null);
+  // ADR-013 D4/P3 human chat: the humans-only E2E room surface (a separate
+  // user surface from the machine list — no agent tool reads/posts rooms).
+  const humanRooms = useHumanRooms();
+  const [humanRoomOpen, setHumanRoomOpen] = useState(false);
+  const [humanJoinOpen, setHumanJoinOpen] = useState(false);
+  // A successful join opens the room's conversation and closes the modal.
+  const humanJoined = !!humanRooms.state?.joined;
+  useEffect(() => {
+    if (humanJoined && humanJoinOpen) {
+      setHumanJoinOpen(false);
+      setHumanRoomOpen(true);
+    }
+  }, [humanJoined, humanJoinOpen]);
   // ADR-009: the trusted-host list (pairings) is the trust leg of the
   // machine list — pulled at mount, after consent decisions, and
   // whenever a pairing event lands (offer minted / acked / removed).
@@ -137,21 +166,32 @@ export default function App() {
     if (update.state?.status !== "none") return;
     const timer = setTimeout(() => update.dismiss(), 8_000);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [update.state?.status]);
 
-  // Machine list + selection. This machine's own directory row never
+  const openSwarmJoin = () => {
+    setConfigSection(null); // the join modal replaces the Config dialog
+    swarmJoin.openJoin();
+  };
+  const swarmError =
+    swarm.state?.status === "failed" && swarm.state.reason !== dismissedSwarmError
+      ? swarm.state.reason
+      : null;
+
+  // Machine list + selection. This machine's own account row never
   // becomes a connectable contact — the pinned "This machine" card
   // already represents self. One row per machine: the merge is keyed by
-  // device code (a paired machine never duplicates its discovered row).
-  const directoryRows = directoryUi.loaded
-    ? excludeSelf(directoryUi.machines, engine.identity?.device_id ?? null)
+  // device code (a paired machine never duplicates its account row).
+  const accountRows = accountDirectory.loaded
+    ? excludeSelfAccount(
+        accountDirectory.machines,
+        swarm.state?.status === "joined" ? swarm.state.installation_id : null,
+      )
     : null;
   const machines = unifiedMachines(
     pairings ?? [],
     ui.peerOnline,
     selectedCode,
-    directoryRows,
+    accountRows,
   );
   const selected = machines.find((m) => m.code === selectedCode) ?? null;
   // Landing with machines but no selection: open the first one — the
@@ -260,6 +300,18 @@ export default function App() {
           onDismiss={() => uiDispatch({ type: "clear-error" })}
         />
       ) : null}
+      {swarmError ? (
+        <ErrorBanner
+          title="Couldn't join the swarm"
+          message={swarmError}
+          hint={null}
+          onDismiss={() =>
+            setDismissedSwarmError(
+              swarm.state?.status === "failed" ? swarm.state.reason : null,
+            )
+          }
+        />
+      ) : null}
       {ui.lastInfo ? <p className="info-line">{ui.lastInfo}</p> : null}
 
 
@@ -287,7 +339,17 @@ export default function App() {
           thisName={engine.identity?.device_name ?? null}
           hostState={ui.hostState}
           sharing={sharing}
-          onPick={(code) => setSelectedCode(code)}
+          swarmChip={swarmChipText(swarm.state)}
+          swarmJoinable={swarmJoinable(swarm.state)}
+          onJoinSwarm={openSwarmJoin}
+          humanRoom={humanRooms.state}
+          humanRoomActive={humanRoomOpen}
+          onJoinHumanRoom={() => setHumanJoinOpen(true)}
+          onOpenHumanRoom={() => setHumanRoomOpen(true)}
+          onPick={(code) => {
+            setSelectedCode(code);
+            setHumanRoomOpen(false);
+          }}
           onConnect={(code, agent) => void controlMachine(code, agent)}
           onShare={() => void share()}
           onStopShare={() => engine.run(() => api.hostStop())}
@@ -340,6 +402,17 @@ export default function App() {
             />
           ) : null}
 
+          {/* ADR-013 D4/P3: the humans-only E2E room conversation replaces
+           * the machine page while the user is viewing a room (the rail
+           * card's Open verb; picking a machine switches back). Consent and
+           * session cards above stay live — they are global interruptions. */}
+          {humanRoomOpen ? (
+            <HumanRoomConversation
+              rooms={humanRooms}
+              onClose={() => setHumanRoomOpen(false)}
+            />
+          ) : (
+            <>
           {/* The selected machine's page: one primary action (remote
            * control) + the conversation. Same list, same verbs. */}
           {selected ? (
@@ -438,6 +511,8 @@ export default function App() {
               {endCopy.hint ? <p className="hint">{endCopy.hint}</p> : null}
             </div>
           ) : null}
+            </>
+          )}
         </section>
 
         <AssistantPanel
@@ -455,7 +530,26 @@ export default function App() {
           version={appVersion}
           assistant={assistant}
           onRevokedTrusted={() => void refreshMachines()}
+          swarm={swarm.state}
+          onJoinSwarm={openSwarmJoin}
+          onLeaveSwarm={() => swarm.leave()}
+          onRekeySwarm={swarm.rekey}
           onClose={() => setConfigSection(null)}
+        />
+      ) : null}
+
+      {swarmJoin.open ? (
+        <SwarmJoinModal
+          state={swarm.state}
+          onCancel={swarmJoin.cancel}
+          onClaimAnswer={swarm.claimAnswer}
+        />
+      ) : null}
+
+      {humanJoinOpen ? (
+        <HumanRoomJoinModal
+          onJoin={humanRooms.join}
+          onCancel={() => setHumanJoinOpen(false)}
         />
       ) : null}
 

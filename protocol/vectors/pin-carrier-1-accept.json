@@ -1,0 +1,57 @@
+{
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-036 pin carrier full accept: the strict bare-object canonical form, the signature preimage (signature omitted entirely), the LE-u32 pin_commitment construction, the round:0/seq:1 session-open markers, and the accept outcome (validate() Ok + signature verification Ok). Fixture-only signing key (seed 0x11*32, the session-vectors coordinator convention) — never production.",
+  "expected": "accept",
+  "name": "pin-carrier-1-accept",
+  "preimage": {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\"}",
+    "canonical_json_sha256": "dad019ff5d007e66b72b18c9edf796ecddf890f8af930eaaab0ff2b3349c0500",
+    "fields": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "cc0000000000000a",
+      "pin_commitment": "62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "prompt_tokens": [
+        151644,
+        11,
+        22,
+        33,
+        44,
+        151645
+      ],
+      "protocol_version": "msp-cooperative-v1",
+      "round": 0,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 1,
+      "session_id": "sess-pin-0001"
+    }
+  },
+  "wire": {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+    "canonical_json_sha256": "deb181f99ff4777f0510790ac7f1b4b07a62f70f39b5548321aeee9afe6990f8",
+    "fields": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "cc0000000000000a",
+      "pin_commitment": "62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "prompt_tokens": [
+        151644,
+        11,
+        22,
+        33,
+        44,
+        151645
+      ],
+      "protocol_version": "msp-cooperative-v1",
+      "round": 0,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 1,
+      "session_id": "sess-pin-0001",
+      "signature": "mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ=="
+    }
+  }
+}

@@ -2,3 +2,7 @@
 
 .vercel
 download/*.exe
+
+# Staging kits are published from this folder but never committed (same rule
+# as the installer above) — e.g. DeepMulti-staging-kit.zip.
+download/*.zip

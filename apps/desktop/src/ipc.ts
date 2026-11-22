@@ -5,12 +5,15 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AccountMachine,
   DirectoryMachine,
   EngineStatus,
+  HumanRoomState,
   Identity,
   MonitorInfo,
   PairingInfo,
   Settings,
+  SwarmState,
 } from "./types";
 
 export const EVENT = {
@@ -41,6 +44,18 @@ export const CHAT_EVENT = "engine://chat";
 
 /** Automatic updates (ADR-008): updater → UI event. */
 export const UPDATE_EVENT = "update://state";
+
+/** Swarm enrollment (ADR-013): membership state push. */
+export const SWARM_EVENT = "swarm://state";
+/** ADR-013 P2 account directory snapshot push (payload: AccountMachine[]). */
+export const ACCOUNT_DIRECTORY_EVENT = "app://account-directory";
+
+/** ADR-013 D4/P3 human chat (humans-only E2E rooms): state snapshot push. */
+export const HUMAN_ROOM_STATE_EVENT = "human-chat://state";
+/** ADR-013 D4/P3 human chat: one decrypted room message. */
+export const HUMAN_ROOM_MESSAGE_EVENT = "human-chat://message";
+/** ADR-013 D4/P3 human chat: a non-fatal node log line. */
+export const HUMAN_ROOM_LOG_EVENT = "human-chat://log";
 
 export interface UpdateState {
   status:
@@ -73,6 +88,9 @@ export interface ChatLine {
    * perspective; "to-agent" = your line addressed to their assistant). */
   sender: string;
   body: string;
+  /** ADR-013 P3 slice 2 (additive): fleet call correlation id on inbox
+   * lines that carried one (slice 3 reply routing). Absent otherwise. */
+  fleet_call_id?: string;
 }
 
 export interface AssistantStatus {
@@ -119,6 +137,11 @@ export const api = {
   directoryMachines: (): Promise<DirectoryMachine[]> => invoke("directory_machines"),
   directoryRefresh: (): Promise<void> => invoke("directory_refresh"),
 
+  // ADR-013 P2 account directory: the website account's machines (the
+  // connectable discovery source — replaces the circle directory rows in
+  // the rail).
+  accountDirectoryMachines: (): Promise<AccountMachine[]> => invoke("account_directory_machines"),
+
   setQuality: (preset: string): Promise<void> =>
     invoke("set_quality", { args: { preset } }),
   selectMonitor: (monitorId: string): Promise<void> =>
@@ -154,6 +177,30 @@ export const api = {
   chatSend: (code: string, text: string, agent: boolean): Promise<void> =>
     invoke("chat_send", { args: { code, text, agent } }),
   chatHistory: (code: string): Promise<ChatLine[]> => invoke("chat_history", { code }),
+
+  // Swarm enrollment (ADR-013): join shows the userCode via the state
+  // event; cancel abandons the poll; claimAnswer resolves the gate (a)
+  // account-claim prompt (Allow binds, Deny frees the code); leave drops
+  // the LOCAL membership (the website dashboard's revoke stays
+  // authoritative); rekey mints a fresh device identity (gate (d)
+  // recovery — new installation id, fresh enrollment).
+  swarmStatus: (): Promise<SwarmState> => invoke("swarm_status"),
+  swarmJoin: (): Promise<void> => invoke("swarm_join"),
+  swarmCancelJoin: (): Promise<void> => invoke("swarm_cancel_join"),
+  swarmClaimAnswer: (accept: boolean): Promise<void> => invoke("swarm_claim_answer", { accept }),
+  swarmRekey: (): Promise<string> => invoke("swarm_rekey"),
+  swarmLeave: (): Promise<void> => invoke("swarm_leave"),
+
+  // Human chat (ADR-013 D4/P3): humans-only E2E word rooms over the pinned
+  // OnlyHumans protocol. The room word is admission material — it goes IN
+  // via roomsJoin (like a password) and is persisted Rust-side; it never
+  // comes back in a result or event. roomsState returns the room id/epoch/
+  // peers; messages and progress ride the human-chat:// events.
+  roomsState: (): Promise<HumanRoomState> => invoke("rooms_state"),
+  roomsJoin: (word: string): Promise<void> => invoke("rooms_join", { word }),
+  roomsSend: (text: string): Promise<void> => invoke("rooms_send", { text }),
+  roomsRotate: (): Promise<void> => invoke("rooms_rotate"),
+  roomsLeave: (): Promise<void> => invoke("rooms_leave"),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

@@ -1,0 +1,30 @@
+{
+  "schema": "advisory-clamp-table/1",
+  "frozen_by": "ADR-033 revision 2 (RC-7; the R-2 single mechanism with TR-RC-6 and the §9.2(4) sequencing), created by the first advisory implementation session under that revision's authority (ADR-033 §9.4); changes only by ADR-033 amendment. UNCHANGED by ADR-037 §4.2 (no new tunable targets are authorized). Any hint target absent from this table is treated as requires_adr=true — no improvised ranges at implementation time.",
+  "targets": [
+    {
+      "target": "MSP_SHADOW_QUEUE_ADVERTISED_WEIGHT",
+      "min": 0.0,
+      "max": 1.0,
+      "source_of_truth": "crates/modelswarm-scheduler/src/shadow.rs:77-82 (module contract: weights clamped to [0, 1])",
+      "promise_metric": "ttft_p50_ms",
+      "direction": "down"
+    },
+    {
+      "target": "MSP_SHADOW_QUEUE_MEASURED_WEIGHT",
+      "min": 0.0,
+      "max": 1.0,
+      "source_of_truth": "crates/modelswarm-scheduler/src/shadow.rs:80-85",
+      "promise_metric": "ttft_p50_ms",
+      "direction": "down"
+    },
+    {
+      "target": "MSP_SHADOW_QUEUE_CAP_MS",
+      "min": 1000.0,
+      "max": 120000.0,
+      "source_of_truth": "default 120000 mirrors the msp-v1 §6.4 deadlineMs ceiling; the floor mirrors its 1000 ms minimum (crates/modelswarm-scheduler/src/shadow.rs:83-85)",
+      "promise_metric": "ttft_p50_ms",
+      "direction": "down"
+    }
+  ]
+}

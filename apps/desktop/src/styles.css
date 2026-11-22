@@ -1238,3 +1238,115 @@ button.link {
 .rail-row-wrap.pending .rail-name {
   color: var(--muted);
 }
+
+/* ADR-013 swarm enrollment. */
+
+/* The join modal's big pairing code — read across devices, so it is the
+ * loudest thing on the card. */
+.join-code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 34px;
+  letter-spacing: 0.3em;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px 12px 22px;
+  user-select: all;
+}
+
+.swarm-code-row {
+  align-items: center;
+}
+
+/* "This machine" card: the account-swarm membership chip sits beside the
+ * host-status chip. */
+.rail-this .swarm-chip {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* The rail's join entry under the connection-code box. */
+.rail-join-swarm {
+  width: 100%;
+}
+
+/* ADR-013 D4/P3 human chat (humans-only E2E rooms). */
+
+/* The rail's human-chat card sits below the "This machine" card; the active
+ * room (center pane showing it) gets a subtle accent edge. */
+.rail-human.active {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+
+.rail-join-human {
+  width: 100%;
+}
+
+/* The epoch indicator — a monospace chip so the number reads as a counter. */
+.human-epoch {
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+/* The room conversation reuses the machine Conversation tokens; the head
+ * carries the title, epoch, status, and the rotate/leave/close verbs. */
+.human-conversation {
+  flex: 1;
+}
+
+.human-room-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.human-room-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.human-room-title h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.human-room-title .small {
+  font-size: 11px;
+}
+
+.human-room-head .row {
+  margin-top: 0;
+}
+
+.human-room-status {
+  padding: 0 12px;
+  margin: 6px 0 0;
+}
+
+/* The join modal: a narrow card with one word input. */
+.human-room-join-modal {
+  max-width: 460px;
+}
+
+.human-room-join-modal p {
+  margin: 10px 16px 0;
+}
+
+.human-room-join-modal input {
+  margin: 12px 16px 0;
+}
+
+.human-room-join-modal .form-error {
+  margin: 8px 16px 0;
+}
+
+.human-room-join-modal .row {
+  margin: 12px 16px 16px;
+}

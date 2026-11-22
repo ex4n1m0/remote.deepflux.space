@@ -10,7 +10,10 @@
  *
  * A paired-and-proven controller renders the passive status card instead
  * (no dialog at all); a claimed-trusted request without a valid proof
- * renders the warning variant (fail open to the human). */
+ * renders the warning variant (fail open to the human). A VERIFIED
+ * account proof (ADR-013 P2) renders the account variant: the controller
+ * cryptographically proved it is this installation of the machine's own
+ * website account — "Always allow" then keys to the installation id. */
 
 import type { ConsentEvent } from "../types";
 
@@ -18,6 +21,7 @@ export function consentCopy(consent: {
   controller_device_id: string;
   requester_name: string | null;
   ai_session: boolean;
+  account?: { installation_id: string; label: string | null } | null;
 }): { who: string; title: string; detail: string; alwaysHint: string } {
   const who = consent.requester_name
     ? consent.requester_name
@@ -30,6 +34,20 @@ export function consentCopy(consent: {
   const whoWithCode = consent.requester_name
     ? `${consent.requester_name} (${consent.controller_device_id})`
     : consent.controller_device_id;
+  // ADR-013 P2: the verified account variant leads with the account
+  // machine's label — the proof (not the name) is what got it here.
+  const account = consent.account ?? null;
+  if (account) {
+    const label = account.label ?? `${account.installation_id.slice(0, 8)}…`;
+    return {
+      who: whoWithCode,
+      title: `${label} — a machine of your DeepMulti account (${consent.controller_device_id}) — asks to control this computer.`,
+      detail:
+        "It proved it belongs to your website account. It will see your screen and use the mouse and keyboard; you can watch everything and stop it at any time.",
+      alwaysHint:
+        "Always allow remembers this account machine — it connects without asking next time, until you remove it from the account or decline it here.",
+    };
+  }
   if (consent.ai_session) {
     // With a name: whose assistant it is. Without: the code only.
     const aiTitle = consent.requester_name
@@ -86,6 +104,13 @@ export function ConsentDialog({
           <p className="hint" role="note">
             This machine claims to be trusted but could not prove it — treat it
             as a new machine. (Someone may be reusing its code.)
+          </p>
+        ) : null}
+        {consent.account ? (
+          <p className="hint" role="note">
+            Verified account machine — installation{" "}
+            <code className="code">{consent.account.installation_id.slice(0, 10)}…</code>{" "}
+            of your DeepMulti account.
           </p>
         ) : null}
         <p className="muted">{copy.detail}</p>

@@ -77,8 +77,18 @@ fn assert_clean(value: &serde_json::Value, name: &str) {
 /// Credential-shaped keys that are LEGAL in command ARGUMENTS (a password
 /// must cross IPC to be checked) but must NEVER appear in a RESULT or
 /// EVENT payload — results reach every JS client and devtools (security
-/// review P2: the shared FORBIDDEN_KEYS list cannot enforce this).
-const RESULT_FORBIDDEN_KEYS: &[&str] = &["password", "token", "auth_key", "dek", "ciphertext"];
+/// review P2: the shared FORBIDDEN_KEYS list cannot enforce this). The
+/// swarm deviceCode is in both spellings (ADR-013 review: a benignly
+/// named future leak must still trip the walk).
+const RESULT_FORBIDDEN_KEYS: &[&str] = &[
+    "password",
+    "token",
+    "auth_key",
+    "dek",
+    "ciphertext",
+    "device_code",
+    "deviceCode",
+];
 
 /// Result/event payloads must additionally pass the stricter credential
 /// key list (args walk uses only FORBIDDEN_KEYS).
@@ -130,6 +140,14 @@ fn all_events() -> Vec<EngineEvent> {
             session_id: "s1".into(),
             ai_session: true,
             message_id: "m1".into(),
+            // ADR-013 P2: populated adversarially — the walker must see the
+            // nested proof keys (all public material, no secrets).
+            account_proof: Some(protocol::signaling::AccountProof {
+                installation_id: "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2".into(),
+                pub_key_b58: "4YkZS6qXe7cGz3JvN8mQ5wR1tL0pHbA2sD9uKfE7xM3c".into(),
+                signature_hex: "ab".repeat(64),
+                ts_ms: 1_695_000_000_000,
+            }),
         },
         EngineEvent::ConsentAccepted {
             controller_device_id: "ctrl-1".into(),
@@ -293,6 +311,7 @@ fn command_argument_dtos_carry_metadata_only() {
                 host_sharing: true,
                 agent_admin: true,
                 auto_update: true,
+                allow_remote_agent_instructions: false,
             })
             .unwrap(),
         ),
@@ -368,6 +387,110 @@ fn update_state_carries_metadata_only() {
         error: String::new(),
     };
     assert_result_clean(&serde_json::to_value(&state).unwrap(), "UpdateUiState");
+}
+
+/// Swarm membership state (ADR-013): every variant of the `swarm://state`
+/// payload — the userCode, the installation id, and human-readable
+/// reasons are metadata; the deviceCode and session bearer are
+/// structurally absent (Rust state + credstore only), and a future
+/// key-shaped field name must fail this gate.
+#[test]
+fn swarm_state_carries_metadata_only() {
+    use remote_desktop_app_lib::swarm::SwarmState;
+    let states = vec![
+        SwarmState::NotJoined,
+        SwarmState::Joining {
+            user_code: "AB2CDEFG".into(),
+            expires_at_ms: 1,
+        },
+        SwarmState::ConfirmClaim {
+            claimed_by: "i***@example.com".into(),
+            expires_at_ms: 1,
+        },
+        SwarmState::Joined {
+            installation_id: "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2".into(),
+            session_expires_at_ms: 2,
+        },
+        SwarmState::NeedsRejoin {
+            reason: "session expired (24 h)".into(),
+        },
+        SwarmState::Failed {
+            reason: "swarm enroll: HTTP 502".into(),
+        },
+    ];
+    for state in &states {
+        let value = serde_json::to_value(state).expect("serialize swarm state");
+        assert_result_clean(&value, "SwarmState");
+        // Internally-tagged shape: {"status": "<variant>", ...}.
+        assert!(
+            value.get("status").and_then(|s| s.as_str()).is_some(),
+            "SwarmState must serialize with a status tag: {value}"
+        );
+    }
+    // Guard for the guard: the deviceCode / bearer must not sneak in under
+    // any variant (the strict list fires on key names like "token").
+    let probe = serde_json::json!({ "status": "joined", "device_token": "x".repeat(32) });
+    let mut hits = Vec::new();
+    fn find_keys(value: &serde_json::Value, path: &str, hits: &mut Vec<String>) {
+        if let serde_json::Value::Object(map) = value {
+            for (key, child) in map {
+                if RESULT_FORBIDDEN_KEYS.iter().any(|bad| key.contains(bad)) {
+                    hits.push(format!("{path}.{key}"));
+                }
+                find_keys(child, &format!("{path}.{key}"), hits);
+            }
+        }
+    }
+    find_keys(&probe, "probe", &mut hits);
+    assert_eq!(hits, vec!["probe.device_token".to_string()]);
+}
+
+/// Human-chat room payloads (ADR-013 D4/P3): the state snapshot, a message,
+/// and a log line are metadata only. The room WORD (admission material) is
+/// structurally absent — it lives in Rust state + settings, never IPC — and
+/// a future word-shaped field must fail this gate.
+#[test]
+fn human_room_payloads_carry_metadata_only() {
+    use remote_desktop_app_lib::human_chat::{
+        HumanMember, HumanRoomLog, HumanRoomMessage, HumanRoomState,
+    };
+    let state = HumanRoomState {
+        joined: true,
+        room: Some("ab".repeat(32)),
+        epoch: 3,
+        we_are_host: true,
+        status: "hosting".into(),
+        peers: vec![HumanMember {
+            peer: "12D3KooWPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerP".into(),
+            name: "MOMS-PC".into(),
+        }],
+        my_peer: Some("12D3KooWSelfSelfSelfSelfSelfSelfSelfSelfSelfSelfSelfS".into()),
+        presence_linked: true,
+        online: 2,
+        error: None,
+    };
+    let value = serde_json::to_value(&state).expect("serialize human room state");
+    assert_result_clean(&value, "HumanRoomState");
+    // The room word must never ride the state payload under any spelling.
+    let obj = value.as_object().expect("state is an object");
+    for forbidden in ["word", "passcode", "room_word"] {
+        assert!(!obj.contains_key(forbidden), "state leaks {forbidden}");
+    }
+
+    let message = HumanRoomMessage {
+        room: "ab".repeat(32),
+        sender: "12D3KooWPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerP".into(),
+        body: "hello room".into(),
+        epoch: 3,
+        mine: false,
+        via_site: true,
+    };
+    assert_result_clean(&serde_json::to_value(&message).unwrap(), "HumanRoomMessage");
+
+    let log = HumanRoomLog {
+        message: "mailbox: drained 1 item(s) from the site".into(),
+    };
+    assert_result_clean(&serde_json::to_value(&log).unwrap(), "HumanRoomLog");
 }
 
 #[test]

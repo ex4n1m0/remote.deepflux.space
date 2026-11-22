@@ -1,0 +1,245 @@
+{
+  "adr": "ADR-045 (receipt-population contract) + ADR-030 §2 (frozen digest rule)",
+  "cases": [
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"fast\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"-uc7vynIJik2JFOztyBh57qZGU8VqoetZyGr-MSkfmNDZ3NL4z6ofwUk8AHhFC5ZTjP_dVRrqLB0Ugh7K6NFCw\",\"server_signature\":\"6VsRbmJuK2cxnXL6-4-XLWzL0kIBkCu-4nDM_n-NmyZseyrAIIsmlcr8GFVqtkkt5TPtIUPAP1Fq5fYKWXE7Bw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"fast\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"fast\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"6VsRbmJuK2cxnXL6-4-XLWzL0kIBkCu-4nDM_n-NmyZseyrAIIsmlcr8GFVqtkkt5TPtIUPAP1Fq5fYKWXE7Bw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "fast",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "fast",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "-uc7vynIJik2JFOztyBh57qZGU8VqoetZyGr-MSkfmNDZ3NL4z6ofwUk8AHhFC5ZTjP_dVRrqLB0Ugh7K6NFCw",
+        "server_signature": "6VsRbmJuK2cxnXL6-4-XLWzL0kIBkCu-4nDM_n-NmyZseyrAIIsmlcr8GFVqtkkt5TPtIUPAP1Fq5fYKWXE7Bw",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:ebb91e65f190eb81dff45e4e56ea308ea9a39deef81ddb39bf524f4478ec000e"
+    },
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"balanced\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"-wbMJzOHDOTsa-VzInrotGcoL_36g3masEwTJKswwrf9YTdKBF7f8NvAsQbvsV44eQkoxuLbfdWo1E0wsIlIBg\",\"server_signature\":\"i4VVYwRdoMjt2sFe_n4pcBEKNQpUUTtw8RsFLmsMCBjdHIuD6NwEI2MMRlCCeFfiFgQ6Addp6IMojC3XdbkOBw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"balanced\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"balanced\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"i4VVYwRdoMjt2sFe_n4pcBEKNQpUUTtw8RsFLmsMCBjdHIuD6NwEI2MMRlCCeFfiFgQ6Addp6IMojC3XdbkOBw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "balanced",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "balanced",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "-wbMJzOHDOTsa-VzInrotGcoL_36g3masEwTJKswwrf9YTdKBF7f8NvAsQbvsV44eQkoxuLbfdWo1E0wsIlIBg",
+        "server_signature": "i4VVYwRdoMjt2sFe_n4pcBEKNQpUUTtw8RsFLmsMCBjdHIuD6NwEI2MMRlCCeFfiFgQ6Addp6IMojC3XdbkOBw",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:7438ab7a2539d18f06e4137a6fd34ec5c8017fbe09a0043fd89874893f44b1e2"
+    },
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"deep\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"x93ZIyKcmITRE_cow59eDvjQ4fSOQt9BbAGyh3Rot7Wq329mxTmHL8fplIrzl9RuUYTCukrsml2MDCKKzCluCg\",\"server_signature\":\"YoqCtuA9BlWVrdbuAXnDk_MnAIinprU3p1jy9opWPDTqZtchcXryQ74h5cHBWkl-yhSvRgAiFyqNLznX59-pDQ\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"deep\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"deep\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"YoqCtuA9BlWVrdbuAXnDk_MnAIinprU3p1jy9opWPDTqZtchcXryQ74h5cHBWkl-yhSvRgAiFyqNLznX59-pDQ\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "deep",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "deep",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "x93ZIyKcmITRE_cow59eDvjQ4fSOQt9BbAGyh3Rot7Wq329mxTmHL8fplIrzl9RuUYTCukrsml2MDCKKzCluCg",
+        "server_signature": "YoqCtuA9BlWVrdbuAXnDk_MnAIinprU3p1jy9opWPDTqZtchcXryQ74h5cHBWkl-yhSvRgAiFyqNLznX59-pDQ",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:216a66ee98d8868c447e73362deffca9dcdbf4f23d8aa9022ee874085be8c471"
+    },
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"verified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"QuOscjWqu115u3QbgIeTKgkINF3gJP9mFClTNtqSL3Pup8tTqDXyZFYhmqm66ybCHlAw3SikJbKr5q04vwSTDg\",\"server_signature\":\"kcDniGOTtw_0TDo_gSRTmIOEGtdHRWZLFf75ghZSazRuQ7cPCppz-yIAethQM69F0ASJ_P2dZ8of8mViThtOBw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"verified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"verified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"kcDniGOTtw_0TDo_gSRTmIOEGtdHRWZLFf75ghZSazRuQ7cPCppz-yIAethQM69F0ASJ_P2dZ8of8mViThtOBw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "verified",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "verified",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "QuOscjWqu115u3QbgIeTKgkINF3gJP9mFClTNtqSL3Pup8tTqDXyZFYhmqm66ybCHlAw3SikJbKr5q04vwSTDg",
+        "server_signature": "kcDniGOTtw_0TDo_gSRTmIOEGtdHRWZLFf75ghZSazRuQ7cPCppz-yIAethQM69F0ASJ_P2dZ8of8mViThtOBw",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:e9aa0d78628b7e2449bc5fd6e477ef6d933cb709594ba223bf468805af746e2d"
+    },
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"maximum\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"B-VvLlAy2utpu1-Kn7oHR8ZVV3iziS83trknD-nzoVCRyss2BLPpLlp6j3vmR3ZVH0vj6IRXaxKq5Nrau1AtCQ\",\"server_signature\":\"geXheZO4OnjzQGyvTWuUXu8yveQyjqBUlHOup7ECmSVF5iPT2k1fsEjIVVacuuI276xfabLMsPEKMgy3sMPQDw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"maximum\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"maximum\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"geXheZO4OnjzQGyvTWuUXu8yveQyjqBUlHOup7ECmSVF5iPT2k1fsEjIVVacuuI276xfabLMsPEKMgy3sMPQDw\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "maximum",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "maximum",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "B-VvLlAy2utpu1-Kn7oHR8ZVV3iziS83trknD-nzoVCRyss2BLPpLlp6j3vmR3ZVH0vj6IRXaxKq5Nrau1AtCQ",
+        "server_signature": "geXheZO4OnjzQGyvTWuUXu8yveQyjqBUlHOup7ECmSVF5iPT2k1fsEjIVVacuuI276xfabLMsPEKMgy3sMPQDw",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:9478650fcb2cc502f69130bc56474b794657b49e55f827b3e9203924694840a2"
+    },
+    {
+      "final_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"unspecified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"requester_signature\":\"IgAD8RpABf5qlYhXkDrF550oCiikSySVrYe53PCFwYWwaC4d-5x0GY9y3ag6y1sARoyHfACFxCgdcFbhm0dgCQ\",\"server_signature\":\"z9bcFp_N_navXuWqxFAsS0bCBasUYg43oqMTO5pjvtyrzQi-BSbui1uQ_KykCa_2y613IdysHYknO8IxVJcuBQ\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase1_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"unspecified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "phase2_canonical_json": "{\"accepted_tokens\":19,\"budgets\":{\"deadline_ms\":30000,\"max_tokens\":256},\"cohort_digest\":\"sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8\",\"ended_at\":\"2026-10-20T09:00:06Z\",\"endpoint_seconds\":6,\"mode_id\":\"single\",\"outcome\":\"completed\",\"peers\":[{\"installation_id\":\"InstRequester0000000000000000000000000001\",\"peer_id\":\"12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM\",\"role\":\"requester\"},{\"installation_id\":\"InstServer00000000000000000000000000002\",\"peer_id\":\"12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz\",\"role\":\"server\"}],\"preset\":\"unspecified\",\"profile_id\":\"msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe\",\"request_id\":\"req-045-0001\",\"server_signature\":\"z9bcFp_N_navXuWqxFAsS0bCBasUYg43oqMTO5pjvtyrzQi-BSbui1uQ_KykCa_2y613IdysHYknO8IxVJcuBQ\",\"started_at\":\"2026-10-20T09:00:00Z\",\"usage_digest\":\"sha256:7f3a9c1d\",\"verified_tokens\":19}",
+      "preset": "unspecified",
+      "receipt": {
+        "accepted_tokens": 19,
+        "budgets": {
+          "deadline_ms": 30000,
+          "max_tokens": 256
+        },
+        "cohort_digest": "sha256:550a8fa643b5e25c7de1b1c68c60d676311d20284a7ed8c6b91b0da143dc3cb8",
+        "ended_at": "2026-10-20T09:00:06Z",
+        "endpoint_seconds": 6,
+        "mode_id": "single",
+        "outcome": "completed",
+        "peers": [
+          {
+            "installation_id": "InstRequester0000000000000000000000000001",
+            "peer_id": "12D3KooWA7L8TiZt1WXFCPeoFYR7EASz5B2PVyZNKGebB7F1BK7zM",
+            "role": "requester"
+          },
+          {
+            "installation_id": "InstServer00000000000000000000000000002",
+            "peer_id": "12D3KooWHqHP3TVKBbRxBD39kQzR89ceLDxbAjWeg4QsWewJyppz",
+            "role": "server"
+          }
+        ],
+        "preset": "unspecified",
+        "profile_id": "msp1:fc5a30ae36257718afbd1062f2920b47576eed72ee8d172eac35248034b2dcbe",
+        "request_id": "req-045-0001",
+        "requester_signature": "IgAD8RpABf5qlYhXkDrF550oCiikSySVrYe53PCFwYWwaC4d-5x0GY9y3ag6y1sARoyHfACFxCgdcFbhm0dgCQ",
+        "server_signature": "z9bcFp_N_navXuWqxFAsS0bCBasUYg43oqMTO5pjvtyrzQi-BSbui1uQ_KykCa_2y613IdysHYknO8IxVJcuBQ",
+        "started_at": "2026-10-20T09:00:00Z",
+        "usage_digest": "sha256:7f3a9c1d",
+        "verified_tokens": 19
+      },
+      "receipt_digest": "sha256:97c58e261ef9922d6b1a648ac01f0fd4c8f192d33f2519e5075116cba39b886a"
+    }
+  ],
+  "description": "ADR-045 P2 golden vector: six cases — one per value of the frozen receipt-side preset vocabulary (fast/balanced/deep/verified/maximum/unspecified) — varying ONLY the preset field. Pins: (a) digest sensitivity (six distinct receipt_digest values — neither language may drop or normalize the field before digesting; the tracker zod-strip trap's regression test), (b) byte-parity of both signature preimages and the final digest across Rust (modelswarm-eligibility) and TS (apps/tracker receipt tests), (c) the frozen six-value vocabulary itself. receipt-v2-1.json stays byte-frozen and untouched.",
+  "name": "receipt-v2-2-presets",
+  "requester_public_key_hex": "5b6489c9c7fd0dcf50545e7c164886ef40491ec06c7f1b123041797e8117535e",
+  "requester_signing_seed_hex": "7272727272727272727272727272727272727272727272727272727272727272",
+  "server_public_key_hex": "e2fe2a39b7326642827d6d82d497622cd6c297fe78270eaa436b01f086b6f3cb",
+  "server_signing_seed_hex": "7171717171717171717171717171717171717171717171717171717171717171"
+}

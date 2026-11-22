@@ -29,6 +29,7 @@ export function SettingsPanel({
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [hostSharing, setHostSharing] = useState(true);
   const [agentAdmin, setAgentAdmin] = useState(true);
+  const [allowRemoteAgent, setAllowRemoteAgent] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [domains, setDomains] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,6 +44,7 @@ export function SettingsPanel({
     setLaunchAtLogin(settings.launch_at_login);
     setHostSharing(settings.host_sharing);
     setAgentAdmin(settings.agent_admin);
+    setAllowRemoteAgent(settings.allow_remote_agent_instructions ?? false);
     setAutoUpdate(settings.auto_update);
     setDomains((settings.agent_download_domains ?? []).join(", "));
   }
@@ -85,6 +87,7 @@ export function SettingsPanel({
               launch_at_login: launchAtLogin,
               host_sharing: hostSharing,
               agent_admin: agentAdmin,
+              allow_remote_agent_instructions: allowRemoteAgent,
               auto_update: autoUpdate,
               agent_download_domains: domains
                 .split(",")
@@ -147,6 +150,19 @@ export function SettingsPanel({
             Run with administrator rights — the assistant can manage
             anything on this computer (shell, files, programs). Takes
             effect the next time DeepFlux starts; Windows may ask once.
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={allowRemoteAgent}
+              onChange={(event) => setAllowRemoteAgent(event.target.checked)}
+            />
+            Let paired machines' assistants give this one tasks — their
+            agent messages sent while no session is live (the sealed
+            inbox, used by fleet) wake your assistant to act on them. Off
+            by default; their messages still show in chat either way. A
+            live remote-control session is separate: whoever you accept
+            has full control of this machine regardless of this setting.
           </label>
           <label className="settings-check">
             <input

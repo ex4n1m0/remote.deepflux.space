@@ -1,0 +1,25 @@
+{
+  "name": "relay-ticket-1",
+  "description": "ADR-038 §6.2 accept vector: a content-blind relay admission ticket at mid-life. The installation pair is REAL: installation_id re-derives from the peer_id's embedded key (peer_identity_seed_hex recorded; base58(SHA-256(pubkey)) per ADR-020). Signed by the fixture key recorded below — NOT the production hub key. TS (apps/tracker lib/relay-ticket.ts issueRelayAdmissionTicket) and Rust (modelswarm_eligibility::relay_ticket from_wire + verify) must both accept this exact token at verify_at. Pins: the canonical-JSON bytes + sha256; the signature preimage (the signature-omitted canonical form); the exactly-600 s TTL delta; the wire form; the admission deadline computation (expires_at + 120 s); outcome ok(100).",
+  "adr": "ADR-038 §3.1/§3.4/§6.2",
+  "signing_seed_hex": "3838383838383838383838383838383838383838383838383838383838383838",
+  "signing_public_key_hex": "76d81b33ba721df89b8e0b0ef26c34eb72e978951044798cd608a4f6dbf2e6d6",
+  "verify_at": "2026-10-15T12:05:00Z",
+  "fields": {
+    "installation_id": "65XbepYwFHBHzMqcTG1uqwN2Qo9xay8jtPSdNwcUm1Sq",
+    "peer_id": "12D3KooWNm5t4HypYRmiC5v9CD2TnPKrJh2J8TcfJ2gPhA7L8TiZ",
+    "issued_at": "2026-10-15T12:00:00.000Z",
+    "expires_at": "2026-10-15T12:10:00.000Z",
+    "nonce": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+  },
+  "canonical_json": "{\"expires_at\":\"2026-10-15T12:10:00.000Z\",\"installation_id\":\"65XbepYwFHBHzMqcTG1uqwN2Qo9xay8jtPSdNwcUm1Sq\",\"issued_at\":\"2026-10-15T12:00:00.000Z\",\"nonce\":\"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\",\"peer_id\":\"12D3KooWNm5t4HypYRmiC5v9CD2TnPKrJh2J8TcfJ2gPhA7L8TiZ\"}",
+  "canonical_json_sha256": "f9dba8a682a0593e46a9105c09fb7bb02cec1c833643914c641a872d4eeda9b2",
+  "token": "eyJleHBpcmVzX2F0IjoiMjAyNi0xMC0xNVQxMjoxMDowMC4wMDBaIiwiaW5zdGFsbGF0aW9uX2lkIjoiNjVYYmVwWXdGSEJIek1xY1RHMXVxd04yUW85eGF5OGp0UFNkTndjVW0xU3EiLCJpc3N1ZWRfYXQiOiIyMDI2LTEwLTE1VDEyOjAwOjAwLjAwMFoiLCJub25jZSI6ImExYjJjM2Q0ZTVmNmE3YjhjOWQwZTFmMmEzYjRjNWQ2IiwicGVlcl9pZCI6IjEyRDNLb29XTm01dDRIeXBZUm1pQzV2OUNEMlRuUEtySmgySjhUY2ZKMmdQaEE3TDhUaVoifQ.ED9xFfhxJmUmRBbwe7Ctmu5EGfOxaPZiG8qb64rustnVWxp5YEF29jY5942FrohbOIsoONL-awZo3Xivaz2lCw",
+  "expected_admission_deadline": "2026-10-15T12:12:00Z",
+  "expected_outcome": {
+    "status": "ok(100)",
+    "reason": null
+  },
+  "peer_identity_seed_hex": "5151515151515151515151515151515151515151515151515151515151515151",
+  "peer_public_key_hex": "c050c5637a44fa8629fff3cccce2300cb362a63d99d95fc54145266f4332445a"
+}

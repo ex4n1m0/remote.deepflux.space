@@ -89,6 +89,12 @@ pub enum EngineCmd {
         /// (decode/present/input) stays down until
         /// [`EngineCmd::ViewerShow`] attaches it for monitoring.
         agent: bool,
+        /// ADR-013 P2: this installation's account-identity signer, used
+        /// to stamp the Ed25519 account proof on the outgoing
+        /// `connect_request` (None when the machine holds no live swarm
+        /// membership — the field then stays absent, as on pre-P2
+        /// controllers).
+        account_prover: Option<std::sync::Arc<node_runtime::account_proof::AccountProver>>,
     },
     /// Attach the viewer to a live agent session ("show the screen"):
     /// clears viewer suppression so the next reconcile starts the
@@ -385,6 +391,10 @@ pub enum EngineEvent {
         requester_name: Option<String>,
         /// The request envelope's message_id — part of the v2 proof MAC.
         message_id: String,
+        /// ADR-013 P2: the claimed Ed25519 account-scope proof, forwarded
+        /// verbatim for the app layer to verify (signature + self-
+        /// certifying installation id) against its account directory.
+        account_proof: Option<protocol::signaling::AccountProof>,
     },
     /// Host user accepted the consent prompt; `remember` is the ADR-006
     /// "remember this machine" choice — the app layer persists + acks the
@@ -1036,6 +1046,7 @@ struct PendingConnect {
     pairing_secret: Option<crate::chat::PairingSecret>,
     requester_name: Option<String>,
     agent: bool,
+    account_prover: Option<std::sync::Arc<node_runtime::account_proof::AccountProver>>,
     queued_at: Instant,
 }
 
@@ -1441,7 +1452,8 @@ impl Engine {
                 pairing_secret,
                 requester_name,
                 agent,
-            } => self.cmd_connect(code, pairing_secret, requester_name, agent),
+                account_prover,
+            } => self.cmd_connect(code, pairing_secret, requester_name, agent, account_prover),
             EngineCmd::ViewerShow => self.cmd_viewer_show(),
             EngineCmd::ViewerHide => self.cmd_viewer_hide(),
             EngineCmd::CancelConnect => {
@@ -1583,12 +1595,14 @@ impl Engine {
     /// connect now; still coming online (first press after launch, or
     /// the auto re-online gap after a session) → start the role if it
     /// is down and defer the connect to the Online edge.
+    #[allow(clippy::too_many_arguments)]
     fn cmd_connect(
         &mut self,
         code: String,
         pairing_secret: Option<crate::chat::PairingSecret>,
         requester_name: Option<String>,
         agent: bool,
+        account_prover: Option<std::sync::Arc<node_runtime::account_proof::AccountProver>>,
     ) {
         if host_in_session(self.node.host_state()) {
             self.error(
@@ -1600,7 +1614,7 @@ impl Engine {
         }
         match self.node.controller_state() {
             ControllerState::Online => {
-                self.connect_now(code, pairing_secret, requester_name, agent)
+                self.connect_now(code, pairing_secret, requester_name, agent, account_prover)
             }
             state if controller_in_session(state) => self.error(
                 "role_conflict",
@@ -1623,6 +1637,7 @@ impl Engine {
                     pairing_secret,
                     requester_name,
                     agent,
+                    account_prover,
                     queued_at: Instant::now(),
                 });
             }
@@ -1697,6 +1712,7 @@ impl Engine {
         pairing_secret: Option<crate::chat::PairingSecret>,
         requester_name: Option<String>,
         agent: bool,
+        account_prover: Option<std::sync::Arc<node_runtime::account_proof::AccountProver>>,
     ) {
         self.pending_connect = None;
         // Agent session: arm viewer suppression for the whole session —
@@ -1715,8 +1731,13 @@ impl Engine {
         self.ensure_transport(MachineKind::Controller);
         self.observer.set_current_peer(code.clone());
         let secret = pairing_secret.as_ref().map(|s| s.0.as_str());
-        self.node
-            .controller_connect(&code, secret, requester_name.as_deref(), &mut self.observer);
+        self.node.controller_connect(
+            &code,
+            secret,
+            requester_name.as_deref(),
+            account_prover.as_deref(),
+            &mut self.observer,
+        );
     }
 
     /// Fire a deferred connect once the controller role is Online, or
@@ -1741,6 +1762,7 @@ impl Engine {
                 pending.pairing_secret,
                 pending.requester_name,
                 pending.agent,
+                pending.account_prover,
             ),
             // RegistrationFailed dropped the role back to Idle — restart
             // it (legal from Idle) so the deferral rides the retry.

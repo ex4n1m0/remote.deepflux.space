@@ -1,0 +1,101 @@
+[package]
+name = "modelswarm-node"
+description = "ModelSwarm Windows background node daemon"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[features]
+# F0(3): P2P serving bridge (libp2p listener -> executor).
+libp2p-backend = ["dep:modelswarm-transport", "dep:modelswarm-eligibility", "dep:ed25519-dalek", "dep:rand_core", "dep:time"]
+# ADR-032 light-up tier: the VerifyDrafts serve loop + requester client
+# (session-negotiation, gate driving, result signing, budget/WAIT_COMMIT
+# housekeeping). OFF by default — default builds are behavior-identical to
+# the pre-feature state; the family rides the ADR-018 amended staging
+# (raw-JSON frames over the handshake-authenticated transport) through the
+# `VerifyDraftsWire` port, on BOTH venues since 2026-10-12: the staged TCP
+# backend and the REAL libp2p QUIC backend (transport-crate passthrough
+# landed; see docs/reviews/handoff-network-verifydrafts-quic-2026-10-11.md).
+verifydrafts = ["dep:modelswarm-transport", "dep:modelswarm-session", "dep:bs58"]
+# The G4 engine bridge: hosts the architect's `BatchVerifyEngine` impl for
+# Runtime's production `CapiVerifyEngine` (the trait-cycle resolution —
+# modelswarm-session depends on modelswarm-runtime, so the impl lives in
+# THIS crate, which depends on both) and wires the real engine into the
+# family's engine seam (`verifydrafts::engine_source`). Enabling this one
+# flag turns on `verifydrafts` AND Runtime's `capi-adapter`; OFF by
+# default — the adapter flag itself stays off until the family's light-up
+# gates (incl. item-2 exactness reruns) pass.
+verifydrafts-capi = ["verifydrafts", "modelswarm-runtime/capi-adapter"]
+# Self-test path (ADR-019): turns on the TEST-ONLY mock runtime and the
+# `self-test` CLI subcommand. OFF by default — production node builds never
+# enable the mock runtime. `cargo test -p modelswarm-node` gets the same
+# feature through the dev-dependency below, so the self-test unit test runs
+# without extra flags.
+node-selftest = ["modelswarm-runtime/mock-runtime"]
+
+[target.'cfg(windows)'.dependencies]
+modelswarm-winjob = { path = "../modelswarm-winjob" }
+
+[dependencies]
+modelswarm-transport = { path = "../modelswarm-transport", features = ["libp2p-backend"], optional = true }
+modelswarm-eligibility = { path = "../modelswarm-eligibility", optional = true }
+modelswarm-session = { path = "../modelswarm-session", optional = true }
+ed25519-dalek = { version = "2", optional = true, features = ["rand_core"] }
+rand_core = { version = "0.6", optional = true, default-features = false }
+# "parsing" joined "formatting" with the RC-L1 lease source: the roster
+# validates lease expiry (RFC 3339 -> unix ms) at family session open.
+time = { version = "0.3", optional = true, features = ["formatting", "parsing"] }
+bs58 = { version = "0.5", optional = true }
+async-trait = "0.1"
+axum = "0.8"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+modelswarm-gateway = { path = "../modelswarm-gateway" }
+modelswarm-identity = { path = "../modelswarm-identity" }
+modelswarm-runtime = { path = "../modelswarm-runtime" }
+modelswarm-store = { path = "../modelswarm-store" }
+modelswarm-telemetry = { path = "../modelswarm-telemetry" }
+modelswarm-tracker-api = { path = "../modelswarm-tracker-api" }
+modelswarm-types = { path = "../modelswarm-types" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+# Owner directive 2026-10-19: outbound DNS rides DoH 1.1.1.1.
+modelswarm-dns = { path = "../modelswarm-dns" }
+tokio-stream = { version = "0.1", features = ["sync"] }
+sha2 = "0.10"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+
+[dev-dependencies]
+modelswarm-runtime = { path = "../modelswarm-runtime", features = ["mock-runtime"] }
+# Shadow-planner integration test only (tests join F15 PeerMetrics
+# observations with the frozen cost model); the production node crate
+# does NOT depend on the scheduler.
+modelswarm-scheduler = { path = "../modelswarm-scheduler" }
+# F2B test double: the relay binary's exact rust-libp2p relay stack,
+# built in-process to prove the node's relayed serving + fallback dial
+# against the real behaviour — dev-only (same double the transport crate
+# uses; the production client shares no code with it).
+libp2p = { version = "0.57", features = [
+    "tokio",
+    "quic",
+    "noise",
+    "yamux",
+    "identify",
+    "ping",
+    "relay",
+    "macros",
+] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+tempfile = "3"
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 P4 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,32 @@
+{
+  "block": {
+    "canonical_json": "{\"budget\":{\"max_endpoint_seconds\":60,\"max_endpoints\":1,\"max_output_tokens\":512},\"engine\":{\"backend\":\"cpu\",\"batch_verify\":true,\"batch_window_max\":32},\"preset\":\"verified\",\"protocol_version\":\"msp-cooperative-v1\",\"session_id\":\"sess-coop-0002\"}",
+    "canonical_json_sha256": "eb01e9b6662cc79f6cccfeb5e0531e9e7408c381426ee77abadb783848a3ea56",
+    "fields": {
+      "budget": {
+        "max_endpoint_seconds": 60,
+        "max_endpoints": 1,
+        "max_output_tokens": 512
+      },
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 32
+      },
+      "preset": "verified",
+      "protocol_version": "msp-cooperative-v1",
+      "session_id": "sess-coop-0002"
+    }
+  },
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "Extended SessionAccept canonical form (ADR-032 §3 / RC-8, plan §2.2): the base shape plus the ADDITIVE engine disclosure {backend, batch_verify, batch_window_max} — batch_verify: true requires an honest batch_window_max in 1..=WINDOW_CAP (invariant I4); the effective budget is clamped DOWN only (never up). Unsigned (handshake-authenticated session).",
+  "name": "session-accept-2",
+  "signed": "none — negotiation messages carry no signature of their own (msp-cooperative-v1 §1; msp-v1 §6.6 PeerId binding)",
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+}

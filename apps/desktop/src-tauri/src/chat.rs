@@ -20,7 +20,9 @@
 //! Invariant 6: chat bodies are user text — never logged; the pairing
 //! secret never appears in logs or events.
 
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
@@ -117,6 +119,11 @@ pub struct TrustState {
     /// device ids an attacker freely rotates; this bounds the aggregate
     /// no matter how many fresh ids arrive.
     pub untrusted_prompt_times: std::collections::VecDeque<u64>,
+    /// ADR-013 P2: when the prompt on screen is an ACCOUNT-scope proof
+    /// prompt, the proven installation id (set with the prompt, consumed
+    /// by the accept/decline commands to remember/revoke the account
+    /// intent). `None` on ordinary pairing prompts.
+    pub prompt_account: Option<String>,
 }
 
 /// Prompt-flood cooldown after an explicit user reject (ADR-006 B3).
@@ -196,6 +203,14 @@ struct PairingsDoc {
     /// finally arrives in an accepted session.
     #[serde(default)]
     remembered: Vec<String>,
+    /// ADR-013 P2: installation ids with a standing "Always allow" for
+    /// their ACCOUNT-scope proofs (account-scoped remote control's
+    /// consent-once). Keyed by the proof's self-certifying installation
+    /// id — not the claimable signaling device id — so a re-keyed or
+    /// revoked installation loses trust by construction (its id can never
+    /// be re-earned by a different key).
+    #[serde(default)]
+    account_remembered: Vec<String>,
 }
 
 /// One stored chat line. `sender`: "user" | "agent" | "peer-user" |
@@ -209,6 +224,11 @@ pub struct ChatLine {
     pub ts_ms: u64,
     pub sender: String,
     pub body: String,
+    /// ADR-013 P3 slice 2 (additive): fleet call correlation id from the
+    /// sealed v2 payload, kept for slice 3 reply routing. Absent on v1
+    /// lines and ordinary chat — pre-slice-2 history loads unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fleet_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -222,7 +242,11 @@ const HISTORY_CAP: usize = 500;
 // ADR-006 §7 (code-review B1): the chat-inbox envelope contract is owned
 // by `crates/protocol::chat` — this module re-exports it so the historical
 // call sites keep working while the duplicate definition is gone.
-pub use protocol::chat::{CHAT_PROTOCOL_VERSION, ChatEnvelope};
+// ADR-013 P3 slice 2 adds the v2 sealed payload (the authoritative agent
+// bit + fleet correlation id ride INSIDE the ciphertext).
+pub use protocol::chat::{
+    CHAT_PAYLOAD_KIND, CHAT_PAYLOAD_VERSION_V2, CHAT_PROTOCOL_VERSION, ChatEnvelope, ChatPayload,
+};
 
 // ---------------------------------------------------------------------------
 // Storage (locks: take the store lock only; never inside the engine lock)
@@ -447,14 +471,21 @@ pub fn pairing_ack(app: &AppHandle, code: &str) {
 /// A re-mint refreshes `created_ms` so the 24 h pending purge measures the
 /// LAST offer, not the first (a controller re-offering daily must not have
 /// its row purged as stale mid-courtship).
-pub fn mint_pairing(app: &AppHandle, code: &str) -> String {
+///
+/// Security review FIX 5: a CSPRNG failure is fatal for secret minting —
+/// an all-zero pairing secret would hand full control of this machine to
+/// anyone who guesses it. Refuse to mint (and store NOTHING) instead; the
+/// caller skips the offer and a later session establishment retries.
+/// Matches engine::ids, which treats CSPRNG failure as fatal.
+pub fn mint_pairing(app: &AppHandle, code: &str) -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    let _ = getrandom::fill(&mut bytes);
+    getrandom::fill(&mut bytes)
+        .map_err(|_| "OS CSPRNG unavailable for pairing secret".to_owned())?;
     let secret_hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     let mut doc = read_pairings(app);
     mint_pairing_in_doc(&mut doc, code, &secret_hex, now_ms());
     write_pairings(app, &doc);
-    secret_hex
+    Ok(secret_hex)
 }
 
 /// Pure core of [`mint_pairing`] (testable without an app handle).
@@ -549,6 +580,82 @@ pub fn has_remember_intent(app: &AppHandle, code: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// ADR-013 P2: standing "Always allow" for ACCOUNT-scope proofs (keyed by
+// the proven installation id — see PairingsDoc::account_remembered)
+// ---------------------------------------------------------------------------
+
+/// Remember an account-scope "Always allow" (the account prompt's Always
+/// choice; durable at click time exactly like [`remember_intent`]).
+pub fn remember_account_intent(app: &AppHandle, installation_id: &str) {
+    let mut doc = read_pairings(app);
+    if remember_account_intent_in_doc(&mut doc, installation_id) {
+        write_pairings(app, &doc);
+    }
+}
+
+fn remember_account_intent_in_doc(doc: &mut PairingsDoc, installation_id: &str) -> bool {
+    let id = installation_id.trim();
+    // Installation ids are base58(SHA-256(pubkey)) — 44 chars today. The
+    // 20..=64 band deliberately sits ABOVE the 16-char signaling ids: the
+    // two trust keys (device id vs installation id) must never be
+    // confusable, so a hex signaling id is rejected on shape alone.
+    let valid = (20..=64).contains(&id.len())
+        && id.bytes().all(|b| b.is_ascii_alphanumeric())
+        && !doc.account_remembered.iter().any(|i| i == id);
+    if !valid {
+        return false;
+    }
+    doc.account_remembered.push(id.to_owned());
+    if doc.account_remembered.len() > REMEMBERED_CAP {
+        doc.account_remembered
+            .drain(..doc.account_remembered.len() - REMEMBERED_CAP);
+    }
+    true
+}
+
+/// Revoke one (explicit Decline on an account prompt).
+pub fn revoke_account_intent(app: &AppHandle, installation_id: &str) {
+    let mut doc = read_pairings(app);
+    let id = installation_id.trim();
+    let before = doc.account_remembered.len();
+    doc.account_remembered.retain(|i| i != id);
+    if doc.account_remembered.len() != before {
+        write_pairings(app, &doc);
+    }
+}
+
+/// Standing account "Always allow" for this installation?
+pub fn has_account_intent(app: &AppHandle, installation_id: &str) -> bool {
+    let id = installation_id.trim();
+    read_pairings(app)
+        .account_remembered
+        .iter()
+        .any(|i| i == id)
+}
+
+/// Security review finding 3: armed account intents are revocable after
+/// all — a machine removed from the account (dashboard revoke) vanishes
+/// from every directory snapshot, and the next successful poll prunes its
+/// intent here. Called ONLY with a fresh, successful snapshot (an empty
+/// cache from a failed poll must never prune). Returns whether the doc
+/// changed.
+pub fn prune_account_intents(app: &AppHandle, present: &[String]) -> bool {
+    if present.is_empty() {
+        return false; // defensive: never wipe trust on an empty read
+    }
+    let mut doc = read_pairings(app);
+    let before = doc.account_remembered.len();
+    doc.account_remembered
+        .retain(|id| present.iter().any(|p| p == id));
+    if doc.account_remembered.len() != before {
+        write_pairings(app, &doc);
+        true
+    } else {
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dead-key purge (2026-10-27 duplicate-list fix)
 // ---------------------------------------------------------------------------
 
@@ -599,10 +706,25 @@ pub fn history(app: &AppHandle, code: &str) -> Vec<ChatLine> {
         .unwrap_or_default()
 }
 
+/// Serializes the history read-modify-write across the poller, assistant,
+/// and engine threads (security review FIX 2): concurrent appends used to
+/// race read→write and lose lines (a lost update could also evict the
+/// fleet display marker). The lock guards file access only — the
+/// tmp+rename write keeps the file valid JSON even if a holder panics, so
+/// a poisoned lock is recovered, not fatal (house idiom: dl/updater/swarm).
+static HISTORY_LOCK: Mutex<()> = Mutex::new(());
+
 fn append_history(app: &AppHandle, code: &str, line: ChatLine) {
     let code = code.trim().to_lowercase();
     let path = chat_dir(app).join(safe_code(&code));
-    let mut doc = std::fs::read_to_string(&path)
+    append_history_at(&path, line);
+}
+
+/// Path-based core of [`append_history`] (testable without an app handle —
+/// the concurrency test appends through here).
+fn append_history_at(path: &Path, line: ChatLine) {
+    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| serde_json::from_str::<ChatDoc>(&t).ok())
         .unwrap_or_default();
@@ -615,7 +737,7 @@ fn append_history(app: &AppHandle, code: &str, line: ChatLine) {
     if let Ok(text) = serde_json::to_string(&doc)
         && std::fs::write(&tmp, text).is_ok()
     {
-        let _ = std::fs::rename(&tmp, &path);
+        let _ = std::fs::rename(&tmp, path);
     }
 }
 
@@ -638,6 +760,7 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
         ts_ms,
         sender: format!("peer-{sender}"),
         body: body.to_owned(),
+        fleet_call_id: None,
     };
     append_history(app, peer, line);
     // Agent-to-agent (ADR-005 §4): agent-authored messages wake the local
@@ -647,9 +770,11 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
     // the answer coming home, not an instruction (the same wire bit
     // carries both meanings).
     if sender == "agent" && should_wake_for_agent_line(&existing) {
+        // In-session arrivals carry no fleet correlation (the live chat
+        // wire has no fleet id field) — the reply rides back plain.
         app.state::<crate::commands::AppServices>()
             .assistant
-            .deliver_peer_agent(peer, body);
+            .deliver_peer_agent(peer, body, None);
     }
 }
 
@@ -675,6 +800,116 @@ fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
     true
 }
 
+/// Inbox arrival (ADR-013 P3 fleet slice 2): store the decrypted line
+/// (dedupe by id) and route an agent-bit arrival through the SAME wake
+/// gate as in-session chat — but only when this machine opted in
+/// (`allow_remote_agent_instructions`, default false). Opted out: the
+/// line still lands as "peer-agent" (the fleet delivered it; the human
+/// can read it), it just never wakes the assistant. `fleet_call_id`
+/// rides along for slice 3 reply correlation: the wake threads it into
+/// the assistant turn so the reply seals it back to the caller, and a
+/// reply to OUR OWN fleet call never wakes (the fleet collects it by
+/// history scan). Returns whether the line was stored (false = duplicate
+/// id).
+#[allow(clippy::too_many_arguments)] // inbox-line fields + the opt-in gate; house style
+pub fn record_incoming_inbox(
+    app: &AppHandle,
+    peer: &str,
+    id: u64,
+    ts_ms: u64,
+    agent_bit: bool,
+    body: &str,
+    fleet_call_id: Option<String>,
+    allow_remote_agent_instructions: bool,
+) -> bool {
+    let existing = history(app, peer);
+    if existing.iter().any(|l| l.id == id) {
+        return false;
+    }
+    let sender = if agent_bit { "peer-agent" } else { "peer-user" };
+    let line = ChatLine {
+        id,
+        ts_ms,
+        sender: sender.to_owned(),
+        body: body.to_owned(),
+        fleet_call_id: fleet_call_id.clone(),
+    };
+    append_history(app, peer, line);
+    // The wake gate is the in-session one (reply-to-our-ask suppression
+    // included); deliver_peer_agent keeps the rolling wake budget. The
+    // opt-in is checked HERE, at the only inbox wake site — a non-opted-in
+    // machine stores agent-bit lines but never auto-acts on them.
+    //
+    // Slice 3: a reply to OUR fleet call (its sealed id is registered in
+    // the durable pending registry — FIX 2) is collected by the fleet's
+    // history scan and must NEVER wake the assistant — even when
+    // overlapping fleet calls have re-armed the positional reply gate
+    // below, or the chat history lost/evicted the display marker.
+    //
+    // Security review F3 (opt-out TOCTOU): the per-drain snapshot can go
+    // stale while this drain is in flight — the user may flip the opt-out
+    // between the poller's read and this delivery. The LIVE setting is
+    // re-read immediately before the wake decision and must agree; a
+    // poisoned store lock fails closed (never wake).
+    let allow_live = app
+        .state::<crate::commands::AppServices>()
+        .store
+        .lock()
+        .map(|store| store.settings().allow_remote_agent_instructions)
+        .unwrap_or(false);
+    if !is_reply_to_our_fleet_call(app, fleet_call_id.as_deref())
+        && inbox_should_wake(
+            agent_bit,
+            inbox_opt_in_confirmed(allow_remote_agent_instructions, allow_live),
+            &existing,
+        )
+    {
+        app.state::<crate::commands::AppServices>()
+            .assistant
+            .deliver_peer_agent(peer, body, fleet_call_id);
+    }
+    true
+}
+
+/// Pure wake decision for an inbox arrival (ADR-013 P3 slice 2): an
+/// agent-bit line wakes the assistant only when the machine opted in
+/// (`allow_remote_agent_instructions`) AND the in-session reply gate
+/// agrees (an unanswered human "to-agent" ask means the arrival is its
+/// reply — display, don't wake). Human arrivals never wake.
+fn inbox_should_wake(
+    agent_bit: bool,
+    allow_remote_agent_instructions: bool,
+    prior: &[ChatLine],
+) -> bool {
+    agent_bit && allow_remote_agent_instructions && should_wake_for_agent_line(prior)
+}
+
+/// Security review F3 (opt-out TOCTOU): the wake requires BOTH the
+/// per-drain opt-in snapshot and the LIVE setting re-read immediately
+/// before delivery — a user who opts out mid-drain stops the wake even
+/// though the poller's snapshot still said yes. Pure core of that gate.
+fn inbox_opt_in_confirmed(snapshot: bool, live: bool) -> bool {
+    snapshot && live
+}
+
+/// Slice 3 reply correlation (security review FIX 2): true when the
+/// incoming line's fleet id is one of OUR outstanding fleet calls in the
+/// DURABLE pending registry. Such an arrival is the answer to our own
+/// fleet call — the fleet collects it by history scan; it must never wake
+/// the assistant, regardless of where it lands in the positional reply
+/// gate (several fleet calls can overlap on one peer). The registry — not
+/// the 500-line chat history — is the source of truth: a lost history
+/// update or a flood evicting the display marker can no longer re-arm the
+/// wake on our own reply (confused deputy). An id we never registered, or
+/// one whose suppression window expired, is not a reply to an outstanding
+/// call.
+fn is_reply_to_our_fleet_call(app: &AppHandle, fleet_call_id: Option<&str>) -> bool {
+    let Some(id) = fleet_call_id else {
+        return false;
+    };
+    is_fleet_pending(app, id)
+}
+
 /// Outgoing line (this machine's user or agent) → store.
 pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) -> ChatLine {
     let line = ChatLine {
@@ -682,6 +917,36 @@ pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) ->
         ts_ms: now_ms(),
         sender: sender.to_owned(),
         body: body.to_owned(),
+        fleet_call_id: None,
+    };
+    append_history(app, peer, line.clone());
+    line
+}
+
+/// Outgoing fleet instruction (ADR-013 P3 slice 3): a "to-agent" line
+/// carrying the fleet correlation id. The id lets the wake gate recognize
+/// the sealed reply as the answer to OUR call ([`is_reply_to_our_fleet_call`])
+/// even when several fleet calls overlap on the same peer. Recorded
+/// BEFORE the send so a fast reply can never outrun the marker.
+///
+/// Security review FIX 2: the DURABLE pending registry is the suppression
+/// source of truth — the id is registered there FIRST (before the send
+/// and before the display marker), so a lost history update or the
+/// 500-line cap evicting the marker can never re-arm the wake on our own
+/// reply. The history line stays for display and the fleet's reply scan.
+pub fn record_outgoing_fleet(
+    app: &AppHandle,
+    peer: &str,
+    body: &str,
+    fleet_call_id: &str,
+) -> ChatLine {
+    register_fleet_pending(app, fleet_call_id);
+    let line = ChatLine {
+        id: now_ms(),
+        ts_ms: now_ms(),
+        sender: "to-agent".to_owned(),
+        body: body.to_owned(),
+        fleet_call_id: Some(fleet_call_id.to_owned()),
     };
     append_history(app, peer, line.clone());
     line
@@ -695,21 +960,139 @@ pub(crate) fn now_ms() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Durable pending-fleet registry (security review FIX 2)
+// ---------------------------------------------------------------------------
+
+/// Suppression window for a registered fleet call: the reply collection
+/// window (tools::FLEET_REPLY_TIMEOUT, 90 s — the SAME constant, so the
+/// two can never drift) plus a 60 s margin: a straggler reply arriving
+/// after the fleet gave up must still display without waking us.
+const FLEET_PENDING_TTL_MS: u64 =
+    crate::agent::tools::FLEET_REPLY_TIMEOUT.as_millis() as u64 + 60_000;
+
+/// The durable registry: fleet_call_id -> expires_at_ms (epoch). A small
+/// JSON file under app-data, INDEPENDENT of the chat history — the "never
+/// wake on our own fleet reply" invariant must survive a lost history
+/// update (concurrent appenders) or the 500-line cap evicting the display
+/// marker. Expired entries are pruned on access (bounded growth).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct FleetPendingDoc {
+    #[serde(default)]
+    pending: std::collections::BTreeMap<String, u64>,
+}
+
+/// Serializes the registry read-modify-write (the fleet fan-out registers
+/// ids while the inbox poller checks them). The lock guards file access
+/// only — the tmp+rename write keeps the file valid JSON even if a holder
+/// panics, so a poisoned lock is recovered, not fatal (house idiom).
+static FLEET_PENDING_LOCK: Mutex<()> = Mutex::new(());
+
+fn fleet_pending_path(app: &AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    dir.join("fleet-pending.json")
+}
+
+fn read_fleet_pending(path: &Path) -> FleetPendingDoc {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn write_fleet_pending(path: &Path, doc: &FleetPendingDoc) {
+    let tmp = path.with_extension("tmp");
+    if let Ok(text) = serde_json::to_string(doc)
+        && std::fs::write(&tmp, text).is_ok()
+    {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Pure core of registration: prune expired ids (bounded growth), then
+/// arm `id` until now + the suppression window.
+fn register_fleet_pending_in_doc(doc: &mut FleetPendingDoc, id: &str, now: u64) {
+    doc.pending.retain(|_, expires| *expires > now);
+    doc.pending
+        .insert(id.to_owned(), now.saturating_add(FLEET_PENDING_TTL_MS));
+}
+
+/// Pure core of the suppression check: prune expired ids, then report
+/// whether `id` is still pending (present ⟺ unexpired after the prune).
+fn fleet_pending_active_in_doc(doc: &mut FleetPendingDoc, id: &str, now: u64) -> bool {
+    doc.pending.retain(|_, expires| *expires > now);
+    doc.pending.contains_key(id)
+}
+
+/// Register a fleet call id BEFORE the send (a fast reply can never
+/// outrun the suppression — the same discipline as the history marker).
+fn register_fleet_pending(app: &AppHandle, fleet_call_id: &str) {
+    let path = fleet_pending_path(app);
+    let _guard = FLEET_PENDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = read_fleet_pending(&path);
+    register_fleet_pending_in_doc(&mut doc, fleet_call_id, now_ms());
+    write_fleet_pending(&path, &doc);
+}
+
+/// Is this fleet id one of OUR outstanding calls? The registry is the
+/// suppression source of truth (FIX 2) — the chat history is display only.
+fn is_fleet_pending(app: &AppHandle, fleet_call_id: &str) -> bool {
+    let path = fleet_pending_path(app);
+    let _guard = FLEET_PENDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = read_fleet_pending(&path);
+    let before = doc.pending.len();
+    let active = fleet_pending_active_in_doc(&mut doc, fleet_call_id, now_ms());
+    if doc.pending.len() != before {
+        write_fleet_pending(&path, &doc); // persist the prune
+    }
+    active
+}
+
+// ---------------------------------------------------------------------------
 // Sealing (AES-256-GCM under the pairing secret; AAD = from|to|ts)
 // ---------------------------------------------------------------------------
 
-fn seal(secret_hex: &str, from: &str, to: &str, ts_ms: u64, body: &str) -> Option<ChatEnvelope> {
+fn seal(
+    secret_hex: &str,
+    from: &str,
+    to: &str,
+    ts_ms: u64,
+    body: &str,
+    agent: bool,
+    fleet_call_id: Option<&str>,
+) -> Option<ChatEnvelope> {
     let key_bytes = hex_decode(secret_hex)?;
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
     let mut nonce_bytes = [0u8; 12];
-    let _ = getrandom::fill(&mut nonce_bytes);
+    // Security review FIX 5: fail closed — ignoring a CSPRNG failure would
+    // seal with an all-zero nonce, reusing the GCM nonce under the pairing
+    // key (catastrophic). Abort the seal instead; the caller surfaces
+    // "sealing failed". Matches engine::ids' fatal-on-RNG-failure rule.
+    getrandom::fill(&mut nonce_bytes).ok()?;
     let aad = format!("{CHAT_PROTOCOL_VERSION}|{from}|{to}|{ts_ms}");
+    // ADR-013 P3 slice 2: fleet metadata rides INSIDE the seal (v2 JSON
+    // payload) so the service can neither read nor forge the agent bit.
+    // Plain human chat keeps the v1 plain-text payload byte-for-byte.
+    let plaintext = if agent || fleet_call_id.is_some() {
+        ChatPayload {
+            kind: CHAT_PAYLOAD_KIND.to_owned(),
+            v: CHAT_PAYLOAD_VERSION_V2,
+            body: body.to_owned(),
+            agent,
+            fleet_call_id: fleet_call_id.map(str::to_owned),
+        }
+        .to_json()
+    } else {
+        body.to_owned()
+    };
     let ct = cipher
         .encrypt(
             Nonce::from_slice(&nonce_bytes),
             Payload {
-                msg: body.as_bytes(),
+                msg: plaintext.as_bytes(),
                 aad: aad.as_bytes(),
             },
         )
@@ -720,6 +1103,10 @@ fn seal(secret_hex: &str, from: &str, to: &str, ts_ms: u64, body: &str) -> Optio
         nonce_hex: nonce_bytes.iter().map(|b| format!("{b:02x}")).collect(),
         ct_hex: ct.iter().map(|b| format!("{b:02x}")).collect(),
         ts_ms,
+        // Outside-seal routing hints (additive; the receiver trusts only
+        // the sealed payload — see protocol::chat).
+        agent,
+        fleet_call_id: fleet_call_id.map(str::to_owned),
     })
 }
 
@@ -746,7 +1133,11 @@ fn open(secret_hex: &str, to: &str, env: &ChatEnvelope) -> Option<String> {
 }
 
 fn hex_decode(hex: &str) -> Option<Vec<u8>> {
-    if !hex.len().is_multiple_of(2) {
+    // Reject non-ASCII before byte-index slicing: a hostile server could send
+    // multi-byte UTF-8 (e.g. "aéb") whose even byte length passes the parity
+    // check but whose byte slices split a char boundary and PANIC, killing the
+    // inbox poller thread permanently (security review F1). ASCII-hex only.
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..hex.len() / 2)
@@ -763,6 +1154,8 @@ fn chat_api(base: &str) -> String {
 }
 
 /// Send one out-of-session chat message (sealed with the pairing secret).
+/// Human chat: v1 plain-text payload, no agent bit — the historical
+/// signature and wire shape are unchanged.
 pub fn inbox_send(
     app: &AppHandle,
     base_url: &str,
@@ -771,16 +1164,44 @@ pub fn inbox_send(
     to: &str,
     body: &str,
 ) -> Result<(), String> {
+    inbox_send_agent(app, base_url, token, from, to, body, false, None)
+}
+
+/// ADR-013 P3 fleet slice 2: send an out-of-session message carrying the
+/// agent bit and/or a fleet call id INSIDE the sealed v2 payload. The
+/// receiver wakes its assistant only if it opted in
+/// (`allow_remote_agent_instructions`); paired machines only — the seal
+/// is the pairing secret, so an unpaired party cannot forge an agent-bit
+/// arrival that opens.
+#[allow(clippy::too_many_arguments)] // envelope routing fields + agent bit + fleet id; house style
+pub fn inbox_send_agent(
+    app: &AppHandle,
+    base_url: &str,
+    token: &str,
+    from: &str,
+    to: &str,
+    body: &str,
+    agent: bool,
+    fleet_call_id: Option<&str>,
+) -> Result<(), String> {
     let Some(pairing) = pairing_for(app, to) else {
         return Err(format!(
             "no pairing with {to} — connect once to establish chat"
         ));
     };
     let ts = now_ms();
-    let env =
-        seal(&pairing.secret_hex, from, to, ts, body).ok_or_else(|| "sealing failed".to_owned())?;
-    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
-    let response = agent
+    let env = seal(
+        &pairing.secret_hex,
+        from,
+        to,
+        ts,
+        body,
+        agent,
+        fleet_call_id,
+    )
+    .ok_or_else(|| "sealing failed".to_owned())?;
+    let http = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    let response = http
         .post(&chat_api(base_url))
         .set("Authorization", format!("Bearer {token}").as_str())
         .send_json(json!({ "to": to, "envelope": env }))
@@ -791,73 +1212,196 @@ pub fn inbox_send(
     Ok(())
 }
 
+/// Security review F4: client-side freshness bound on inbox envelopes —
+/// matches the service's inbox TTL (`CHAT_INBOX_TTL_SEC`, 24 h). The
+/// server promises eviction after a day, but a hostile or buggy service
+/// could re-serve an evicted envelope later; `ts_ms` rides the GCM AAD
+/// (unforgeable without the pairing secret), so rejecting stale envelopes
+/// here bounds replay-after-eviction regardless of the server's behavior.
+const INBOX_MAX_ENVELOPE_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Security review FIX 3: a paired sender's clock may run slightly ahead,
+/// but a stamp arbitrarily far in the FUTURE would never expire under a
+/// past-only bound (a years-ahead envelope replays forever). Cap the
+/// future skew too — small enough to absorb real clock drift, tight
+/// enough that every envelope expires within a day plus the skew.
+const INBOX_MAX_FUTURE_SKEW_MS: u64 = 5 * 60 * 1000;
+
+/// Pure core of the F4 bound: an envelope is fresh when its sender stamp
+/// is at most [`INBOX_MAX_ENVELOPE_AGE_MS`] behind `now` AND at most
+/// [`INBOX_MAX_FUTURE_SKEW_MS`] ahead (FIX 3 — sender clock skew is
+/// tolerated, a never-expiring future stamp is not; the stamp is
+/// AAD-authenticated either way).
+fn inbox_envelope_fresh(ts_ms: u64, now: u64) -> bool {
+    now.saturating_sub(ts_ms) <= INBOX_MAX_ENVELOPE_AGE_MS
+        && ts_ms.saturating_sub(now) <= INBOX_MAX_FUTURE_SKEW_MS
+}
+
+/// Security review FIX 4: per-drain envelope cap — a hostile service must
+/// not exhaust memory/CPU with an unbounded batch. NOTE: the service GET
+/// is a DESTRUCTIVE drain, so envelopes beyond the cap are dropped, not
+/// re-queued — the fail-closed bound against a flood (normal fleet
+/// traffic — at most 32 paired machines — sits far below it).
+const INBOX_DRAIN_CAP: usize = 64;
+/// Security review FIX 4: response body cap, enforced BEFORE any JSON
+/// parse. The service caps one envelope's ciphertext at 40_000 hex chars
+/// (~40 KB of JSON row); 8 MiB covers a full 64-envelope batch of
+/// max-size envelopes with headroom while refusing a hostile
+/// multi-hundred-MB body before it is buffered.
+const INBOX_MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// FIX 4 pure core: read at most `cap` bytes (one extra byte probes for
+/// oversize — exactly `cap` passes, `cap + 1` refuses). Memory is bounded
+/// before any parse work.
+fn read_capped(reader: impl Read, cap: u64) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    reader.take(cap + 1).read_to_end(&mut buf).ok()?;
+    if buf.len() as u64 > cap {
+        return None;
+    }
+    Some(buf)
+}
+
+/// FIX 4 pure core: the envelopes this drain processes — at most
+/// [`INBOX_DRAIN_CAP`], in arrival order.
+fn inbox_batch(envelopes: &[serde_json::Value]) -> &[serde_json::Value] {
+    &envelopes[..envelopes.len().min(INBOX_DRAIN_CAP)]
+}
+
 /// Drain our inbox; every decryptable envelope becomes a stored line +
 /// webview event. Returns the count delivered.
+///
+/// ADR-013 P3 fleet slice 2: a v2 sealed payload's agent bit routes the
+/// arrival through the in-session wake gate — but only when this machine
+/// opted in (`allow_remote_agent_instructions`, default false). Opted
+/// out, agent-bit lines are stored ("peer-agent") without waking. The
+/// outer envelope's `agent`/`fleet_call_id` hints are server-visible and
+/// therefore NEVER drive the wake decision; only the sealed payload does.
+///
+/// Security review FIX 4: the response body is size-bounded before
+/// parsing and at most [`INBOX_DRAIN_CAP`] envelopes are processed per
+/// drain — a hostile service cannot exhaust memory/CPU.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
-    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    // The opt-in is read once per drain as a snapshot (the poller holds
+    // no store lock across the network call); security review F3 re-reads
+    // it immediately before each wake, so a mid-drain opt-out applies at
+    // once rather than next tick.
+    let allow_remote = {
+        let services = app.state::<crate::commands::AppServices>();
+        let Ok(store) = services.store.lock() else {
+            return 0;
+        };
+        store.settings().allow_remote_agent_instructions
+    };
+    let http = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
     // The drain contract requires the caller's `device` as a query param
     // (GET /api/chat?device=…): without it the service 400s every poll and
     // the inbox never delivers (the live 400 flood, diagnosed 2026-11-03).
     let url = format!("{}?device={me}", chat_api(base_url));
-    let Ok(response) = agent
+    let Ok(response) = http
         .get(&url)
         .set("Authorization", format!("Bearer {token}").as_str())
         .call()
     else {
         return 0;
     };
-    let Ok(value) = response.into_json::<serde_json::Value>() else {
+    // FIX 4: bound the body BEFORE parsing (into_json would buffer an
+    // arbitrarily large hostile response); oversize or unreadable →
+    // deliver nothing this tick.
+    let Some(bytes) = read_capped(response.into_reader(), INBOX_MAX_RESPONSE_BYTES) else {
+        return 0;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return 0;
     };
     let Some(envelopes) = value.get("envelopes").and_then(|v| v.as_array()) else {
         return 0;
     };
     let mut delivered = 0;
-    for raw in envelopes {
+    for raw in inbox_batch(envelopes) {
         let Ok(env) = serde_json::from_value::<ChatEnvelope>(raw.clone()) else {
             continue;
         };
+        // F4: reject stale envelopes before any crypto work — replay of
+        // an envelope the server should already have evicted (24 h TTL).
+        if !inbox_envelope_fresh(env.ts_ms, now_ms()) {
+            continue;
+        }
         let Some(pairing) = pairing_for(app, &env.from) else {
             continue; // unknown sender: the service already dropped it for us
         };
         let Some(body) = open(&pairing.secret_hex, me, &env) else {
             continue; // failed auth: skip, never store
         };
-        // Inbox envelopes carry no sender kind (v1): treat as the peer's
-        // human. Agent-authored offline messages are a later variant.
-        record_incoming(app, &env.from, env.ts_ms, env.ts_ms, "user", &body);
-        let _ = app.emit(
-            "engine://chat",
-            json!({ "peer": env.from, "id": env.ts_ms, "ts_ms": env.ts_ms, "sender": "user", "body": body }),
+        // The authoritative sender kind rides INSIDE the seal: a v2 JSON
+        // payload carries the agent bit + fleet id; a v1 payload is plain
+        // text (the peer's human — the pre-slice-2 behavior, unchanged).
+        let (agent_bit, text, fleet_call_id) = match ChatPayload::parse(&body) {
+            Some(payload) => (payload.agent, payload.body, payload.fleet_call_id),
+            None => (false, body, None),
+        };
+        let stored = record_incoming_inbox(
+            app,
+            &env.from,
+            env.ts_ms,
+            env.ts_ms,
+            agent_bit,
+            &text,
+            fleet_call_id,
+            allow_remote,
         );
-        delivered += 1;
+        if stored {
+            // Wire-style sender (the webview prefixes "peer-"), matching
+            // the in-session ChatReceived event convention.
+            let sender = if agent_bit { "agent" } else { "user" };
+            let _ = app.emit(
+                "engine://chat",
+                json!({ "peer": env.from, "id": env.ts_ms, "ts_ms": env.ts_ms, "sender": sender, "body": text }),
+            );
+            delivered += 1;
+        }
     }
     delivered
 }
 
 /// Spawn the slow inbox poller (5 s while the app runs). Cheap: one GET
 /// per tick, ciphertext only.
+///
+/// Security review FIX 6: each tick runs under catch_unwind — a panic
+/// (e.g. a poisoned-lock expect on the wake path) costs ONE tick, not
+/// permanent inbox death. The same isolation the assistant worker gives
+/// a panicking turn.
 pub fn spawn_poller(app: AppHandle) {
     std::thread::Builder::new()
         .name("chat-inbox".into())
         .spawn(move || {
             loop {
                 std::thread::sleep(Duration::from_secs(5));
-                let services = app.state::<crate::commands::AppServices>();
-                let Ok(store) = services.store.lock() else {
-                    continue;
-                };
-                let settings = store.settings().clone();
-                drop(store);
-                if settings.signaling_base_url.trim().is_empty() {
-                    continue;
+                let tick = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let services = app.state::<crate::commands::AppServices>();
+                    let Ok(store) = services.store.lock() else {
+                        return;
+                    };
+                    let settings = store.settings().clone();
+                    drop(store);
+                    if settings.signaling_base_url.trim().is_empty() {
+                        return;
+                    }
+                    let _ = inbox_drain(
+                        &app,
+                        &settings.signaling_base_url,
+                        &settings.device_token,
+                        &settings.device_id,
+                    );
+                }));
+                if let Err(panic) = tick {
+                    let reason = panic
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_owned());
+                    eprintln!("[chat] inbox poller tick panicked ({reason}) — retrying next tick");
                 }
-                let _ = inbox_drain(
-                    &app,
-                    &settings.signaling_base_url,
-                    &settings.device_token,
-                    &settings.device_id,
-                );
             }
         })
         .expect("spawn chat poller");
@@ -888,6 +1432,25 @@ pub fn auto_accept_if_paired(app: &AppHandle, controller_device_id: &str) -> boo
         .is_ok()
 }
 
+/// ADR-013 P2 twin of [`auto_accept_if_paired`] for account-scope proofs:
+/// a verified proof from an installation with a standing account "Always
+/// allow" is silently accepted. `remember: true` on the engine command is
+/// deliberate — it also completes the pairing ceremony when the
+/// controller offers (stronger proof on every later connect), exactly
+/// like a pairing-verified accept.
+pub fn auto_accept_account(app: &AppHandle) -> bool {
+    let services = app.state::<crate::commands::AppServices>();
+    let Ok(slot) = services.engine.lock() else {
+        return false;
+    };
+    let Some(handle) = slot.as_ref() else {
+        return false;
+    };
+    handle
+        .send(crate::engine::EngineCmd::ConsentAccept { remember: true })
+        .is_ok()
+}
+
 /// Controller side of auto-pairing: after `SessionEstablished`, offer
 /// pairing to the host if we have none (or a pending one) with it.
 pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
@@ -902,7 +1465,11 @@ pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
     if already {
         return;
     }
-    let secret_hex = mint_pairing(app, &code);
+    // FIX 5: no CSPRNG, no secret — skip the offer (fail closed, nothing
+    // stored); the next session establishment retries.
+    let Ok(secret_hex) = mint_pairing(app, &code) else {
+        return;
+    };
     let services = app.state::<crate::commands::AppServices>();
     if let Ok(slot) = services.engine.lock()
         && let Some(handle) = slot.as_ref()
@@ -915,6 +1482,18 @@ pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn hex_decode_rejects_non_ascii_without_panicking() {
+        // Security review F1: a hostile server could send multi-byte UTF-8 with
+        // an even byte length; byte-index slicing must not panic (it would kill
+        // the inbox poller). Non-ASCII hex is rejected, valid hex still decodes.
+        assert_eq!(hex_decode("aéb"), None); // 4 bytes, splits a char boundary
+        assert_eq!(hex_decode("zz"), None); // even length, non-hex digits
+        assert_eq!(hex_decode("abc"), None); // odd length
+        assert_eq!(hex_decode("00ff10"), Some(vec![0x00, 0xff, 0x10]));
+        assert_eq!(hex_decode(""), Some(vec![]));
+    }
+
     const SECRET_A: &str = "aa9d6c507d4a3e2f1b8c7d6e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4";
     const SECRET_B: &str = "bb1e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4aa9d6c507d4a3e2f8c7d";
 
@@ -922,6 +1501,7 @@ mod tests {
         PairingsDoc {
             pairings: pairs,
             remembered: Vec::new(),
+            account_remembered: Vec::new(),
         }
     }
 
@@ -931,6 +1511,7 @@ mod tests {
             ts_ms: id,
             sender: sender.to_owned(),
             body: "x".to_owned(),
+            fleet_call_id: None,
         }
     }
 
@@ -970,6 +1551,441 @@ mod tests {
         // Plain-only history changes nothing.
         let plain = [line("user", 7), line("peer-user", 8)];
         assert!(should_wake_for_agent_line(&plain));
+    }
+
+    // ---- ADR-013 P3 fleet slice 2: inbox agent-bit + opt-in wake gate ----
+
+    #[test]
+    fn inbox_wake_requires_the_opt_in() {
+        // Opted in: a fresh agent-bit arrival wakes (same gate as
+        // in-session chat).
+        assert!(inbox_should_wake(true, true, &[]));
+        // Opted OUT (the serde default): the line is stored by the caller
+        // but never wakes — a non-opted-in slave does not auto-act.
+        assert!(!inbox_should_wake(true, false, &[]));
+        // Human arrivals never wake, opt-in or not.
+        assert!(!inbox_should_wake(false, true, &[]));
+        assert!(!inbox_should_wake(false, false, &[]));
+        // The in-session reply suppression still applies when opted in:
+        // an agent-bit arrival right after our unanswered human ask is
+        // the reply coming home, not an instruction.
+        let ask = [line("to-agent", 1)];
+        assert!(!inbox_should_wake(true, true, &ask));
+        // Once the reply landed, the next agent-bit arrival wakes again.
+        let answered = [line("to-agent", 1), line("peer-agent", 2)];
+        assert!(inbox_should_wake(true, true, &answered));
+    }
+
+    #[test]
+    fn agent_bit_and_fleet_id_ride_inside_the_seal() {
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "free some disk space",
+            true,
+            Some("fleet-7"),
+        )
+        .expect("seal");
+        // The outer hints mirror the payload (additive, untrusted).
+        assert!(env.agent);
+        assert_eq!(env.fleet_call_id.as_deref(), Some("fleet-7"));
+        assert_eq!(env.v, CHAT_PROTOCOL_VERSION, "no envelope version bump");
+        // The receiver opens the seal and finds the authoritative bits.
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        let payload = ChatPayload::parse(&pt).expect("v2 payload");
+        assert!(payload.agent);
+        assert_eq!(payload.body, "free some disk space");
+        assert_eq!(payload.fleet_call_id.as_deref(), Some("fleet-7"));
+    }
+
+    #[test]
+    fn human_inbox_send_keeps_the_v1_plain_text_payload() {
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "hello there",
+            false,
+            None,
+        )
+        .expect("seal");
+        assert!(!env.agent);
+        assert_eq!(env.fleet_call_id, None);
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(pt, "hello there", "v1 payload stays plain text");
+        assert_eq!(ChatPayload::parse(&pt), None, "no agent routing");
+    }
+
+    #[test]
+    fn outer_hints_cannot_forge_a_wake() {
+        // The service (or anyone editing the stored row) can flip the
+        // outside-seal hints — the receiver must still route by the
+        // sealed payload. A human message with tampered hints stays
+        // human: no agent bit, no fleet id, no wake.
+        let mut env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "just chatting",
+            false,
+            None,
+        )
+        .expect("seal");
+        env.agent = true;
+        env.fleet_call_id = Some("forged".to_owned());
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(ChatPayload::parse(&pt), None, "hints are not authority");
+        assert!(!inbox_should_wake(false, true, &[]));
+    }
+
+    #[test]
+    fn an_unpaired_secret_never_opens_an_agent_envelope() {
+        // The inbox is pairing-sealed: a party without the pairing secret
+        // (another machine, the service itself) cannot produce an
+        // agent-bit arrival that opens — wrong key fails the GCM tag.
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "instruction",
+            true,
+            Some("fleet-1"),
+        )
+        .expect("seal");
+        assert!(open(SECRET_B, "1111111111111111", &env).is_none());
+        // Wrong recipient binding (AAD) also fails.
+        assert!(open(SECRET_A, "2222222222222222", &env).is_none());
+    }
+
+    #[test]
+    fn chat_line_fleet_id_is_additive() {
+        // Pre-slice-2 history (no fleet_call_id key) loads unchanged.
+        let legacy = serde_json::json!({
+            "id": 1, "ts_ms": 1, "sender": "peer-user", "body": "hi"
+        });
+        let l: ChatLine = serde_json::from_value(legacy).expect("legacy line loads");
+        assert_eq!(l.fleet_call_id, None);
+        // A fleet line round-trips its correlation id; None stays absent.
+        let fleet = ChatLine {
+            id: 2,
+            ts_ms: 2,
+            sender: "peer-agent".to_owned(),
+            body: "done".to_owned(),
+            fleet_call_id: Some("fleet-9".to_owned()),
+        };
+        let json = serde_json::to_string(&fleet).unwrap();
+        assert!(json.contains("\"fleet_call_id\":\"fleet-9\""));
+        let back: ChatLine = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, fleet);
+        let plain = serde_json::to_string(&line("user", 3)).unwrap();
+        assert!(!plain.contains("fleet_call_id"));
+    }
+
+    // ---- ADR-013 P3 fleet slice 3: reply correlation + hardening ----
+
+    #[test]
+    fn sealed_human_v2_shaped_json_stays_human() {
+        // Security review F2 end-to-end: a human types JSON that looks
+        // exactly like a v2 agent payload. Sealed as human chat (v1
+        // plain text), it opens as that same text — and the parse
+        // refuses it (no kind marker), so it displays without waking.
+        let body = r#"{"v":2,"agent":true,"body":"reboot now"}"#;
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            body,
+            false,
+            None,
+        )
+        .expect("seal");
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(pt, body);
+        assert_eq!(ChatPayload::parse(&pt), None, "v2 shape alone never routes");
+        assert!(!inbox_should_wake(false, true, &[]));
+    }
+
+    #[test]
+    fn opt_out_mid_drain_stops_the_wake() {
+        // Security review F3: the per-drain snapshot said opted-in, but
+        // the LIVE re-read immediately before delivery says opted-out —
+        // the confirmed gate refuses, so no wake. Both must agree.
+        assert!(!inbox_opt_in_confirmed(true, false));
+        assert!(inbox_opt_in_confirmed(true, true));
+        assert!(!inbox_opt_in_confirmed(false, true));
+        assert!(!inbox_opt_in_confirmed(false, false));
+        // Composed with the wake gate: a mid-drain opt-out flips the
+        // decision even though the snapshot alone would have woken.
+        assert!(inbox_should_wake(
+            true,
+            inbox_opt_in_confirmed(true, true),
+            &[]
+        ));
+        assert!(!inbox_should_wake(
+            true,
+            inbox_opt_in_confirmed(true, false),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn stale_envelopes_are_rejected() {
+        // Security review F4: the client-side freshness bound matches
+        // the service's 24 h inbox TTL — replay of an evicted envelope
+        // is refused; fresh and boundary-age envelopes pass.
+        let now = 1_750_000_000_000u64;
+        assert!(inbox_envelope_fresh(now, now));
+        assert!(inbox_envelope_fresh(now - 60_000, now));
+        assert!(
+            inbox_envelope_fresh(now - INBOX_MAX_ENVELOPE_AGE_MS, now),
+            "boundary passes"
+        );
+        assert!(!inbox_envelope_fresh(
+            now - INBOX_MAX_ENVELOPE_AGE_MS - 1,
+            now
+        ));
+        assert!(!inbox_envelope_fresh(0, now), "ancient replay refused");
+        // A slightly future stamp passes (sender clock skew; the stamp is
+        // authenticated anyway)...
+        assert!(inbox_envelope_fresh(now + 60_000, now));
+        // ...but FIX 3 caps the skew: a years-ahead stamp would never
+        // expire under the past-only bound — refused at the boundary.
+        assert!(
+            inbox_envelope_fresh(now + INBOX_MAX_FUTURE_SKEW_MS, now),
+            "skew boundary passes"
+        );
+        assert!(!inbox_envelope_fresh(
+            now + INBOX_MAX_FUTURE_SKEW_MS + 1,
+            now
+        ));
+        assert!(
+            !inbox_envelope_fresh(now + 365 * 24 * 60 * 60 * 1000, now),
+            "a years-ahead stamp must not be immortal"
+        );
+    }
+
+    #[test]
+    fn fleet_reply_to_our_call_never_wakes() {
+        // Slice 3 + security review FIX 2: the sealed reply carries the
+        // id of the fleet ask WE sent — recognized by the DURABLE pending
+        // registry (not position, not the volatile chat history), so
+        // overlapping calls cannot re-arm the wake for a reply.
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+
+        // Registered + unexpired → suppressed even with an EMPTY history
+        // (the display marker was never written, lost, or evicted — the
+        // registry is the source of truth). Composed exactly as
+        // record_incoming_inbox composes it: !is_reply && inbox_should_wake.
+        assert!(inbox_should_wake(true, true, &[]), "gate alone would wake");
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 1)
+            && inbox_should_wake(true, true, &[]);
+        assert!(!wakes, "our own outstanding call's reply must not wake");
+
+        // A different call's id is a fresh instruction, not our reply —
+        // the slave side sees exactly this for instructions it receives.
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-43", now + 1));
+
+        // Positional gate re-armed (a reply already landed), but the
+        // registry still suppresses: the second overlapping call's reply
+        // must not wake us either.
+        let mut ask = line("to-agent", 1);
+        ask.fleet_call_id = Some("fleet-42".to_owned());
+        let answered = [ask, line("peer-agent", 3)];
+        assert!(
+            should_wake_for_agent_line(&answered),
+            "positional gate re-armed"
+        );
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 2)
+            && inbox_should_wake(true, true, &answered);
+        assert!(!wakes);
+
+        // Expiry: once the suppression window closes the id no longer
+        // suppresses (a straggler beyond the margin is an ordinary
+        // arrival again — the wake budget still bounds it).
+        let late = now + FLEET_PENDING_TTL_MS + 1;
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-42", late));
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", late)
+            && inbox_should_wake(true, true, &answered);
+        assert!(wakes, "expired id is not suppressed");
+    }
+
+    #[test]
+    fn fleet_suppression_survives_history_flood() {
+        // FIX 2 regression: a 500-line flood evicts the "to-agent" display
+        // marker from the bounded history — the OLD history-scan
+        // suppression would fail open and wake the master on its own
+        // reply (confused deputy). The durable registry never consults
+        // the history, so the suppression holds.
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+        let flooded: Vec<ChatLine> = (0..HISTORY_CAP + 50)
+            .map(|i| line("peer-user", i as u64))
+            .collect();
+        assert!(
+            !flooded.iter().any(|l| l.sender == "to-agent"),
+            "the marker is gone from the stored history"
+        );
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 10_000)
+            && inbox_should_wake(true, true, &flooded);
+        assert!(!wakes, "the registry suppresses despite the evicted marker");
+    }
+
+    #[test]
+    fn fleet_pending_doc_round_trips_and_prunes() {
+        // The registry file schema: id -> expires_at_ms, additive-safe
+        // (an empty/legacy doc loads), round-trips through JSON.
+        let empty: FleetPendingDoc = serde_json::from_str("{}").expect("empty doc loads");
+        assert!(empty.pending.is_empty());
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-a", now);
+        register_fleet_pending_in_doc(&mut doc, "fleet-b", now);
+        let json = serde_json::to_string(&doc).unwrap();
+        let mut back: FleetPendingDoc = serde_json::from_str(&json).unwrap();
+        assert!(fleet_pending_active_in_doc(&mut back, "fleet-a", now + 1));
+        assert!(fleet_pending_active_in_doc(&mut back, "fleet-b", now + 1));
+        // Bounded growth: a flood of stale ids is pruned on the next
+        // access — the file cannot grow without bound.
+        let old = now - FLEET_PENDING_TTL_MS - 1;
+        for i in 0..100 {
+            register_fleet_pending_in_doc(&mut doc, &format!("fleet-old-{i}"), old);
+        }
+        assert_eq!(doc.pending.len(), 102);
+        register_fleet_pending_in_doc(&mut doc, "fleet-new", now);
+        assert_eq!(doc.pending.len(), 3, "expired ids pruned on access");
+        assert!(fleet_pending_active_in_doc(&mut doc, "fleet-new", now));
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-old-0", now));
+    }
+
+    #[test]
+    fn concurrent_appends_do_not_lose_lines() {
+        // FIX 2 regression: the poller, assistant, and engine threads
+        // append concurrently; the UNLOCKED read-modify-write used to
+        // lose lines (last writer wins). Spawn parallel appenders and
+        // require EVERY line to survive.
+        let dir = std::env::temp_dir().join(format!("df-chat-append-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("concurrent.json");
+        let _ = std::fs::remove_file(&path); // a prior run's leftovers
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 25;
+        let mut handles = Vec::new();
+        for t in 0..THREADS {
+            let path = path.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    let id = (t * PER_THREAD + i) as u64;
+                    append_history_at(&path, line("peer-user", id));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let doc: ChatDoc = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc.lines.len(), THREADS * PER_THREAD, "no lost updates");
+        let mut ids: Vec<u64> = doc.lines.iter().map(|l| l.id).collect();
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            (0..(THREADS * PER_THREAD) as u64).collect::<Vec<_>>(),
+            "every appended line survived"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn inbox_response_read_is_capped() {
+        // FIX 4: the body is bounded BEFORE parsing — exactly the cap
+        // passes, one byte over refuses, and the buffer never grows past
+        // cap + 1 no matter how large the underlying stream is.
+        let cap = 1024u64;
+        let small = vec![b'a'; 100];
+        assert_eq!(
+            read_capped(std::io::Cursor::new(small.clone()), cap),
+            Some(small)
+        );
+        let exact = vec![b'b'; cap as usize];
+        assert_eq!(
+            read_capped(std::io::Cursor::new(exact.clone()), cap),
+            Some(exact)
+        );
+        let over = vec![b'c'; cap as usize + 1];
+        assert_eq!(read_capped(std::io::Cursor::new(over), cap), None);
+        let huge = vec![b'd'; 4 * cap as usize];
+        assert_eq!(read_capped(std::io::Cursor::new(huge), cap), None);
+        assert_eq!(
+            read_capped(std::io::Cursor::new(Vec::<u8>::new()), cap),
+            Some(Vec::<u8>::new())
+        );
+    }
+
+    #[test]
+    fn inbox_drain_batch_is_capped() {
+        // FIX 4: at most INBOX_DRAIN_CAP envelopes per drain, in arrival
+        // order (the rest are dropped — the service GET is destructive).
+        assert_eq!(INBOX_DRAIN_CAP, 64);
+        let many: Vec<serde_json::Value> =
+            (0..200).map(|i| serde_json::json!({ "i": i })).collect();
+        let batch = inbox_batch(&many);
+        assert_eq!(batch.len(), INBOX_DRAIN_CAP);
+        assert_eq!(batch[0]["i"], 0);
+        assert_eq!(batch[INBOX_DRAIN_CAP - 1]["i"], 63);
+        let few: Vec<serde_json::Value> = (0..10).map(|i| serde_json::json!({ "i": i })).collect();
+        assert_eq!(inbox_batch(&few).len(), 10);
+        assert_eq!(inbox_batch(&[]).len(), 0);
+    }
+
+    #[test]
+    fn fleet_reply_seals_the_id_and_displays_without_waking() {
+        // The full reply leg at the protocol level: the slave seals its
+        // answer with agent=true + the fleet id (exactly what
+        // send_agent_reply does for a correlated turn); the master opens
+        // it, finds the authoritative bits, and its wake gate displays
+        // the reply without acting (the fleet ask is the last agent-box
+        // line, and the id matches the master's own sent call).
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "done: freed 2 GB",
+            true,
+            Some("fleet-42"),
+        )
+        .expect("seal");
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        let payload = ChatPayload::parse(&pt).expect("v2 reply payload");
+        assert!(payload.agent);
+        assert_eq!(payload.body, "done: freed 2 GB");
+        assert_eq!(payload.fleet_call_id.as_deref(), Some("fleet-42"));
+        // Master side: our fleet ask is outstanding → display, no wake,
+        // even opted in. The positional gate sees the ask; the DURABLE
+        // registry (FIX 2) is the suppression source of truth.
+        let mut ask = line("to-agent", 1);
+        ask.fleet_call_id = Some("fleet-42".to_owned());
+        assert!(!should_wake_for_agent_line(&[ask.clone()]));
+        assert!(!inbox_should_wake(payload.agent, true, &[ask.clone()]));
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+        assert!(fleet_pending_active_in_doc(
+            &mut doc,
+            payload
+                .fleet_call_id
+                .as_deref()
+                .expect("reply carries the id"),
+            now + 1
+        ));
     }
 
     #[test]
@@ -1325,6 +2341,43 @@ mod tests {
             !remove_pairing_in_doc(&mut d, "abcdef0123456789"),
             "idempotent"
         );
+    }
+
+    #[test]
+    fn account_intents_remember_revoke_and_validate() {
+        let mut d = doc(vec![]);
+        // base58-shaped installation ids land, dedupe, and trim.
+        assert!(remember_account_intent_in_doc(
+            &mut d,
+            " 9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2 "
+        ));
+        assert!(!remember_account_intent_in_doc(
+            &mut d,
+            "9ZkdqFPeqQFMbAtgS2M8b1aVvzGk4TQsN1WjnUpeTXW2"
+        ));
+        // A 16-hex SIGNALING id is NOT a valid installation id: the two
+        // trust keys must never be confusable.
+        assert!(!remember_account_intent_in_doc(&mut d, "abcdef0123456789"));
+        assert!(!remember_account_intent_in_doc(&mut d, ""));
+        assert!(!remember_account_intent_in_doc(&mut d, &"x".repeat(65)));
+        // Bounded like the pairing intents.
+        for i in 0..REMEMBERED_CAP {
+            remember_account_intent_in_doc(&mut d, &format!("inst{i:05}"));
+        }
+        assert!(d.account_remembered.len() <= REMEMBERED_CAP);
+    }
+
+    #[test]
+    fn pairings_doc_without_account_field_still_loads() {
+        // Pre-P2 pairings.json (no account_remembered key) must deserialize
+        // via the serde default — the field is additive.
+        let legacy = serde_json::json!({
+            "pairings": [],
+            "remembered": ["abcdef0123456789"]
+        });
+        let d: PairingsDoc = serde_json::from_value(legacy).expect("legacy doc loads");
+        assert!(d.account_remembered.is_empty());
+        assert_eq!(d.remembered.len(), 1);
     }
 
     #[test]

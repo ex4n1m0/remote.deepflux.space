@@ -1,0 +1,43 @@
+{
+  "name": "relay-admission-frame-1",
+  "description": "ADR-038 §6.2 frame vector: byte-pinned protobuf frames of the /msp/relay-ticket/1 pre-flight protocol (§3.2). A second implementation (TS or Rust) must reproduce identical bytes and identical verdicts. Encodings are proto2 wire format: field 1 varint (type), field 2 length-delimited bytes (ticket), field 3 varint (code), uvarint length prefixes as noted.",
+  "adr": "ADR-038 §3.2/§6.2",
+  "protocol_name": "/msp/relay-ticket/1",
+  "present_frame_hex": "080012a90365794a6c65484270636d567a58324630496a6f694d6a41794e6930784d4330784e5651784d6a6f784d446f774d4334774d444261496977696157357a64474673624746306157397558326c6b496a6f694e6a5659596d56775758644753454a49656b3178593152484d5856786430347955573835654746354f47703055464e6b546e646a56573078553345694c434a7063334e315a575266595851694f6949794d4449324c5445774c544531564445794f6a41774f6a41774c6a41774d466f694c434a756232356a5a534936496d4578596a4a6a4d3251305a54566d4e6d4533596a686a4f5751775a54466d4d6d457a596a526a4e575132496977696347566c636c39705a434936496a457952444e4c62323958546d3031644452496558425a556d3170517a56324f554e454d6c527555457479536d6779536a685559325a4b4d6d6451614545335444685561566f6966512e45443978466668784a6d556d52426277653743746d75354547664f7861505a69473871623634727573746e565778703559454632396a593539343246726f68624f49736f4f4e4c2d61775a6f33586976617a326c4377",
+  "present_frame_notes": "0800 = field1 varint PRESENT(0); 12 <uvarint> = field2 length-delimited, uvarint length 425; then the relay-ticket-1 token bytes (UTF-8). Regenerated 2026-10-15 with the real derived identity pair (drift ruling (b) closure) — the frame embeds the token, so it moves with the ticket vectors.",
+  "status_frames_hex": {
+    "ok_100": "08011864",
+    "resource_limit_exceeded_201": "080118c901",
+    "permission_denied_202": "080118ca01",
+    "malformed_message_400": "0801189003"
+  },
+  "status_frame_notes": "0801 = field1 varint STATUS(1); 18 <uvarint> = field3 varint code (100=0x64, 201=0xc9 01, 202=0xca 01, 400=0x90 03)",
+  "length_prefix_rule": "each frame body is uvarint-length-prefixed on the wire AFTER protocol negotiation; the 4096-byte cap is validated before allocation",
+  "malformed_corpus": [
+    {
+      "id": "field_zero",
+      "hex": "0001",
+      "why": "tag byte 0x00 is field 0 — invalid in protobuf"
+    },
+    {
+      "id": "length_overrun",
+      "hex": "12ff0f6162",
+      "why": "field2 announces 2047 bytes but only 2 follow (uvarint ff 0f = 2047)"
+    },
+    {
+      "id": "unknown_type_value",
+      "hex": "0805",
+      "why": "field1 varint value 5 is neither PRESENT(0) nor STATUS(1)"
+    },
+    {
+      "id": "truncated_tag",
+      "hex": "12",
+      "why": "field2 tag with no length byte — truncation"
+    },
+    {
+      "id": "wrong_wire_type",
+      "hex": "1001",
+      "why": "field2 varint (wire type 0) where bytes (wire type 2) is required"
+    }
+  ]
+}

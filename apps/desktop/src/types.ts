@@ -80,6 +80,10 @@ export interface Settings {
   /** Domains the local user allowed the assistant to download from
    * without asking again ("always allow" on the confirm card). */
   agent_download_domains: string[];
+  /** ADR-013 P3 fleet slice 2: opt-in to remote agent instructions —
+   * paired machines' agent-bit inbox messages wake this assistant.
+   * Settings toggle, default OFF (upgrades never auto-enable it). */
+  allow_remote_agent_instructions: boolean;
   /** ADR-008: automatic update checks (download/install stay explicit
    * presses). Settings toggle, default on. */
   auto_update: boolean;
@@ -208,6 +212,12 @@ export interface ConsentEvent {
   /** ADR-006: the requester's machine display name from the wire, when known —
    * advisory only; the device code beside it is the identity. */
   requester_name: string | null;
+  /** ADR-013 P2: present when a VERIFIED account-scope proof rode the
+   * request — the controller cryptographically proved it is this
+   * installation of the machine's own website account. The prompt renders
+   * the account variant; "Always allow" keys to the installation id.
+   * Null/absent on every other path (and on pre-P2 payloads). */
+  account?: { installation_id: string; label: string | null } | null;
 }
 
 export interface SessionEstablishedEvent {
@@ -244,7 +254,62 @@ export interface InfoEvent {
 
 // ---- trusted machines (ADR-009: the machine list) ----
 
+// ---- swarm enrollment (ADR-013: the tracker's device binding) ----
 
+/** Swarm membership state — mirrors the Rust `SwarmState` DTO (internally
+ * tagged, snake_case). Metadata only: the pairing `deviceCode` and the
+ * session bearer never cross IPC (Rust state + Credential Manager). */
+export type SwarmState =
+  | { status: "not_joined" }
+  | { status: "joining"; user_code: string; expires_at_ms: number }
+  | { status: "confirm_claim"; claimed_by: string; expires_at_ms: number }
+  | { status: "joined"; installation_id: string; session_expires_at_ms: number }
+  | { status: "needs_rejoin"; reason: string }
+  | { status: "failed"; reason: string };
+
+export type SwarmStatusName = SwarmState["status"];
+
+// ---- human chat (ADR-013 D4/P3: humans-only E2E word rooms) ----
+
+/** One room member (peer id + shared display name) — mirrors the Rust
+ * `human_chat::HumanMember`. */
+export interface HumanMember {
+  peer: string;
+  name: string;
+}
+
+/** Human-chat room state — mirrors the Rust `human_chat::HumanRoomState`
+ * (snake_case). Metadata only: the room WORD never crosses IPC (it lives in
+ * Rust state + settings); `room` is the derived room id hex. */
+export interface HumanRoomState {
+  joined: boolean;
+  room: string | null;
+  epoch: number;
+  we_are_host: boolean;
+  /** idle | connecting | searching | joining | founding | hosting |
+   * connected | sealed | failed. */
+  status: string;
+  peers: HumanMember[];
+  my_peer: string | null;
+  presence_linked: boolean;
+  online: number;
+  error: string | null;
+}
+
+/** One decrypted room message — the `human-chat://message` payload. */
+export interface HumanRoomMessage {
+  room: string;
+  sender: string;
+  body: string;
+  epoch: number;
+  mine: boolean;
+  via_site: boolean;
+}
+
+/** A non-fatal node log line — the `human-chat://log` payload. */
+export interface HumanRoomLog {
+  message: string;
+}
 
 /** ADR-010: one discovered machine from the sealed circle directory
  * (decrypted app-side; `is_self` keeps self out of the rail's list). */
@@ -266,3 +331,20 @@ export interface PairingInfo {
    * null on pre-0.10 rows and until the first session supplies it). */
   name: string | null;
 }
+
+/** ADR-013 P2: one machine of the website account, as the heartbeat
+ * thread's tracker poll reports it. `signaling_device_id` is the connect
+ * key (null = online-but-not-controllable); `is_self` keeps this machine's
+ * own row out of the rail's list. */
+export interface AccountMachine {
+  installation_id: string;
+  label: string | null;
+  last_seen_at_ms: number | null;
+  signaling_device_id: string | null;
+  is_self: boolean;
+}
+
+/** Online window for the account directory's last-seen (mirrors the
+ * website dashboard's Seen column: the heartbeat cadence is 60 s, so
+ * anything older than two ticks is offline). */
+export const ACCOUNT_ONLINE_WINDOW_MS = 120_000;

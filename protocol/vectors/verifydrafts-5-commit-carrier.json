@@ -1,0 +1,66 @@
+{
+  "binding": {
+    "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "sender_rule": "sender MUST equal the installation id pinned from the authenticated channel (mismatch is bad_frame)",
+    "signed": "none — the carrier carries NO signature (§2/G2); it rides the authenticated session channel"
+  },
+  "carrier": {
+    "canonical_json": "{\"accepted_token_ids\":[101,102,103,104,105,106,107,108,999],\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"new_prefix_hash\":\"488f0be8a4d52a1b789ab54f4ca2a5936af10029bc41fac182dbe73ca79283f5\",\"previous_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"round\":3,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"session_id\":\"sess-vd-accept-0001\"}",
+    "canonical_json_sha256": "d4e216a3f0b5ac3d10056a563be36843eb009c88ff5076cc7cbd82b6777f0e0e",
+    "fields": {
+      "accepted_token_ids": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        999
+      ],
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "new_prefix_hash": "488f0be8a4d52a1b789ab54f4ca2a5936af10029bc41fac182dbe73ca79283f5",
+      "previous_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "round": 3,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "session_id": "sess-vd-accept-0001"
+    }
+  },
+  "construction": {
+    "committed_token_ids": [
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      999
+    ],
+    "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rule": "hex(sha256(raw32(parent_hex) || token ids as little-endian u32 each))"
+  },
+  "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+  "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+  "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "description": "ADR-032 §2/G2 (revision 4, 2026-10-12): the family's PrefixCommit carrier as a commit-form golden vector — the BARE JSON object carrying exactly the shipped SpecMessage::PrefixCommit field names (session_id, round, previous_prefix_hash, accepted_token_ids, new_prefix_hash, profile_id, generation_params_hash, sender) WITHOUT the old vocabulary's externally-tagged envelope and WITHOUT signature. Authentication is the cryptographically authenticated session channel plus RC-4 reproduction: the carrier's sender MUST equal the installation id pinned from that channel (mismatch is bad_frame), and the content must reproduce the verifier's own outstanding VerifyDraftsResult. Parsing is STRICT (unknown fields, wrong types, non-bare-hex hashes are bad_frame before any state is touched). The content reproduces verifydrafts-1-accept's result (same session/round/ids/hash), so the golden test replays fixture 1's request and applies this carrier through the real gate. The freeze ADR's binding migration (version, nonce, deadline, signature) remains deferred.",
+  "field_names": [
+    "session_id",
+    "round",
+    "previous_prefix_hash",
+    "accepted_token_ids",
+    "new_prefix_hash",
+    "profile_id",
+    "generation_params_hash",
+    "sender"
+  ],
+  "name": "verifydrafts-5-commit-carrier",
+  "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+  "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+  "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+}

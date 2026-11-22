@@ -47,6 +47,11 @@ hex = { workspace = true }
 # (node-runtime::{pairing_proof, directory_remote}).
 sha2 = { workspace = true }
 hmac = { workspace = true }
+# ADR-013 P2: account proofs on connect_request — Ed25519 signatures over
+# the account-proof domain, base58 public keys (same versions as the
+# imported modelswarm-identity).
+ed25519-dalek = "2"
+bs58 = "0.5"
 # ADR-010: sealed directory entries (directory_remote) — AES-256-GCM under
 # the circle key, back with the restored discovery list.
 aes-gcm = { workspace = true }

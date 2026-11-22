@@ -1,0 +1,32 @@
+{
+  "$note": "REAL profile: SmolLM2-135M-Instruct Q4_K_M (bartowski quantization of the apache-2.0 HuggingFaceTB model) — resolved from the GGUF artifact per ADR-022.",
+  "vector": "real-artifact",
+  "manifest": {
+    "schema_version": 2,
+    "hf_repo": "bartowski/SmolLM2-135M-Instruct-GGUF",
+    "hf_revision": "09816acd5d99df7be770d85ea30822623dab342c",
+    "artifact_hashes": [
+      {
+        "path": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
+        "sha256": "2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d"
+      }
+    ],
+    "tokenizer_hash": "ec5ec5f789ddcb674be5552c0c85e6c09adf26dcbb6e3eaf38edc72e287d6b18",
+    "chat_template_hash": "872be49dbb638044ad01b60388f48d469ff2980e5f0dccdc22ec907db54d0788",
+    "architecture_hash": "111e050e164e26b82a53a106c6bd57cea19fd4f663de4fea4833a0eac19074f1",
+    "quantization": {
+      "method": "q4_k_m",
+      "bits": 4
+    },
+    "runtime": {
+      "name": "llama.cpp",
+      "version": "b11407",
+      "build_hash": "353c4aab423bff5cb6dc0e1d32e41a447990ab3d69a411b7f58ff48187c91a03"
+    },
+    "decoding_abi_version": 1,
+    "speculative_capabilities": [
+      "proposal_tokens"
+    ]
+  },
+  "expected_profile_id": "msp1:948d898a6ace88592f19b8e02ccd776f3e09be1049e0809454ebe4ee2f1acc2f"
+}

@@ -67,11 +67,25 @@ pub struct AppSettings {
     /// allow" lands here). Empty = ask every time.
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-013 P3 fleet slice 2: opt-in to remote agent instructions —
+    /// an agent-bit inbox arrival from a PAIRED machine wakes the local
+    /// assistant only while this is true. Default FALSE (serde default:
+    /// upgrades never auto-enable it); the fleet can still deliver lines
+    /// to a non-opted-in machine, they just display without waking.
+    #[serde(default)]
+    pub allow_remote_agent_instructions: bool,
     /// ADR-008 automatic updates: scheduled update checks (download and
     /// install are always explicit user presses). Existing settings files
     /// predate the field — defaults ON.
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    /// ADR-013 D4/P3 human chat: the word of the room this machine last
+    /// joined (empty = none). Persisted so the chat restores on launch.
+    /// Admission material — it lives here and in Rust state ONLY, never in
+    /// the settings IPC DTO (`SettingsDto`/`SettingsPatch`) and never in an
+    /// event payload (the ipc_surface walk's credential discipline).
+    #[serde(default)]
+    pub human_room_word: String,
 }
 
 /// Default assistant provider (ADR-005): DeepSeek, OpenAI-compatible.
@@ -113,7 +127,9 @@ impl Default for AppSettings {
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
             agent_download_domains: Vec::new(),
+            allow_remote_agent_instructions: false,
             auto_update: true,
+            human_room_word: String::new(),
         }
     }
 }

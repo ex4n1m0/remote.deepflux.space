@@ -1,0 +1,105 @@
+{
+ "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+ "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+ "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+ "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+ "description": "SessionReject canonical form (ADR-032 §3 / A-4, plan §2.2): the honest offer-reject wire shape {session_id, protocol_version, reason} with the frozen reason vocabulary preset_unavailable | backend_mismatch | batch_verify_unsupported | budget_infeasible plus the two offer-form-v3 reasons profile_mismatch | params_mismatch (ADR-032 revision 4 §3/G3 — negotiation-level vocabulary, the same class as preset_unavailable; the §6.5 registry is untouched). The primary case is backend_mismatch (the E0 backend-pairing reject); the reasons list records ALL SIX canonical serializations (the first four are unchanged bytes from the pre-revision-4 file). Unsigned (handshake-authenticated session). ADR-036 (2026-10-13) extends the vocabulary by pin_mismatch (the pin-carrier commitment mismatch at session open - the string identical to the frozen probe verdict label) and content_carriage_refused (the opted-out peer honest refusal; a refusal is not a mismatch). The six original canonicalizations are unchanged bytes.",
+ "name": "session-reject-1",
+ "primary": {
+  "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"backend_mismatch\",\"session_id\":\"sess-coop-0003\"}",
+  "canonical_json_sha256": "ac19a758217b79ef559b1b7a6236be72fd6a3a0c11b9da077d4ea45f069261f1",
+  "fields": {
+   "protocol_version": "msp-cooperative-v1",
+   "reason": "backend_mismatch",
+   "session_id": "sess-coop-0003"
+  },
+  "reason": "backend_mismatch"
+ },
+ "reasons": [
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"preset_unavailable\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "5c55bbbeb1b4c80ba3bdfefce66fbcf006bf3dda888287fd9819846585ba7181",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "preset_unavailable",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "preset_unavailable"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"backend_mismatch\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "ac19a758217b79ef559b1b7a6236be72fd6a3a0c11b9da077d4ea45f069261f1",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "backend_mismatch",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "backend_mismatch"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"batch_verify_unsupported\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "6e9782e0e4fd9c2c4a27188ccc7fd4f0ec13a445881a0ec3fb2eeb556889442c",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "batch_verify_unsupported",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "batch_verify_unsupported"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"budget_infeasible\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "81fd01687498eb6a2e0d99aa144659e8df61e4fe5c7d01e8624f57475b2b0bef",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "budget_infeasible",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "budget_infeasible"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"profile_mismatch\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "59a4718f9561d71257cdd26bc6f93aafa39907dfd4f35ab0863c4703fad99ac0",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "profile_mismatch",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "profile_mismatch"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"params_mismatch\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "568bd23148b47c44421f1e919bfe319fb2336f355c7edd266f514cef3141fa3c",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "params_mismatch",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "params_mismatch"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"pin_mismatch\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "8d0765d24ddac886bf6f297f1bbe5a2d774e31bdd762dab729972467b46a3743",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "pin_mismatch",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "pin_mismatch"
+  },
+  {
+   "canonical_json": "{\"protocol_version\":\"msp-cooperative-v1\",\"reason\":\"content_carriage_refused\",\"session_id\":\"sess-coop-0003\"}",
+   "canonical_json_sha256": "70dd60f54c741c8a2a0c8d1f690a80efe1066e577754a802c0aa5f5b4e4b3dc3",
+   "fields": {
+    "protocol_version": "msp-cooperative-v1",
+    "reason": "content_carriage_refused",
+    "session_id": "sess-coop-0003"
+   },
+   "reason": "content_carriage_refused"
+  }
+ ],
+ "signed": "none — negotiation messages carry no signature of their own (msp-cooperative-v1 §1; msp-v1 §6.6 PeerId binding)",
+ "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+ "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+ "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+ "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+}

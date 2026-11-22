@@ -1,0 +1,772 @@
+[
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb0000000000000a\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[]}",
+    "canonical_json_sha256": "97ee378fcab52eea34cfc333fa69ab36508da4c0b4d81853680dea29ff6b1d21",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, schema row: window_tokens is empty — there is nothing to verify (§1: an empty window is malformed). The strict two-pass parse fails before the signature stage; expected code bad_frame.",
+    "expected_reject": "bad_frame",
+    "name": "empty-window",
+    "signature": "IKXDWSbcTWRtfYn4hFNhhZomkxW40vbnCb3e1zvFMPNK1w9wY6LiB6cq4sy3y9SDBk7wHWJoI/ResWwetTwoAQ==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb0000000000000a",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "IKXDWSbcTWRtfYn4hFNhhZomkxW40vbnCb3e1zvFMPNK1w9wY6LiB6cq4sy3y9SDBk7wHWJoI/ResWwetTwoAQ==",
+      "window_tokens": []
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb0000000000000b\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "2731fd9c0a40d6ad9af32519a63828205b8d3098888619e55ee45b17ccf132bb",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "signed_by": "verifier fixture key (wrong signer)",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, signature row: the signature is a genuine Ed25519 signature by the VERIFIER fixture key over the correct preimage, while sender names the coordinator — sender binding fails first (§1 rule 5) and the signature fails under the expected coordinator key; unauthenticated = malformed, fail-closed. Expected code bad_frame.",
+    "expected_reject": "bad_frame",
+    "name": "bad-signature",
+    "signature": "ktDm590Wi98LAbj5iMegJV4fD6++4YbBT1Pzq5YB62qx3WQathgcgWK/a7o3ngTd/v+wHaNZem1BAj+GUpDXBA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb0000000000000b",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "ktDm590Wi98LAbj5iMegJV4fD6++4YbBT1Pzq5YB62qx3WQathgcgWK/a7o3ngTd/v+wHaNZem1BAj+GUpDXBA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000001\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "6303e6706a3c3ad1606cc44bf7b4aa9bad94c381889bec125584df3a3f78f375",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32,
+      "wire_profile_id": "msp1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, profile row: profile_id differs from the session's pinned profile — profile_mismatch plus session teardown (invariant I7); later frames on this stream see cancelled_by_peer. The wire is schema-valid and signature-valid (signed with the wrong profile in the preimage).",
+    "expected_reject": "profile_mismatch",
+    "name": "wrong-profile-id",
+    "signature": "6lLNGZo8hN4V9ybaB/D5kmmakqIzUOplxIxLb2ANkfa62qRJsn/3+0BnnbszLh1uelxNiakTl8n0uf5FgPggAA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000001",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "6lLNGZo8hN4V9ybaB/D5kmmakqIzUOplxIxLb2ANkfa62qRJsn/3+0BnnbszLh1uelxNiakTl8n0uf5FgPggAA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"5a6b7c8d9e0f1c3d\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "32d824516729080cbdf4f8178500edb052b9a57fee471264d1361dcd9c424bce",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, nonce-reuse row: the nonce was already consumed by the admitted round-1 request (at any seq) — replayed_request, no state change (invariant I6).",
+    "expected_reject": "replayed_request",
+    "name": "duplicate-nonce",
+    "signature": "xOUgOhJUmX1YEn3g9WN79ah2+hphK1SQ7mkvvIak2dVqIAs0+o8wYQbr67q3wd8WCecixGVNd6ghm5ZWxEmaAA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "5a6b7c8d9e0f1c3d",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "xOUgOhJUmX1YEn3g9WN79ah2+hphK1SQ7mkvvIak2dVqIAs0+o8wYQbr67q3wd8WCecixGVNd6ghm5ZWxEmaAA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000002\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":12,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "7367c43d655d0339c9c2ba9da4d32b0c2794a6ed3001e4d6d9f904a2fda6ab44",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, duplicate-seq row: seq equals the last seen seq from this sender (12) with a fresh nonce — replayed_request before any other check (§2 RC-7).",
+    "expected_reject": "replayed_request",
+    "name": "duplicate-seq",
+    "signature": "8+YbUK2HVc83dHcPpxG5KY9onkdiWiq1bABsRH3yM0F/HGZIGeazyNnna+sHKf5CSaZsVIObWIzBxHfu7NLlCw==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000002",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 12,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "8+YbUK2HVc83dHcPpxG5KY9onkdiWiq1bABsRH3yM0F/HGZIGeazyNnna+sHKf5CSaZsVIObWIzBxHfu7NLlCw==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000003\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":11,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "7b25fd9cca4d6ee1a678fbda4b21d86aa5f2010893ef9dd591c084f265a8c17b",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, decreased-seq row: a fresh but decreased seq (11 < last seen 12) — replayed_request (per-(session, sender) strict monotonicity, RC-7).",
+    "expected_reject": "replayed_request",
+    "name": "non-monotone-seq",
+    "signature": "AUBmcNj+sInbX3LOXGaCWh6EDJ58w80OCs2wnyt7YiTwwfSVlC5d64Kh6tahkCKFm74ggv0EgDuyOj/tyCw7BA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000003",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 11,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "AUBmcNj+sInbX3LOXGaCWh6EDJ58w80OCs2wnyt7YiTwwfSVlC5d64Kh6tahkCKFm74ggv0EgDuyOj/tyCw7BA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":1000,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000004\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "be78f047e99f360b0e173c457f9c9426199e1b94e21040aaef1af6bc2f00d56d",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "budget_ledger": "fresh (0 tokens committed; round 1 was admitted but abandoned before commit, RC-5(c)) — stage 11 passes so stage 12 decides",
+      "committed_output_tokens": 0,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "deadline_expires_at_unix_ms": 1791763141000,
+      "deadline_ms_effective": 1000,
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "request_arrival": "2026-10-11T23:59:00Z",
+      "request_arrival_unix_ms": 1791763140000,
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, deadline-past-at-admission row: arrival 2026-10-11T23:59:00Z + deadline_ms 1000 (the DEADLINE_CLAMP_MIN_MS floor) = 23:59:01Z, one minute before the verify_at admission clock — deadline_exceeded at admission (stage 12; re-checked again before dispatch per A-2). The context's budget ledger is FRESH (0 tokens committed; the round-1 request was admitted but abandoned before commit, RC-5(c)), so the earlier budget stage passes and the deadline stage decides.",
+    "expected_reject": "deadline_exceeded",
+    "name": "deadline-past",
+    "signature": "ItyeJu2MF0S3bAgpYW3SkeluNzZtt8guWvFNyG0EFXupTs0gbuX9Bsd27LcKYzgq/TW+o4JZaMxSVLuk425XDA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 1000,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000004",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "ItyeJu2MF0S3bAgpYW3SkeluNzZtt8guWvFNyG0EFXupTs0gbuX9Bsd27LcKYzgq/TW+o4JZaMxSVLuk425XDA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000005\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-unknown-0009\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "cad13ed9e340bda5a93ef117cdee75d9f562b3a07b2f46f5ee27754059f803ad",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32,
+      "wire_session_id": "sess-vd-unknown-0009"
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, session-binding row: session_id is unknown to (differs from) the stream's admitted session — bad_frame. The wire is schema-valid and signature-valid (the reject is a binding failure).",
+    "expected_reject": "bad_frame",
+    "name": "unknown-session",
+    "signature": "EhHJl0fsOETdT+rviHzXbyLz1NRwXHzNOxLc5j6wkJSKMm746RNWbsSyTj2hL7ubPbVqb1BO6glAgpY3TCvmAQ==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000005",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-unknown-0009",
+      "signature": "EhHJl0fsOETdT+rviHzXbyLz1NRwXHzNOxLc5j6wkJSKMm746RNWbsSyTj2hL7ubPbVqb1BO6glAgpY3TCvmAQ==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000006\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "fafec90f1a3399fe04ab1da1679d657499144f6e7ae5f906af48dc2005f18203",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "torn_down",
+      "teardown_reason": "profile_mismatch",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, torn-down row: the session was torn down after a profile_mismatch — cancelled_by_peer and the stream is closed.",
+    "expected_reject": "cancelled_by_peer",
+    "name": "torn-down-session",
+    "signature": "a3zcRgSk+9fwGz/7SeBkAGh3VX2fFXX/3IaI3gnhyCML6KrRBv75I1/6UiAKw2DV7Txy9AHVx/A/ae9qK2ocBg==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000006",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "a3zcRgSk+9fwGz/7SeBkAGh3VX2fFXX/3IaI3gnhyCML6KrRBv75I1/6UiAKw2DV7Txy9AHVx/A/ae9qK2ocBg==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000007\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "0a0b7d34b0a75af5185bc608f08863b5756aba794dfc7105ec8cd96a206bc595",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-11T23:00:00Z",
+      "lease_expires_at_unix_ms": 1791759600000,
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, lease row: the ADR-026 serving lease expired at 2026-10-11T23:00:00Z, an hour before the verify_at admission clock — expired_token.",
+    "expected_reject": "expired_token",
+    "name": "lease-expired",
+    "signature": "bMYRqlJ1lZ76g80yHZs0q35JoaX/Ll+MlGcNd6DD8uNUAm7+D5QwHGHntFkhcLglMyiWTvepnsIeaPvIVwGIAg==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000007",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "bMYRqlJ1lZ76g80yHZs0q35JoaX/Ll+MlGcNd6DD8uNUAm7+D5QwHGHntFkhcLglMyiWTvepnsIeaPvIVwGIAg==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000008\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[700,701,702,703,704,705,706,707,708]}",
+    "canonical_json_sha256": "fcdad6d3f75c0043222f928aac9da25979433745e5f1110dc307a868aba11453",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "batch_window_max": 8,
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "effective_cap": 8,
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "engine_passes_before_reject": 0,
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32,
+      "window_len": 9
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, batch-bound row: len(window_tokens) = 9 > min(WINDOW_CAP = 32, batch_window_max = 8) = 8 — payload_too_large BEFORE any engine work (RC-8); zero engine passes.",
+    "expected_reject": "payload_too_large",
+    "name": "window-over-batch-window-max",
+    "signature": "uQSxq23gQCcO9VHhOH9nIwa9BLlf2IsuQp65LBo1qqPUJBgqZG7LTU7uwK/OJrK3K+0oZWQu6yCW4cBu/kjfCg==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000008",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "uQSxq23gQCcO9VHhOH9nIwa9BLlf2IsuQp65LBo1qqPUJBgqZG7LTU7uwK/OJrK3K+0oZWQu6yCW4cBu/kjfCg==",
+      "window_tokens": [
+        700,
+        701,
+        702,
+        703,
+        704,
+        705,
+        706,
+        707,
+        708
+      ]
+    }
+  },
+  {
+    "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"bb00000000000009\",\"parent_prefix_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"proposer_id\":\"12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz\",\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":13,\"session_id\":\"sess-vd-malformed-0001\",\"window_tokens\":[701,702,703,704]}",
+    "canonical_json_sha256": "5e677cc8244e140f34bee6b879d4aa56c7658c0ce6faf79a80c95bf44512c00b",
+    "context": {
+      "admission_clock": "2026-10-12T00:00:00Z",
+      "admission_clock_unix_ms": 1791763200000,
+      "admitted_session_id": "sess-vd-malformed-0001",
+      "budget": {
+        "max_endpoint_seconds": 120,
+        "max_endpoints": 1,
+        "max_output_tokens": 16
+      },
+      "committed_output_tokens": 16,
+      "committed_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "consumed_nonces": [
+        "5a6b7c8d9e0f1c3d"
+      ],
+      "engine": {
+        "backend": "cpu",
+        "batch_verify": true,
+        "batch_window_max": 8
+      },
+      "last_handled_round": 1,
+      "last_seq_from_coordinator": 12,
+      "lease_expires_at": "2026-10-12T00:30:00Z",
+      "pinned_profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "session_state": "open",
+      "window_cap": 32
+    },
+    "coordinator_installation_id": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+    "coordinator_peer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+    "coordinator_public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "coordinator_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "description": "ADR-032 §2 admission table, budget row + §8 RC-5(e): cumulative committed output tokens (16) already equal budget.max_output_tokens (16) — this VerifyDrafts would exceed the session budget; overloaded (invariant I8).",
+    "expected_reject": "overloaded",
+    "name": "budget-exhausted",
+    "signature": "rpNIlkpenqCrGyP355KsazMykl6mezIY4VI7n2iAaRjzc7U8w2qvJZ0pN8am6eDTi+hiPcCAveHeqLAaHSDWBA==",
+    "verifier_installation_id": "2Hk79b5B6ZtNHtWKHkVzgrByaAebfLP3xRkBcCsvpGH3",
+    "verifier_peer_id": "12D3KooWLdJAwPtyQ5RFnr9wGXsQzpf3P2SeqFbYkqbfVehLu4Ns",
+    "verifier_public_key_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "verifier_seed_hex": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verify_at": "2026-10-12T00:00:00Z",
+    "wire": {
+      "deadline_ms": 2500,
+      "generation_params_hash": "3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773",
+      "nonce": "bb00000000000009",
+      "parent_prefix_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "msp1:abababababababababababababababababababababababababababababababab",
+      "proposer_id": "12D3KooWPqT2nMDSiXUSx5D7fasaxhxKigVhcqfkKqrLghCq9jxz",
+      "protocol_version": "msp-cooperative-v1",
+      "round": 2,
+      "sender": "28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE",
+      "seq": 13,
+      "session_id": "sess-vd-malformed-0001",
+      "signature": "rpNIlkpenqCrGyP355KsazMykl6mezIY4VI7n2iAaRjzc7U8w2qvJZ0pN8am6eDTi+hiPcCAveHeqLAaHSDWBA==",
+      "window_tokens": [
+        701,
+        702,
+        703,
+        704
+      ]
+    }
+  }
+]

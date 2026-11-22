@@ -9,6 +9,7 @@
 //! Windows Credential Manager (`agent-api-key`).
 
 pub mod apps;
+pub mod audit;
 pub mod schedule;
 pub mod startup;
 pub mod tools;
@@ -113,6 +114,11 @@ pub enum AssistantInput {
     PeerAgent {
         peer: String,
         body: String,
+        /// ADR-013 P3 slice 3: fleet call correlation id from the sealed
+        /// inbox payload (None for in-session arrivals and ordinary agent
+        /// chat). Threaded into the reply so the calling machine's fleet
+        /// can match the answer to its call by history scan.
+        fleet_call_id: Option<String>,
     },
     /// ADR-012 release B: a scheduled task fired — same authority as a
     /// user turn, and the final answer is reported to every paired
@@ -212,7 +218,9 @@ impl AssistantState {
     /// Deliver an incoming peer-agent instruction as a turn. Bounded: a
     /// busy assistant skips it (the text is still in the chat log), and
     /// the rolling wake budget below caps machine-to-machine chatter.
-    pub fn deliver_peer_agent(&self, peer: &str, body: &str) {
+    /// `fleet_call_id` (slice 3) rides from the sealed inbox line into
+    /// the turn so the final reply carries it back to the caller.
+    pub fn deliver_peer_agent(&self, peer: &str, body: &str, fleet_call_id: Option<String>) {
         if *self.busy.lock().expect("assistant busy") {
             return;
         }
@@ -238,6 +246,7 @@ impl AssistantState {
         let _ = self.deliver(AssistantInput::PeerAgent {
             peer: peer.to_owned(),
             body: body.to_owned(),
+            fleet_call_id,
         });
     }
 
@@ -354,17 +363,55 @@ impl ChatTurn {
     }
 }
 
+/// The turn's authority origin (security review FIX 1). PeerAgent wakes
+/// are Remote — a paired machine's assistant instructed this one, so the
+/// turn may act on THIS machine but never propagate instructions or
+/// persist recurring tasks. User and Scheduled turns are Local: a
+/// scheduled task was CREATED by the local user (trusted intent), so
+/// firing it keeps full powers — the guard stops a REMOTE turn from
+/// creating one, not the local user's own task from running.
+fn turn_origin(input: &AssistantInput) -> tools::TurnOrigin {
+    match input {
+        AssistantInput::PeerAgent { .. } => tools::TurnOrigin::Remote,
+        AssistantInput::User(_) | AssistantInput::Scheduled { .. } => tools::TurnOrigin::Local,
+    }
+}
+
 fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
     // Turn log: past user/assistant/tool traffic (bounded), replayed each
     // request under a FRESH system prompt (live context per turn).
     let mut log: Vec<ChatTurn> = Vec::new();
     let mut last_shot: Option<(u32, u32)> = None;
     while let Ok(input) = rx.recv() {
+        // FIX 1: derived BEFORE the input is consumed below; rides into
+        // run_turn → the advertised tool surface and execute()'s boundary.
+        let origin = turn_origin(&input);
         // Peer-agent instructions arrive as machine-chat turns and are
         // reported in the panel so their execution is always visible.
-        let (user_text, reply_to, scheduled) = match input {
-            AssistantInput::User(text) => (text, None, None),
-            AssistantInput::PeerAgent { peer, body } => {
+        // The fourth element is the fleet correlation id (slice 3): the
+        // reply leg seals it back to the calling machine's fleet scan.
+        let (user_text, reply_to, scheduled, fleet_call_id) = match input {
+            AssistantInput::User(text) => (text, None, None, None),
+            AssistantInput::PeerAgent {
+                peer,
+                body,
+                fleet_call_id,
+            } => {
+                // ADR-013 P3 audit rail: this turn runs at a paired
+                // machine's assistant's instruction — one local record.
+                // Fires for EVERY PeerAgent wake, in-session or inbox
+                // (slice 3 fleet wakes ride the same audited path). The
+                // instruction BODY is user content and never enters
+                // the log (invariant 6): fixed action label, actor = the
+                // peer's device id. Recorded before the turn so a crash
+                // mid-turn still leaves the trail; write failures are
+                // swallowed inside the rail (non-fatal).
+                audit::AuditLog::shared(&app).record(audit::AuditEntry::new(
+                    &format!("peer-agent:{peer}"),
+                    "remote-wake",
+                    "remote-agent-session",
+                    "ok",
+                ));
                 let text = format!(
                     "[INSTRUCTION FROM PAIRED MACHINE {peer} — sent by its user or its assistant] \
                      {body}\n\
@@ -382,7 +429,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                         content: format!("from {peer}'s assistant: {body}"),
                     },
                 );
-                (text, Some(peer), None)
+                (text, Some(peer), None, fleet_call_id)
             }
             AssistantInput::Scheduled { name, body } => {
                 let text = format!(
@@ -401,7 +448,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                         content: format!("scheduled {name}: {body}"),
                     },
                 );
-                (text, None, Some(name))
+                (text, None, Some(name), None)
             }
         };
         if api_key(&app).is_none() {
@@ -426,7 +473,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
         // (the worker thread is the only consumer of this channel —
         // review blocking finding 1's blast radius, closed generally).
         let reply = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_turn(&app, &mut log, &mut last_shot)
+            run_turn(&app, &mut log, &mut last_shot, origin)
         }))
         .unwrap_or_else(|panic| {
             let reason = panic
@@ -464,7 +511,8 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 // model may skip (the 0.11.0 field report: the reply
                 // rendered on the host only).
                 if let Some(peer) = reply_to
-                    && let Err(err) = send_agent_reply(&app, &peer, &final_text)
+                    && let Err(err) =
+                        send_agent_reply(&app, &peer, &final_text, fleet_call_id.as_deref())
                 {
                     eprintln!("[assistant] reply to {peer} failed: {err}");
                 }
@@ -587,7 +635,20 @@ pub fn spawn_scheduler(app: AppHandle) {
 /// WITH that machine, otherwise sealed through the signaling inbox (it
 /// lands there as a plain message — the inbox envelope carries no agent
 /// bit, and a delivered plain reply beats a lost one).
-fn send_agent_reply(app: &AppHandle, peer: &str, text: &str) -> Result<(), String> {
+///
+/// ADR-013 P3 slice 3: a fleet-correlated reply (`fleet_call_id` Some)
+/// ALWAYS rides the sealed inbox as a v2 agent payload carrying the id —
+/// the live-session chat wire has no fleet id field, so a session reply
+/// would lose the correlation the caller's fleet scan needs. The caller
+/// collects it by history scan; its wake gate displays it without acting
+/// (the fleet ask is the last agent-box line, and the id matches its own
+/// sent call).
+fn send_agent_reply(
+    app: &AppHandle,
+    peer: &str,
+    text: &str,
+    fleet_call_id: Option<&str>,
+) -> Result<(), String> {
     let code = peer.trim().to_lowercase();
     if code.is_empty() {
         return Err("empty peer code".to_owned());
@@ -599,6 +660,18 @@ fn send_agent_reply(app: &AppHandle, peer: &str, text: &str) -> Result<(), Strin
         (s.signaling_base_url, s.device_token, s.device_id)
     };
     crate::chat::record_outgoing(app, &code, "agent", text);
+    if let Some(id) = fleet_call_id {
+        return crate::chat::inbox_send_agent(
+            app,
+            &base_url,
+            &token,
+            &me,
+            &code,
+            text,
+            true,
+            Some(id),
+        );
+    }
     let status = services
         .engine
         .lock()
@@ -625,11 +698,14 @@ fn send_agent_reply(app: &AppHandle, peer: &str, text: &str) -> Result<(), Strin
 }
 
 /// One full agent turn: fresh system prompt + history → model → tools →
-/// final answer. Returns the final assistant text.
+/// final answer. Returns the final assistant text. `origin` (FIX 1) bounds
+/// the tool surface: a Remote turn is neither advertised nor allowed to
+/// execute fleet_run / schedule.
 fn run_turn(
     app: &AppHandle,
     log: &mut Vec<ChatTurn>,
     last_shot: &mut Option<(u32, u32)>,
+    origin: tools::TurnOrigin,
 ) -> Result<String, String> {
     let (base_url, model, key) = {
         let services = app.state::<crate::commands::AppServices>();
@@ -660,7 +736,7 @@ fn run_turn(
         let body = json!({
             "model": model,
             "messages": messages,
-            "tools": tools::tool_specs(),
+            "tools": tools::tool_specs_for(origin),
             "max_tokens": 4096,
         });
         let agent = node_runtime::http::https_agent(
@@ -733,7 +809,17 @@ fn run_turn(
                 .and_then(|v| v.as_str())
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or(json!({}));
-            let output = tools::execute(app, &name, &args, last_shot);
+            let output = tools::execute(app, &name, &args, last_shot, origin);
+            // ADR-013 P3 audit rail: every executed tool leaves a local
+            // who/what/when/result record. Tool NAME only — input
+            // arguments never enter the log (invariant 6); a write
+            // failure is swallowed inside the rail (non-fatal).
+            audit::AuditLog::shared(app).record(audit::AuditEntry::new(
+                "local-assistant",
+                "tool",
+                &name,
+                audit::outcome_from_tool_text(&output.text),
+            ));
             emit(
                 app,
                 AssistantEvent::ToolCall {
@@ -880,5 +966,79 @@ mod tests {
         .to_json();
         assert_eq!(tool["tool_call_id"], "call-1");
         assert_eq!(tool["name"], "status");
+    }
+
+    #[test]
+    fn peer_agent_input_carries_the_fleet_id() {
+        // Slice 3 reply threading: the inbox wake's correlation id rides
+        // the input enum into the turn (the reply leg seals it back to
+        // the calling machine's fleet scan).
+        let input = AssistantInput::PeerAgent {
+            peer: "abcdef0123456789".to_owned(),
+            body: "free some disk space".to_owned(),
+            fleet_call_id: Some("fleet-42".to_owned()),
+        };
+        match input {
+            AssistantInput::PeerAgent {
+                peer,
+                body,
+                fleet_call_id,
+            } => {
+                assert_eq!(peer, "abcdef0123456789");
+                assert_eq!(body, "free some disk space");
+                assert_eq!(fleet_call_id.as_deref(), Some("fleet-42"));
+            }
+            _ => panic!("PeerAgent expected"),
+        }
+        // In-session arrivals and ordinary agent chat carry no id.
+        let plain = AssistantInput::PeerAgent {
+            peer: "abcdef0123456789".to_owned(),
+            body: "hi".to_owned(),
+            fleet_call_id: None,
+        };
+        assert!(matches!(
+            plain,
+            AssistantInput::PeerAgent {
+                fleet_call_id: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn turn_origin_maps_peer_agent_to_remote_only() {
+        // Security review FIX 1: the security-critical mapping — a
+        // remotely-woken turn is Remote (no propagation, no persistence);
+        // the human's turn and the human-created scheduled task are Local
+        // (full powers). A Scheduled turn must NEVER be Remote: the task
+        // is the local user's trusted intent.
+        assert_eq!(
+            turn_origin(&AssistantInput::User("hi".into())),
+            tools::TurnOrigin::Local
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::PeerAgent {
+                peer: "abcdef0123456789".into(),
+                body: "free some disk space".into(),
+                fleet_call_id: Some("fleet-42".into()),
+            }),
+            tools::TurnOrigin::Remote
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::PeerAgent {
+                peer: "abcdef0123456789".into(),
+                body: "hi".into(),
+                fleet_call_id: None,
+            }),
+            tools::TurnOrigin::Remote,
+            "in-session agent wakes are Remote too"
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::Scheduled {
+                name: "nightly-clean".into(),
+                body: "clean temp files".into(),
+            }),
+            tools::TurnOrigin::Local
+        );
     }
 }

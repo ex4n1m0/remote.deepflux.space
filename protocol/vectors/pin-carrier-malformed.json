@@ -1,0 +1,74 @@
+{
+  "cases": [
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"extra_field\":1,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "0ef276e20bc961cdeff59efb07b90a9e52c04a18e35304e0a255fb24d8e2d74b",
+      "description": "unknown field (strict schema: deny_unknown_fields)",
+      "expected_reject": "bad_frame"
+    },
+    {
+      "canonical_json": "{\"pin_carrier\":{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}}",
+      "canonical_json_sha256": "3cd84951f024ae72e24b905164165fcc52878c7c84f8786544dd167eeb118064",
+      "description": "envelope tag (not a bare object)",
+      "expected_reject": "bad_frame"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "e19fc5d2299ae1b8947d2a1df72749dae7cf912da94989eefb7aef69b94dfbbd",
+      "description": "non-bare-hex commitment (uppercase hex)",
+      "expected_reject": "commitment_form"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[1,\"two\",3],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "1d71223bd0423650451b70154b8eb93c0cea576c33829530ad2b98e4af496aa5",
+      "description": "non-u32 token id",
+      "expected_reject": "bad_frame"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "41faf4f199556ff5eff0be34b776877ba92682d9bbe23566192309888564171e",
+      "description": "empty prompt_tokens",
+      "expected_reject": "empty_prompt_tokens"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v0\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "96c0480e0504b092a8560d16bd5ad5d067c255790411906454af8dbd520afda7",
+      "description": "wrong protocol_version",
+      "expected_reject": "protocol_version"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":2,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "a26e0c163d4c169babf7b7b0c67e3d08b776e3ae9bf2ffa65df3dd90d3ce4d8d",
+      "description": "round is not the session-open marker 0",
+      "expected_reject": "round_not_session_open"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":0,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "fa9cf9512fb555ddf5fe7af87b39e526258d1f6051b8038ed2daad4165c65b5f",
+      "description": "seq does not establish a baseline (0)",
+      "expected_reject": "seq_baseline"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"28JPBPPVShRxA1QBU5WBBRCatCdFzUvcrMAqWsEVdmyE\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVAzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "99e6babe0342624e43952930b1860d08c6ad35743ab990dbe6d9e5ebb8305e3f",
+      "description": "corrupted signature",
+      "expected_reject": "bad_frame"
+    },
+    {
+      "canonical_json": "{\"deadline_ms\":2500,\"generation_params_hash\":\"3d7c271e9dfc5598a4c6ac2b1867f04017ef18ac48515bb4a0d5e130ca2ff773\",\"nonce\":\"cc0000000000000a\",\"pin_commitment\":\"62c6bd8d2b9cb603854e33b9e429246c45aef5c22b6a180de9f6abc3a883ae15\",\"profile_id\":\"msp1:abababababababababababababababababababababababababababababababab\",\"prompt_tokens\":[151644,11,22,33,44,151645],\"protocol_version\":\"msp-cooperative-v1\",\"round\":0,\"sender\":\"someone-else\",\"seq\":1,\"session_id\":\"sess-pin-0001\",\"signature\":\"mnDPu5RMsVHzwmlyBmCME05Dn8wm1MUzkunt5BKkNsZu2Z4fNRieBBQiYJUHqMb92gwmGIRSMOdttkIvCCEuCQ==\"}",
+      "canonical_json_sha256": "11bc5d95e0675517fe54dee309b1e72b540f9ac29ffad8b02c5aa0b42a14445f",
+      "description": "sender is not the signing key's installation id",
+      "expected_reject": "bad_frame"
+    },
+    {
+      "description": "serving-side carriage setting OFF (not a wire mutation: the admission path outcome — no roster/wire field carries carriage posture)",
+      "expected_reject": "content_carriage_refused"
+    },
+    {
+      "description": "prefill infeasible: conversation exceeds the peer's context window or the ADR-035 governor ceiling (admission-path outcome)",
+      "expected_reject": "budget_infeasible"
+    }
+  ],
+  "description": "ADR-036 pin carrier malformed/admission cases: structural mutations (each byte-pinned canonical form + the expected reject/validate label) plus the two admission-path outcomes that are not wire mutations (carriage-off, prefill-infeasible).",
+  "name": "pin-carrier-malformed"
+}

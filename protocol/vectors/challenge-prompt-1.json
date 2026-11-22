@@ -1,0 +1,24 @@
+{
+  "name": "challenge-prompt-1",
+  "purpose": "D16 (owner gate 2026-10-09 / ADR-028 §7): byte-pins the nonce-bound hosting-challenge prompt construction that rides the EXISTING challengePrompt wire field of POST /peers/challenge/start (msp-v1 §3.3). No wire schema changed; the frozen ChallengeCompleteSchema body is untouched. Consumed by apps/tracker (lib/challenge.ts, tests/crypto-vectors.test.ts) and by crates/modelswarm-tracker-api (challenge prompt build/parse).",
+  "format": {
+    "base": "ModelSwarm readiness challenge <challengeId>",
+    "with_pinned_canary": "ModelSwarm readiness challenge <challengeId>; greedy-canary sha256:<64 lowercase hex>",
+    "challenge_id_shape": "32 lowercase hex chars (128-bit id minted per lease+profile at challenge/start)",
+    "canary_digest_shape": "sha256:<64 lowercase hex>; SHA-256 over the greedy canary token stream computed offline by the resolver pipeline under the pinned runtime (E0 determinism). HASH-ONLY: token streams never travel to or through the hub (ADR-001 content-blindness).",
+    "nonce_binding": "The challengeId inside the prompt binds each served prompt to its challenge instance: a solved prompt/timing pair cannot be precomputed against a fixed public constant or replayed across challenges/installations.",
+    "spot_verification": "Digest-based spot-verification by other peers is deferred to the reputation chassis; its sampling rate must be sized from measured detection math (Sarmenta: P(detect within n challenges) = 1-(1-s)^n against a cheater fraction) — TBD-numeric until the E-A detection curves are published. Never invented."
+  },
+  "cases": [
+    {
+      "challenge_id": "0123456789abcdef0123456789abcdef",
+      "canary_digest": null,
+      "expected_prompt": "ModelSwarm readiness challenge 0123456789abcdef0123456789abcdef"
+    },
+    {
+      "challenge_id": "fedcba9876543210fedcba9876543210",
+      "canary_digest": "sha256:e019b806fb6e2d9503dd6153c71abd5379ca51cefda91cfd82b4f7c1f9b2f194",
+      "expected_prompt": "ModelSwarm readiness challenge fedcba9876543210fedcba9876543210; greedy-canary sha256:e019b806fb6e2d9503dd6153c71abd5379ca51cefda91cfd82b4f7c1f9b2f194"
+    }
+  ]
+}

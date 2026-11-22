@@ -1,0 +1,389 @@
+{
+  "schema": "advisory-egress/1",
+  "frozen_by": "ADR-033 revision 2 (2026-10-12), created by the first advisory implementation session under that revision's authority (ADR-033 §9.4); changes only by ADR-033 amendment. This initial content is the DIGEST-PLANE field set, EXTENDED by the ADR-037 §4.2 assistant-leg edit (2026-10-14, one edit per the protocol review's assumption 3): the assistant context-block section, the plane enum, the assistant.turn.* event names (plane_own), the advisory_gap values rate_limited/request_oversized (14 values, §4.3), and the assistant context vocabularies (family_state, family_off_reason, family_engage_label, governor_verdict, governor_gap, family_probe_verdict, hosting_listener_state, engine_backend, capacity_class, os_platform, picker_fit). The peer_pattern_note/catalog_presentation_hint suggestion types land with ADR-037 §7 step 4 (the management-additions leg), not this one.",
+  "contract": {
+    "one_gate": "Every field leaving the process for the advisory endpoint passes this value-typed allowlist (the content gate), then the shipped modelswarm-telemetry Redactor as a secondary scrub net. A field failing the allowlist is dropped and counted, never sent.",
+    "value_types": {
+      "integer": "64-bit signed integer, JSON number without fraction",
+      "boolean": "JSON true/false",
+      "timestamp_utc": "ISO-8601 UTC timestamp string (RFC 3339, Z)",
+      "enum": "string VALUE-matched against a frozen vocabulary named in this artifact",
+      "peer_ref_16hex": "exactly 16 lowercase hex chars: the first 16 hex of SHA-256 over the full base58btc PeerId string (ADR-033 RC-1; the raw base58 PeerId is never emitted)",
+      "profile_ref_16hex": "exactly 16 lowercase hex chars: the 16 hex following the msp1: prefix of a ModelProfileId"
+    },
+    "zero_surviving_fields": "a request with zero surviving fields is not sent (gap empty_after_redaction)",
+    "choke_point": "exactly one function constructs the request body; before CALL the final serialized body is re-parsed, every value must re-match this allowlist, and the bytes must pass scrub_content unchanged — any failure is gap empty_after_redaction and nothing is sent (ADR-033 RC-3)",
+    "history": "2026-10-15 (owner directive, verbatim: \"how about we remove this deepseek key completely, and make the helper use the hosted model when hosted\"): the digest-plane half of the gate, the feeds_digest classifications, the advisory.cycle.* emit-site rows, and the reduction_rules section are DELETED with the provider surface. The assistant context-block gate is the whole gate; the advisory_gap vocabulary is the 12-value post-collapse set (no_key, interval, quota removed as unemittable; not_hosting added as the static-floor reason)."
+  },
+  "vocabularies": {
+    "msp_v1_section_6_5_error_registry": {
+      "copied_from": "protocol/msp-v1.md §6.5 as amended by ADR-028 §5 (COPIED, not referenced — drift in the source document never changes this vocabulary, and vice versa)",
+      "values": [
+        "handshake_failed",
+        "incompatible_protocol",
+        "profile_mismatch",
+        "invalid_token",
+        "expired_token",
+        "revoked_token",
+        "replayed_request",
+        "overloaded",
+        "deadline_exceeded",
+        "payload_too_large",
+        "runtime_error",
+        "cancelled_by_peer",
+        "interrupted",
+        "invalid_lease",
+        "bad_frame",
+        "executor_error"
+      ]
+    },
+    "finish_reason": {
+      "copied_from": "protocol/msp-v1.md §6.3 (finishReason)",
+      "values": [
+        "stop",
+        "length",
+        "cancelled",
+        "error"
+      ]
+    },
+    "served_by": {
+      "copied_from": "the shipped chat reply provenance labels (desktop send_chat/try_swarm_chat; ADR-032 §7 light-up)",
+      "values": [
+        "local",
+        "swarm",
+        "failed"
+      ]
+    },
+    "divergence_verdict": {
+      "copied_from": "the cooperative-namespace audit verdict enum (AuditVerdict, msp-cooperative-v1 family)",
+      "values": [
+        "match",
+        "divergence"
+      ]
+    },
+    "cancel_round_reason": {
+      "copied_from": "CancelRound reasons (ADR-032 §2 frozen strings)",
+      "values": [
+        "parent_mismatch",
+        "round_mismatch",
+        "commit_mismatch"
+      ]
+    },
+    "advisory_gap": {
+      "copied_from": "ADR-033 §6 (12 digest-plane values) as extended by ADR-037 §4.3 (rate_limited = the assistant hourly burst bound; request_oversized = the assistant body over cap even at zero history) — 14 values; a further value needs an ADR-037 amendment",
+      "values": [
+        "disabled",
+        "not_hosting",
+        "no_config",
+        "cap_reached",
+        "empty_after_redaction",
+        "timeout",
+        "http_error",
+        "response_oversized",
+        "schema",
+        "late",
+        "rate_limited",
+        "request_oversized"
+      ]
+    },
+    "suggestion_type": {
+      "copied_from": "ADR-033 §2 (four digest-plane classes; ADR-037 §3.3 adds peer_pattern_note and catalog_presentation_hint with the assistant leg)",
+      "values": [
+        "triage_summary",
+        "tuning_hint",
+        "catalog_note",
+        "digest"
+      ]
+    },
+    "confidence": {
+      "copied_from": "ADR-033 §4 suggestion schema",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "serving_session_ended_code": {
+      "rule": "match the prefix before the first ':' against this frozen code set; no match => drop and count",
+      "values": [
+        "recv",
+        "invalid_lease",
+        "handshake_failed",
+        "incompatible_protocol",
+        "profile_mismatch",
+        "invalid_token",
+        "expired_token",
+        "revoked_token",
+        "replayed_request",
+        "overloaded",
+        "deadline_exceeded",
+        "payload_too_large",
+        "runtime_error",
+        "cancelled_by_peer",
+        "interrupted",
+        "bad_frame",
+        "executor_error"
+      ]
+    },
+    "family_state": {
+      "copied_from": "the desktop FamilyStatus.state label (crates/modelswarm-desktop/src/app.rs, ADR-032 disclosure rule)",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    "family_off_reason": {
+      "copied_from": "the desktop FamilyStatus stable off-reason labels (crates/modelswarm-desktop/src/app.rs:170-204; every value must keep a static-help entry — ADR-037 §3.6)",
+      "values": [
+        "family_prompt_unpinned",
+        "engine_bridge_failed",
+        "engine_bridge_not_compiled",
+        "verifier_identity_unavailable",
+        "pairing_disabled",
+        "listener_bind_failed",
+        "resource_ceiling"
+      ]
+    },
+    "family_engage_label": {
+      "copied_from": "the desktop family_engage_reason ladder plus the elected_fell_back terminal label (crates/modelswarm-desktop/src/app.rs family_engage_reason; pinned by family_engage_reason_ladder_is_stable)",
+      "values": [
+        "capability_unknown",
+        "capability_false",
+        "backend_mismatch",
+        "gate_unmeasured",
+        "gate_no_win",
+        "blocked_content_contract",
+        "gate_misconfigured",
+        "elected_fell_back"
+      ]
+    },
+    "governor_verdict": {
+      "copied_from": "modelswarm-resource DegradeReason labels (crates/modelswarm-resource/src/governor.rs:151-158)",
+      "values": [
+        "ram_ceiling",
+        "vram_ceiling",
+        "ram_unobservable",
+        "vram_unobservable",
+        "vram_total_unknown",
+        "weights_not_positive"
+      ]
+    },
+    "governor_gap": {
+      "copied_from": "modelswarm-resource KnowledgeGap labels (crates/modelswarm-resource/src/governor.rs:217-219)",
+      "values": [
+        "kv_unmodeled"
+      ]
+    },
+    "family_probe_verdict": {
+      "copied_from": "the desktop pairing_verdict labels (crates/modelswarm-desktop/src/app.rs, ADR-034 rule 6b — count-based, no token id can appear)",
+      "values": [
+        "pairing_confirmed",
+        "pin_mismatch"
+      ]
+    },
+    "hosting_listener_state": {
+      "copied_from": "the desktop listener_addr disclosure (bound vs no listener — the honest beta-boundary label)",
+      "values": [
+        "bound",
+        "none"
+      ]
+    },
+    "engine_backend": {
+      "copied_from": "the node's engine backend labels (cpu | vulkan — the dual-engine Windows staging, ADR-024)",
+      "values": [
+        "cpu",
+        "vulkan"
+      ]
+    },
+    "capacity_class": {
+      "copied_from": "the msp-v1 §3.3 capacityClass vocabulary (ADR-012; self-reported labels off the challenge/complete response)",
+      "values": [
+        "cpu",
+        "gpu_entry",
+        "gpu_mid",
+        "gpu_high"
+      ]
+    },
+    "os_platform": {
+      "copied_from": "std::env::consts::OS over the three shipped platforms (Windows NSIS, deb/AppImage, macOS dmg — one release train)",
+      "values": [
+        "windows",
+        "macos",
+        "linux"
+      ]
+    },
+    "picker_fit": {
+      "copied_from": "the desktop Fit labels (fit_and_score, crates/modelswarm-desktop/src/app.rs:1403-1411)",
+      "values": [
+        "gpu_full",
+        "gpu_partial",
+        "ram_only"
+      ]
+    }
+  },
+  "plane_enum": {
+    "note": "which plane a plane-own telemetry row belongs to (ADR-037 §4.2, collapsed by the 2026-10-15 owner directive): only the assistant plane remains; the digest plane died with the provider surface. Plane rows are excluded from any future aggregation by construction (RC-4).",
+    "values": [
+      "assistant"
+    ]
+  },
+  "assistant_context_block": {
+    "note": "ADR-037 §3.5: the assistant-plane typed context block. Every field is value-typed against THIS section; a name not listed here never enters an assistant request, and adding a field is an ADR-037 amendment. There is deliberately NO free-text field type: the user's assistant-channel text is the one disclosed exception and rides the request's turn/history members, never the context block. Chat transcripts, serving frames, and ADR-036 carrier payloads have no field type here and no parse path into the builder (the W3 data wall).",
+    "value_types": {
+      "integer": "64-bit signed integer, JSON number without fraction",
+      "boolean": "JSON true/false",
+      "enum": "string VALUE-matched against the frozen vocabulary named after the colon in the field's type",
+      "display_name_string": "bounded string: max 128 chars, no control chars — the signed catalog/candidate display-name class (ADR-033 RC-11 owner-controlled strings)",
+      "gpu_name_string": "bounded string: max 128 chars, no control chars — drawn from the engine's device-listing text",
+      "version_string": "bounded string: max 32 chars, charset [A-Za-z0-9.+-]",
+      "vocab_count_map": "object whose keys VALUE-match the frozen vocabulary named after the colon, values integers",
+      "picker_row": "object with exactly the picker_row_fields keys, each value-typed per its declared type"
+    },
+    "fields": {
+      "hw.logical_cpus": "integer",
+      "hw.total_ram_mb": "integer",
+      "hw.gpu.name": "gpu_name_string",
+      "hw.gpu.vram_mb": "integer",
+      "picker.rows": "picker_row[]",
+      "family.state": "enum:family_state",
+      "family.off_reason": "enum:family_off_reason",
+      "family.engage_last": "enum:family_engage_label",
+      "family.governor_verdict": "enum:governor_verdict",
+      "family.governor_gap": "enum:governor_gap",
+      "family.probe_verdict": "enum:family_probe_verdict",
+      "hosting.on": "boolean",
+      "hosting.listener": "enum:hosting_listener_state",
+      "serving.backend": "enum:engine_backend",
+      "capacity.class": "enum:capacity_class",
+      "app.version": "version_string",
+      "app.os": "enum:os_platform",
+      "status.error_counts": "vocab_count_map:msp_v1_section_6_5_error_registry",
+      "status.finish_reason_counts": "vocab_count_map:finish_reason",
+      "status.advisory_gap_counts": "vocab_count_map:advisory_gap"
+    },
+    "picker_row_fields": {
+      "display_name": "display_name_string",
+      "quant_method": "display_name_string",
+      "quant_bits": "integer",
+      "download_mb": "integer",
+      "ram_mb_est": "integer",
+      "fit": "enum:picker_fit",
+      "recommended": "boolean",
+      "census_peers": "integer"
+    },
+    "max_picker_rows": 8
+  },
+  "aggregation_event_allowlist": {
+    "note": "RETIRED-EMPTY by the 2026-10-15 owner directive (the provider-key era ended; the digest plane and its typed accumulators are deleted). The section stays so the R-1 tie's classification consistency keeps holding mechanically: no event feeds a digest anymore, and the feeds_digest classification appears nowhere.",
+    "events": []
+  },
+  "plane_telemetry_events": [
+    "assistant.turn.sent",
+    "assistant.turn.gap"
+  ],
+  "emit_site_events": {
+    "note": "EXHAUSTIVE event-name vocabulary over the node/desktop production telemetry emit sites (R-1: the guards completeness tie diffs the source emit-site vocabulary against this section AND the tests/fixtures/advisory-egress/ manifest - a source event name without a row here, or a row here without a source emit site, is a red build). Classification: feeds_digest (also listed in aggregation_event_allowlist.events) | excluded (never feeds a digest at this leg) | plane_own (advisory.*/assistant.* - excluded from aggregation by RC-4). Reclassification or a new row is an ADR-033 amendment. COMPLETING-CONFIRMATION EDIT (2026-10-14, Test and Release, per the protocol review R-1's own rule that 'any name the [mechanical source] scan finds beyond this list is added as excluded in the same confirmation edit'): the scan found 54 emit-site event names beyond the 37-row protocol seed - the desktop catalog/census/roster/enroll/settings/updater/chat-local surfaces and the node engine/executor/measure/runtime/verifydrafts-serve surfaces - all added as excluded (feeds_digest and plane_own rows are unchanged). Completing count: 91 rows. Protocol-seat countersign requested in docs/reviews/review-adr037-assistant-testrelease-2026-10-14.md; after that, this section changes only by ADR-033 amendment.",
+    "events": {
+      "serving.session_ended": "excluded",
+      "serving.clamped": "excluded",
+      "serving.refused": "excluded",
+      "verifydrafts.verifier_divergence": "excluded",
+      "engine.gpu_fallback": "excluded",
+      "serving.stopped": "excluded",
+      "verifydrafts.verify_ms_lie": "excluded",
+      "verifydrafts.budget_refused": "excluded",
+      "net.metrics.store_unavailable": "excluded",
+      "net.metrics.invalid_key": "excluded",
+      "net.metrics.persist_failed": "excluded",
+      "store.opened": "excluded",
+      "tracker.configured": "excluded",
+      "gateway.failed": "excluded",
+      "identity.loaded": "excluded",
+      "identity.created": "excluded",
+      "listener.error": "excluded",
+      "listener.bound": "excluded",
+      "family.pin": "excluded",
+      "family.fallback": "excluded",
+      "family.engine_ready": "excluded",
+      "family.enabled": "excluded",
+      "family.probe": "excluded",
+      "family.engage": "excluded",
+      "chat.cleared": "excluded",
+      "chat.swarm.error": "excluded",
+      "chat.swarm.fallback": "excluded",
+      "chat.swarm.empty": "excluded",
+      "lease.earn": "excluded",
+      "sched.shadow.policy": "excluded",
+      "sched.shadow.decision": "excluded",
+      "sched.shadow.realized": "excluded",
+      "catalog.error": "excluded",
+      "census.error": "excluded",
+      "chat.family_verified.completed": "excluded",
+      "chat.family_verified.draft_failed": "excluded",
+      "chat.family_verified.selfcheck_failed": "excluded",
+      "chat.local.error": "excluded",
+      "chat.swarm": "excluded",
+      "chat.swarm.completed": "excluded",
+      "engine.exited": "excluded",
+      "engine.job_assign_failed": "excluded",
+      "engine.restarting": "excluded",
+      "engine.spawn_failed": "excluded",
+      "engine.started": "excluded",
+      "enroll.approved": "excluded",
+      "enroll.error": "excluded",
+      "enroll.pending": "excluded",
+      "executor.decode_failed": "excluded",
+      "family.probe.pairing": "excluded",
+      "identity.ready": "excluded",
+      "lease.earned": "excluded",
+      "model.request": "excluded",
+      "net.completion": "excluded",
+      "net.failure": "excluded",
+      "net.rtt": "excluded",
+      "node.started": "excluded",
+      "roster.error": "excluded",
+      "runtime.mock_active": "excluded",
+      "runtime.selected": "excluded",
+      "runtime.unavailable": "excluded",
+      "settings.content_carriage": "excluded",
+      "settings.pairing": "excluded",
+      "settings.preset": "excluded",
+      "spec.engage": "excluded",
+      "chat.composed.draft_failed": "excluded",
+      "chat.composed.verify_failed": "excluded",
+      "serving.accepted_after_wait": "excluded",
+      "serving.first_frame_timeout": "excluded",
+      "tracker.mock_mode": "excluded",
+      "updater.before_exit": "excluded",
+      "updater.check": "excluded",
+      "updater.download": "excluded",
+      "updater.install": "excluded",
+      "updater.unavailable": "excluded",
+      "verifydrafts.engine_failed": "excluded",
+      "verifydrafts.family_refused": "excluded",
+      "verifydrafts.ineligible_verifier": "excluded",
+      "verifydrafts.offer_accepted": "excluded",
+      "verifydrafts.offer_rejected": "excluded",
+      "verifydrafts.pin_carrier_admitted": "excluded",
+      "verifydrafts.pin_carrier_refused": "excluded",
+      "verifydrafts.round_admitted": "excluded",
+      "verifydrafts.round_committed": "excluded",
+      "verifydrafts.round_expired": "excluded",
+      "verifydrafts.round_verified": "excluded",
+      "verifydrafts.serve_stopped": "excluded",
+      "verifydrafts.session_ended": "excluded",
+      "verifydrafts.sign_failed": "excluded",
+      "verifydrafts.unexpected_frame": "excluded",
+      "verifydrafts.wire_failure": "excluded",
+      "assistant.turn.sent": "plane_own",
+      "assistant.turn.gap": "plane_own",
+      "serving.completed": "excluded",
+      "chat.receipt": "excluded",
+      "host.autostart": "excluded",
+      "receipt.acked": "excluded",
+      "chat.swarm.cross": "excluded",
+      "chat.crosscheck": "excluded",
+      "host.mixed": "excluded"
+    }
+  }
+}

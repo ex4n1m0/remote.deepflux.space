@@ -276,13 +276,15 @@ impl ControllerSession {
                     let env = self.envelopes.envelope(
                         &host_device_id,
                         Some(&session.session_id),
-                        // `requester_name` (ADR-007) is stamped by the
-                        // composition layer (`stamp_requester_name`) — the
-                        // pure machine has no account knowledge.
+                        // `requester_name` (ADR-007) and `account_proof`
+                        // (ADR-013 P2) are stamped by the composition layer
+                        // (`stamp_requester_name` / `stamp_account_proof`) —
+                        // the pure machine has no account knowledge.
                         SignalingBody::ConnectRequest {
                             capabilities,
                             pairing_proof_hex,
                             requester_name: None,
+                            account_proof: None,
                         },
                         now_ms,
                     );

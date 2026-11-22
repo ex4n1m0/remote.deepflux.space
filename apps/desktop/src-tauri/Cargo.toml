@@ -46,6 +46,21 @@ codec-windows = { path = "../../../crates/codec-windows" }
 render-windows = { path = "../../../crates/render-windows" }
 input-windows = { path = "../../../crates/input-windows" }
 frame-surface = { path = "../../../crates/frame-surface" }
+# ADR-013 swarm enrollment: the Ed25519 installation identity + the MSP1
+# signed-envelope/timestamp helpers (wire-mirrors the tracker).
+modelswarm-identity = { path = "../../../crates/modelswarm-identity" }
+# ADR-013 D4/P3 human chat: the pinned OnlyHumans protocol (v1.2.0) — the
+# word-room net node (net::spawn) the human-chat background service drives.
+# Humans-only surface; no agent tool reads or posts into rooms (slice 7
+# enforces that structurally).
+onlyhumans_core = { path = "../../../crates/onlyhumans-core" }
+# ADR-013 P4 swarm inference: the MSP composition crate (engine sidecar
+# supervisor, gateway wiring, libp2p serving/requester, catalog, artifacts).
+# The real QUIC transport is behind the OFF-by-default `libp2p-backend`
+# feature; the hosting service (P4 S3) composes these modules directly with
+# the app's single SwarmIdentity rather than node's Node::start (which mints
+# its own identity — incompatible with D3). S1 only links it; S3 wires it.
+modelswarm-node = { path = "../../../crates/modelswarm-node", features = ["libp2p-backend"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -85,4 +100,9 @@ aes-gcm = { workspace = true }
 # ADR-008 updater: SHA-256 verification of the staged installer against
 # the published manifest.
 sha2 = { workspace = true }
+# ADR-013 swarm enrollment: the enrollment agent (swarm.rs) pins
+# redirects(0) on the SAME schannel connector node-runtime's https_agent
+# uses — the helper cannot express a redirect policy, and the MSP1
+# Authorization header must never be re-sent cross-host by a 3xx.
+native-tls = { workspace = true }
 

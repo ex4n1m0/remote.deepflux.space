@@ -1,0 +1,30 @@
+[package]
+name = "modelswarm-resource"
+version = "0.1.0"
+edition = "2021"
+description = "M1 hardware profiling + M2 resource governance: live ResourceSampler (2026-10-12) + the 70%-ceiling resource governor (ADR-035, gate D11) with the winjob enforcement seam"
+
+# Like modelswarm-winjob, this crate exists BECAUSE the workspace forbids
+# unsafe: live sampling needs raw Win32 calls (Toolhelp, psapi, PDH), so the
+# FFI is isolated here behind the platform-neutral `SampleSource` trait.
+# Nothing Windows-shaped leaks above that trait (gate D19).
+[lints.rust]
+unsafe_code = "allow"
+
+# Crate lints replace (not merge with) workspace lints, so re-assert the
+# warnings-denied clippy bar the rest of the workspace runs under.
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+modelswarm-winjob = { path = "../modelswarm-winjob" }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Performance",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }

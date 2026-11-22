@@ -3,6 +3,7 @@
 //! surface only; video lives in the native viewer window owned by the
 //! engine's controller pipeline (AGENTS.md invariant 1).
 
+pub mod account_directory;
 pub mod agent;
 pub mod chat;
 pub mod commands;
@@ -11,9 +12,11 @@ pub mod directory;
 pub mod dl;
 pub mod elevate;
 pub mod engine;
+pub mod human_chat;
 pub mod ipc;
 pub mod mcp;
 pub mod store;
+pub mod swarm;
 pub mod updater;
 
 use std::sync::Mutex;
@@ -125,6 +128,11 @@ pub fn run() {
                 assistant: agent::AssistantState::new(),
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
+                swarm: swarm::SwarmService::default(),
+                human_chat: human_chat::HumanChatService::default(),
+                account_directory: std::sync::Arc::new(
+                    account_directory::AccountDirectory::default(),
+                ),
                 update: updater::UpdateEngine::default(),
                 update_manifest: Mutex::new(None),
             });
@@ -166,11 +174,20 @@ pub fn run() {
                 // `--minimized` as well; new entries already carry it.
                 let _ = commands::plugin_autostart(app.handle(), true);
             }
-            // ADR-010: the family build auto-joins the circle from its
-            // embedded key; the directory poller keeps the discovery list
-            // fresh while online.
-            directory::auto_join_embedded(app.handle());
-            directory::spawn_poller(app.handle().clone());
+            // ADR-013 P2: the circle directory is RETIRED as the
+            // discovery source — no embedded-key auto-join, no directory
+            // poller (the account directory rides the swarm heartbeat
+            // thread instead; the signaling server's /api/directory stays
+            // deployed for older clients, and sealed machine-chat +
+            // pairings are untouched).
+            // ADR-013 swarm enrollment: restore a surviving tracker session
+            // (Joined + heartbeat) or surface NeedsRejoin; a no-op when this
+            // machine never joined.
+            swarm::spawn_startup(app.handle().clone());
+            // ADR-013 D4/P3 human chat: start the humans-only E2E room node
+            // thread and restore a persisted room word (a no-op when this
+            // machine never joined a room).
+            human_chat::spawn(app.handle().clone());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -314,6 +331,18 @@ pub fn run() {
             commands::pairing_rename,
             commands::directory_machines,
             commands::directory_refresh,
+            commands::account_directory_machines,
+            swarm::swarm_status,
+            swarm::swarm_join,
+            swarm::swarm_cancel_join,
+            swarm::swarm_leave,
+            swarm::swarm_claim_answer,
+            swarm::swarm_rekey,
+            human_chat::rooms_state,
+            human_chat::rooms_join,
+            human_chat::rooms_send,
+            human_chat::rooms_rotate,
+            human_chat::rooms_leave,
             commands::update_state,
             commands::update_check,
             commands::update_download,

@@ -1125,6 +1125,7 @@ mod tests {
                 capabilities: caps(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
             },
             Some("s1"),
         );

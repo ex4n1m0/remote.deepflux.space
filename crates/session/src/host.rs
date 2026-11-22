@@ -80,8 +80,9 @@ pub enum HostEvent {
     /// A controller sent `connect_request`. Deduplicated by `message_id`.
     /// Carries the controller's advertised capabilities so the consent
     /// prompt can distinguish AI-agent control (ADR-004), the pairing
-    /// proof (ADR-006) forwarded verbatim for app-layer verification, and
-    /// the requester's account display name (ADR-007, advisory).
+    /// proof (ADR-006) forwarded verbatim for app-layer verification, the
+    /// requester's account display name (ADR-007, advisory), and the
+    /// account-scope proof (ADR-013 P2) forwarded verbatim the same way.
     IncomingRequest {
         message_id: MessageId,
         controller_device_id: DeviceId,
@@ -89,6 +90,7 @@ pub enum HostEvent {
         capabilities: Capabilities,
         pairing_proof_hex: Option<String>,
         requester_name: Option<String>,
+        account_proof: Option<protocol::signaling::AccountProof>,
     },
     /// Host user accepted the prompt; carries the one-time secret to hand over.
     ConsentAccepted { secret: SessionSecret },
@@ -244,6 +246,7 @@ impl HostSession {
                     capabilities,
                     pairing_proof_hex,
                     requester_name,
+                    account_proof,
                 } => {
                     let request_message_id = message_id.clone();
                     let ai_session = capabilities.features.has(FeatureFlags::AI_SESSION);
@@ -261,6 +264,7 @@ impl HostSession {
                             pairing_proof_hex,
                             requester_name,
                             message_id: request_message_id,
+                            account_proof,
                         },
                         Action::ScheduleTimer {
                             id: TimerId::HostConsent,
@@ -813,6 +817,7 @@ mod tests {
                 capabilities: caps(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
             },
             HostEvent::ConsentAccepted {
                 secret: SessionSecret("s".to_owned()),
@@ -945,6 +950,7 @@ mod tests {
                     capabilities: caps(),
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
                 10,
             )
@@ -960,6 +966,7 @@ mod tests {
                     capabilities: caps(),
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
                 11,
             )
@@ -980,6 +987,7 @@ mod tests {
                 capabilities: caps(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
             },
             10,
         )
@@ -993,6 +1001,7 @@ mod tests {
                     capabilities: caps(),
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
                 20,
             )
@@ -1033,6 +1042,7 @@ mod tests {
                     capabilities: ai_caps,
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
                 10,
             )
@@ -1056,6 +1066,7 @@ mod tests {
                     capabilities: caps(),
                     pairing_proof_hex: None,
                     requester_name: None,
+                    account_proof: None,
                 },
                 10,
             )
@@ -1089,6 +1100,7 @@ mod tests {
                         capabilities: caps(),
                         pairing_proof_hex: None,
                         requester_name: None,
+                        account_proof: None,
                     },
                     20,
                 )
@@ -1119,6 +1131,7 @@ mod tests {
                 capabilities: caps(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
             },
             10,
         )
@@ -1150,6 +1163,7 @@ mod tests {
                 capabilities: caps(),
                 pairing_proof_hex: None,
                 requester_name: None,
+                account_proof: None,
             },
             10,
         )
