@@ -371,7 +371,13 @@ mod tests {
     #[cfg(windows)]
     fn job_test_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        let guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Test isolation (pin deviation, test-only): the retained job is
+        // process-global, so dead children left by prior tests inflate
+        // close_all_retained_jobs' count (CI flake: 3 or 4 instead of 2).
+        // Drain on every acquisition so each test counts only its own.
+        let _ = super::close_all_retained_jobs();
+        guard
     }
 
     #[test]
