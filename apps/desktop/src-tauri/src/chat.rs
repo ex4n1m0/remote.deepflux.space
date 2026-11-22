@@ -782,6 +782,7 @@ fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
 /// can read it), it just never wakes the assistant. `fleet_call_id`
 /// rides along for slice 3 reply correlation. Returns whether the line
 /// was stored (false = duplicate id).
+#[allow(clippy::too_many_arguments)] // inbox-line fields + the opt-in gate; house style
 pub fn record_incoming_inbox(
     app: &AppHandle,
     peer: &str,
@@ -968,6 +969,7 @@ pub fn inbox_send(
 /// (`allow_remote_agent_instructions`); paired machines only — the seal
 /// is the pairing secret, so an unpaired party cannot forge an agent-bit
 /// arrival that opens.
+#[allow(clippy::too_many_arguments)] // envelope routing fields + agent bit + fleet id; house style
 pub fn inbox_send_agent(
     app: &AppHandle,
     base_url: &str,
