@@ -1,0 +1,29 @@
+[package]
+name = "modelswarm-tracker-api"
+description = "Typed Rust client for the modelswarm.deepflux.space tracker API"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[dependencies]
+modelswarm-identity = { path = "../modelswarm-identity" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "http2", "rustls-tls"] }
+# Owner directive 2026-10-19: outbound DNS rides DoH 1.1.1.1.
+modelswarm-dns = { path = "../modelswarm-dns" }
+ed25519-dalek = "2"
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 P4 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,20 @@
+[package]
+name = "modelswarm-dns"
+description = "MSP outbound DNS: DNS-over-HTTPS via 1.1.1.1 (owner directive 2026-10-19) with an honest system fallback"
+version = "0.2.42"
+edition = "2021"
+license = "Proprietary"
+repository = "modelswarm"
+rust-version = "1.85"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["net", "rt", "macros"] }
+
+# MSP v0.2.42 workspace lints, inlined per crate at the ADR-013 P4 import so
+# Remote's warn-level [workspace.lints] posture is left untouched.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

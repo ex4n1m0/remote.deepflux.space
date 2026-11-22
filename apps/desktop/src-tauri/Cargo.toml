@@ -54,6 +54,13 @@ modelswarm-identity = { path = "../../../crates/modelswarm-identity" }
 # Humans-only surface; no agent tool reads or posts into rooms (slice 7
 # enforces that structurally).
 onlyhumans_core = { path = "../../../crates/onlyhumans-core" }
+# ADR-013 P4 swarm inference: the MSP composition crate (engine sidecar
+# supervisor, gateway wiring, libp2p serving/requester, catalog, artifacts).
+# The real QUIC transport is behind the OFF-by-default `libp2p-backend`
+# feature; the hosting service (P4 S3) composes these modules directly with
+# the app's single SwarmIdentity rather than node's Node::start (which mints
+# its own identity — incompatible with D3). S1 only links it; S3 wires it.
+modelswarm-node = { path = "../../../crates/modelswarm-node", features = ["libp2p-backend"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
