@@ -53,7 +53,7 @@ modelswarm-identity = { path = "../../../crates/modelswarm-identity" }
 # word-room net node (net::spawn) the human-chat background service drives.
 # Humans-only surface; no agent tool reads or posts into rooms (slice 7
 # enforces that structurally).
-onlyhumans-core = { path = "../../../crates/onlyhumans-core" }
+onlyhumans_core = { path = "../../../crates/onlyhumans-core" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
