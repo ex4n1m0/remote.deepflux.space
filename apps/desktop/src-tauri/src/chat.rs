@@ -20,7 +20,9 @@
 //! Invariant 6: chat bodies are user text — never logged; the pairing
 //! secret never appears in logs or events.
 
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
@@ -469,14 +471,21 @@ pub fn pairing_ack(app: &AppHandle, code: &str) {
 /// A re-mint refreshes `created_ms` so the 24 h pending purge measures the
 /// LAST offer, not the first (a controller re-offering daily must not have
 /// its row purged as stale mid-courtship).
-pub fn mint_pairing(app: &AppHandle, code: &str) -> String {
+///
+/// Security review FIX 5: a CSPRNG failure is fatal for secret minting —
+/// an all-zero pairing secret would hand full control of this machine to
+/// anyone who guesses it. Refuse to mint (and store NOTHING) instead; the
+/// caller skips the offer and a later session establishment retries.
+/// Matches engine::ids, which treats CSPRNG failure as fatal.
+pub fn mint_pairing(app: &AppHandle, code: &str) -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    let _ = getrandom::fill(&mut bytes);
+    getrandom::fill(&mut bytes)
+        .map_err(|_| "OS CSPRNG unavailable for pairing secret".to_owned())?;
     let secret_hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     let mut doc = read_pairings(app);
     mint_pairing_in_doc(&mut doc, code, &secret_hex, now_ms());
     write_pairings(app, &doc);
-    secret_hex
+    Ok(secret_hex)
 }
 
 /// Pure core of [`mint_pairing`] (testable without an app handle).
@@ -697,10 +706,25 @@ pub fn history(app: &AppHandle, code: &str) -> Vec<ChatLine> {
         .unwrap_or_default()
 }
 
+/// Serializes the history read-modify-write across the poller, assistant,
+/// and engine threads (security review FIX 2): concurrent appends used to
+/// race read→write and lose lines (a lost update could also evict the
+/// fleet display marker). The lock guards file access only — the
+/// tmp+rename write keeps the file valid JSON even if a holder panics, so
+/// a poisoned lock is recovered, not fatal (house idiom: dl/updater/swarm).
+static HISTORY_LOCK: Mutex<()> = Mutex::new(());
+
 fn append_history(app: &AppHandle, code: &str, line: ChatLine) {
     let code = code.trim().to_lowercase();
     let path = chat_dir(app).join(safe_code(&code));
-    let mut doc = std::fs::read_to_string(&path)
+    append_history_at(&path, line);
+}
+
+/// Path-based core of [`append_history`] (testable without an app handle —
+/// the concurrency test appends through here).
+fn append_history_at(path: &Path, line: ChatLine) {
+    let _guard = HISTORY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| serde_json::from_str::<ChatDoc>(&t).ok())
         .unwrap_or_default();
@@ -713,7 +737,7 @@ fn append_history(app: &AppHandle, code: &str, line: ChatLine) {
     if let Ok(text) = serde_json::to_string(&doc)
         && std::fs::write(&tmp, text).is_ok()
     {
-        let _ = std::fs::rename(&tmp, &path);
+        let _ = std::fs::rename(&tmp, path);
     }
 }
 
@@ -816,10 +840,11 @@ pub fn record_incoming_inbox(
     // opt-in is checked HERE, at the only inbox wake site — a non-opted-in
     // machine stores agent-bit lines but never auto-acts on them.
     //
-    // Slice 3: a reply to OUR fleet call (its sealed id matches a fleet
-    // ask this machine sent) is collected by the fleet's history scan and
-    // must NEVER wake the assistant — even when overlapping fleet calls
-    // have re-armed the positional reply gate below.
+    // Slice 3: a reply to OUR fleet call (its sealed id is registered in
+    // the durable pending registry — FIX 2) is collected by the fleet's
+    // history scan and must NEVER wake the assistant — even when
+    // overlapping fleet calls have re-armed the positional reply gate
+    // below, or the chat history lost/evicted the display marker.
     //
     // Security review F3 (opt-out TOCTOU): the per-drain snapshot can go
     // stale while this drain is in flight — the user may flip the opt-out
@@ -832,7 +857,7 @@ pub fn record_incoming_inbox(
         .lock()
         .map(|store| store.settings().allow_remote_agent_instructions)
         .unwrap_or(false);
-    if !is_reply_to_our_fleet_call(&existing, fleet_call_id.as_deref())
+    if !is_reply_to_our_fleet_call(app, fleet_call_id.as_deref())
         && inbox_should_wake(
             agent_bit,
             inbox_opt_in_confirmed(allow_remote_agent_instructions, allow_live),
@@ -867,20 +892,22 @@ fn inbox_opt_in_confirmed(snapshot: bool, live: bool) -> bool {
     snapshot && live
 }
 
-/// Slice 3 reply correlation: true when the incoming line's fleet id
-/// matches a fleet ask THIS machine sent (a "to-agent" line carrying the
-/// same id). Such an arrival is the answer to our own fleet call — the
-/// fleet collects it by history scan; it must never wake the assistant,
-/// regardless of where it lands in the positional reply gate (several
-/// fleet calls can overlap on one peer). An id we never sent is a fresh
-/// instruction, not a reply.
-fn is_reply_to_our_fleet_call(prior: &[ChatLine], fleet_call_id: Option<&str>) -> bool {
+/// Slice 3 reply correlation (security review FIX 2): true when the
+/// incoming line's fleet id is one of OUR outstanding fleet calls in the
+/// DURABLE pending registry. Such an arrival is the answer to our own
+/// fleet call — the fleet collects it by history scan; it must never wake
+/// the assistant, regardless of where it lands in the positional reply
+/// gate (several fleet calls can overlap on one peer). The registry — not
+/// the 500-line chat history — is the source of truth: a lost history
+/// update or a flood evicting the display marker can no longer re-arm the
+/// wake on our own reply (confused deputy). An id we never registered, or
+/// one whose suppression window expired, is not a reply to an outstanding
+/// call.
+fn is_reply_to_our_fleet_call(app: &AppHandle, fleet_call_id: Option<&str>) -> bool {
     let Some(id) = fleet_call_id else {
         return false;
     };
-    prior
-        .iter()
-        .any(|l| l.sender == "to-agent" && l.fleet_call_id.as_deref() == Some(id))
+    is_fleet_pending(app, id)
 }
 
 /// Outgoing line (this machine's user or agent) → store.
@@ -901,12 +928,19 @@ pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) ->
 /// the sealed reply as the answer to OUR call ([`is_reply_to_our_fleet_call`])
 /// even when several fleet calls overlap on the same peer. Recorded
 /// BEFORE the send so a fast reply can never outrun the marker.
+///
+/// Security review FIX 2: the DURABLE pending registry is the suppression
+/// source of truth — the id is registered there FIRST (before the send
+/// and before the display marker), so a lost history update or the
+/// 500-line cap evicting the marker can never re-arm the wake on our own
+/// reply. The history line stays for display and the fleet's reply scan.
 pub fn record_outgoing_fleet(
     app: &AppHandle,
     peer: &str,
     body: &str,
     fleet_call_id: &str,
 ) -> ChatLine {
+    register_fleet_pending(app, fleet_call_id);
     let line = ChatLine {
         id: now_ms(),
         ts_ms: now_ms(),
@@ -926,6 +960,97 @@ pub(crate) fn now_ms() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Durable pending-fleet registry (security review FIX 2)
+// ---------------------------------------------------------------------------
+
+/// Suppression window for a registered fleet call: the reply collection
+/// window (tools::FLEET_REPLY_TIMEOUT, 90 s — the SAME constant, so the
+/// two can never drift) plus a 60 s margin: a straggler reply arriving
+/// after the fleet gave up must still display without waking us.
+const FLEET_PENDING_TTL_MS: u64 =
+    crate::agent::tools::FLEET_REPLY_TIMEOUT.as_millis() as u64 + 60_000;
+
+/// The durable registry: fleet_call_id -> expires_at_ms (epoch). A small
+/// JSON file under app-data, INDEPENDENT of the chat history — the "never
+/// wake on our own fleet reply" invariant must survive a lost history
+/// update (concurrent appenders) or the 500-line cap evicting the display
+/// marker. Expired entries are pruned on access (bounded growth).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct FleetPendingDoc {
+    #[serde(default)]
+    pending: std::collections::BTreeMap<String, u64>,
+}
+
+/// Serializes the registry read-modify-write (the fleet fan-out registers
+/// ids while the inbox poller checks them). The lock guards file access
+/// only — the tmp+rename write keeps the file valid JSON even if a holder
+/// panics, so a poisoned lock is recovered, not fatal (house idiom).
+static FLEET_PENDING_LOCK: Mutex<()> = Mutex::new(());
+
+fn fleet_pending_path(app: &AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    dir.join("fleet-pending.json")
+}
+
+fn read_fleet_pending(path: &Path) -> FleetPendingDoc {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn write_fleet_pending(path: &Path, doc: &FleetPendingDoc) {
+    let tmp = path.with_extension("tmp");
+    if let Ok(text) = serde_json::to_string(doc)
+        && std::fs::write(&tmp, text).is_ok()
+    {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Pure core of registration: prune expired ids (bounded growth), then
+/// arm `id` until now + the suppression window.
+fn register_fleet_pending_in_doc(doc: &mut FleetPendingDoc, id: &str, now: u64) {
+    doc.pending.retain(|_, expires| *expires > now);
+    doc.pending
+        .insert(id.to_owned(), now.saturating_add(FLEET_PENDING_TTL_MS));
+}
+
+/// Pure core of the suppression check: prune expired ids, then report
+/// whether `id` is still pending (present ⟺ unexpired after the prune).
+fn fleet_pending_active_in_doc(doc: &mut FleetPendingDoc, id: &str, now: u64) -> bool {
+    doc.pending.retain(|_, expires| *expires > now);
+    doc.pending.contains_key(id)
+}
+
+/// Register a fleet call id BEFORE the send (a fast reply can never
+/// outrun the suppression — the same discipline as the history marker).
+fn register_fleet_pending(app: &AppHandle, fleet_call_id: &str) {
+    let path = fleet_pending_path(app);
+    let _guard = FLEET_PENDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = read_fleet_pending(&path);
+    register_fleet_pending_in_doc(&mut doc, fleet_call_id, now_ms());
+    write_fleet_pending(&path, &doc);
+}
+
+/// Is this fleet id one of OUR outstanding calls? The registry is the
+/// suppression source of truth (FIX 2) — the chat history is display only.
+fn is_fleet_pending(app: &AppHandle, fleet_call_id: &str) -> bool {
+    let path = fleet_pending_path(app);
+    let _guard = FLEET_PENDING_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = read_fleet_pending(&path);
+    let before = doc.pending.len();
+    let active = fleet_pending_active_in_doc(&mut doc, fleet_call_id, now_ms());
+    if doc.pending.len() != before {
+        write_fleet_pending(&path, &doc); // persist the prune
+    }
+    active
+}
+
+// ---------------------------------------------------------------------------
 // Sealing (AES-256-GCM under the pairing secret; AAD = from|to|ts)
 // ---------------------------------------------------------------------------
 
@@ -942,7 +1067,11 @@ fn seal(
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
     let mut nonce_bytes = [0u8; 12];
-    let _ = getrandom::fill(&mut nonce_bytes);
+    // Security review FIX 5: fail closed — ignoring a CSPRNG failure would
+    // seal with an all-zero nonce, reusing the GCM nonce under the pairing
+    // key (catastrophic). Abort the seal instead; the caller surfaces
+    // "sealing failed". Matches engine::ids' fatal-on-RNG-failure rule.
+    getrandom::fill(&mut nonce_bytes).ok()?;
     let aad = format!("{CHAT_PROTOCOL_VERSION}|{from}|{to}|{ts_ms}");
     // ADR-013 P3 slice 2: fleet metadata rides INSIDE the seal (v2 JSON
     // payload) so the service can neither read nor forge the agent bit.
@@ -1091,12 +1220,52 @@ pub fn inbox_send_agent(
 /// here bounds replay-after-eviction regardless of the server's behavior.
 const INBOX_MAX_ENVELOPE_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 
+/// Security review FIX 3: a paired sender's clock may run slightly ahead,
+/// but a stamp arbitrarily far in the FUTURE would never expire under a
+/// past-only bound (a years-ahead envelope replays forever). Cap the
+/// future skew too — small enough to absorb real clock drift, tight
+/// enough that every envelope expires within a day plus the skew.
+const INBOX_MAX_FUTURE_SKEW_MS: u64 = 5 * 60 * 1000;
+
 /// Pure core of the F4 bound: an envelope is fresh when its sender stamp
-/// is at most [`INBOX_MAX_ENVELOPE_AGE_MS`] behind `now`. A stamp slightly
-/// in the FUTURE passes (sender clock skew — the bound targets replay of
-/// OLD envelopes, and the stamp is authenticated either way).
+/// is at most [`INBOX_MAX_ENVELOPE_AGE_MS`] behind `now` AND at most
+/// [`INBOX_MAX_FUTURE_SKEW_MS`] ahead (FIX 3 — sender clock skew is
+/// tolerated, a never-expiring future stamp is not; the stamp is
+/// AAD-authenticated either way).
 fn inbox_envelope_fresh(ts_ms: u64, now: u64) -> bool {
     now.saturating_sub(ts_ms) <= INBOX_MAX_ENVELOPE_AGE_MS
+        && ts_ms.saturating_sub(now) <= INBOX_MAX_FUTURE_SKEW_MS
+}
+
+/// Security review FIX 4: per-drain envelope cap — a hostile service must
+/// not exhaust memory/CPU with an unbounded batch. NOTE: the service GET
+/// is a DESTRUCTIVE drain, so envelopes beyond the cap are dropped, not
+/// re-queued — the fail-closed bound against a flood (normal fleet
+/// traffic — at most 32 paired machines — sits far below it).
+const INBOX_DRAIN_CAP: usize = 64;
+/// Security review FIX 4: response body cap, enforced BEFORE any JSON
+/// parse. The service caps one envelope's ciphertext at 40_000 hex chars
+/// (~40 KB of JSON row); 8 MiB covers a full 64-envelope batch of
+/// max-size envelopes with headroom while refusing a hostile
+/// multi-hundred-MB body before it is buffered.
+const INBOX_MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// FIX 4 pure core: read at most `cap` bytes (one extra byte probes for
+/// oversize — exactly `cap` passes, `cap + 1` refuses). Memory is bounded
+/// before any parse work.
+fn read_capped(mut reader: impl Read, cap: u64) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    reader.take(cap + 1).read_to_end(&mut buf).ok()?;
+    if buf.len() as u64 > cap {
+        return None;
+    }
+    Some(buf)
+}
+
+/// FIX 4 pure core: the envelopes this drain processes — at most
+/// [`INBOX_DRAIN_CAP`], in arrival order.
+fn inbox_batch(envelopes: &[serde_json::Value]) -> &[serde_json::Value] {
+    &envelopes[..envelopes.len().min(INBOX_DRAIN_CAP)]
 }
 
 /// Drain our inbox; every decryptable envelope becomes a stored line +
@@ -1108,6 +1277,10 @@ fn inbox_envelope_fresh(ts_ms: u64, now: u64) -> bool {
 /// out, agent-bit lines are stored ("peer-agent") without waking. The
 /// outer envelope's `agent`/`fleet_call_id` hints are server-visible and
 /// therefore NEVER drive the wake decision; only the sealed payload does.
+///
+/// Security review FIX 4: the response body is size-bounded before
+/// parsing and at most [`INBOX_DRAIN_CAP`] envelopes are processed per
+/// drain — a hostile service cannot exhaust memory/CPU.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
     // The opt-in is read once per drain as a snapshot (the poller holds
     // no store lock across the network call); security review F3 re-reads
@@ -1132,14 +1305,20 @@ pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> us
     else {
         return 0;
     };
-    let Ok(value) = response.into_json::<serde_json::Value>() else {
+    // FIX 4: bound the body BEFORE parsing (into_json would buffer an
+    // arbitrarily large hostile response); oversize or unreadable →
+    // deliver nothing this tick.
+    let Some(bytes) = read_capped(response.into_reader(), INBOX_MAX_RESPONSE_BYTES) else {
+        return 0;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return 0;
     };
     let Some(envelopes) = value.get("envelopes").and_then(|v| v.as_array()) else {
         return 0;
     };
     let mut delivered = 0;
-    for raw in envelopes {
+    for raw in inbox_batch(envelopes) {
         let Ok(env) = serde_json::from_value::<ChatEnvelope>(raw.clone()) else {
             continue;
         };
@@ -1187,27 +1366,42 @@ pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> us
 
 /// Spawn the slow inbox poller (5 s while the app runs). Cheap: one GET
 /// per tick, ciphertext only.
+///
+/// Security review FIX 6: each tick runs under catch_unwind — a panic
+/// (e.g. a poisoned-lock expect on the wake path) costs ONE tick, not
+/// permanent inbox death. The same isolation the assistant worker gives
+/// a panicking turn.
 pub fn spawn_poller(app: AppHandle) {
     std::thread::Builder::new()
         .name("chat-inbox".into())
         .spawn(move || {
             loop {
                 std::thread::sleep(Duration::from_secs(5));
-                let services = app.state::<crate::commands::AppServices>();
-                let Ok(store) = services.store.lock() else {
-                    continue;
-                };
-                let settings = store.settings().clone();
-                drop(store);
-                if settings.signaling_base_url.trim().is_empty() {
-                    continue;
+                let tick = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let services = app.state::<crate::commands::AppServices>();
+                    let Ok(store) = services.store.lock() else {
+                        return;
+                    };
+                    let settings = store.settings().clone();
+                    drop(store);
+                    if settings.signaling_base_url.trim().is_empty() {
+                        return;
+                    }
+                    let _ = inbox_drain(
+                        &app,
+                        &settings.signaling_base_url,
+                        &settings.device_token,
+                        &settings.device_id,
+                    );
+                }));
+                if let Err(panic) = tick {
+                    let reason = panic
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_owned());
+                    eprintln!("[chat] inbox poller tick panicked ({reason}) — retrying next tick");
                 }
-                let _ = inbox_drain(
-                    &app,
-                    &settings.signaling_base_url,
-                    &settings.device_token,
-                    &settings.device_id,
-                );
             }
         })
         .expect("spawn chat poller");
@@ -1271,7 +1465,11 @@ pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
     if already {
         return;
     }
-    let secret_hex = mint_pairing(app, &code);
+    // FIX 5: no CSPRNG, no secret — skip the offer (fail closed, nothing
+    // stored); the next session establishment retries.
+    let Ok(secret_hex) = mint_pairing(app, &code) else {
+        return;
+    };
     let services = app.state::<crate::commands::AppServices>();
     if let Ok(slot) = services.engine.lock()
         && let Some(handle) = slot.as_ref()
@@ -1553,41 +1751,198 @@ mod tests {
             now
         ));
         assert!(!inbox_envelope_fresh(0, now), "ancient replay refused");
-        // A slightly future stamp passes (sender clock skew; the bound
-        // targets OLD envelopes and the stamp is authenticated anyway).
+        // A slightly future stamp passes (sender clock skew; the stamp is
+        // authenticated anyway)...
         assert!(inbox_envelope_fresh(now + 60_000, now));
+        // ...but FIX 3 caps the skew: a years-ahead stamp would never
+        // expire under the past-only bound — refused at the boundary.
+        assert!(
+            inbox_envelope_fresh(now + INBOX_MAX_FUTURE_SKEW_MS, now),
+            "skew boundary passes"
+        );
+        assert!(!inbox_envelope_fresh(
+            now + INBOX_MAX_FUTURE_SKEW_MS + 1,
+            now
+        ));
+        assert!(
+            !inbox_envelope_fresh(now + 365 * 24 * 60 * 60 * 1000, now),
+            "a years-ahead stamp must not be immortal"
+        );
     }
 
     #[test]
     fn fleet_reply_to_our_call_never_wakes() {
-        // Slice 3: the sealed reply carries the id of the fleet ask WE
-        // sent — recognized by id, not position, so overlapping calls
-        // cannot re-arm the wake for a reply.
+        // Slice 3 + security review FIX 2: the sealed reply carries the
+        // id of the fleet ask WE sent — recognized by the DURABLE pending
+        // registry (not position, not the volatile chat history), so
+        // overlapping calls cannot re-arm the wake for a reply.
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+
+        // Registered + unexpired → suppressed even with an EMPTY history
+        // (the display marker was never written, lost, or evicted — the
+        // registry is the source of truth). Composed exactly as
+        // record_incoming_inbox composes it: !is_reply && inbox_should_wake.
+        assert!(inbox_should_wake(true, true, &[]), "gate alone would wake");
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 1)
+            && inbox_should_wake(true, true, &[]);
+        assert!(!wakes, "our own outstanding call's reply must not wake");
+
+        // A different call's id is a fresh instruction, not our reply —
+        // the slave side sees exactly this for instructions it receives.
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-43", now + 1));
+
+        // Positional gate re-armed (a reply already landed), but the
+        // registry still suppresses: the second overlapping call's reply
+        // must not wake us either.
         let mut ask = line("to-agent", 1);
         ask.fleet_call_id = Some("fleet-42".to_owned());
-        assert!(is_reply_to_our_fleet_call(&[ask.clone()], Some("fleet-42")));
-        // A different call's id is a fresh instruction, not our reply.
-        assert!(!is_reply_to_our_fleet_call(
-            &[ask.clone()],
-            Some("fleet-43")
-        ));
-        // No id (ordinary agent chat) never matches.
-        assert!(!is_reply_to_our_fleet_call(&[ask.clone()], None));
-        // An id we never SENT (no matching to-agent line) is not a reply
-        // to our call — the slave side sees exactly this for instructions.
-        assert!(!is_reply_to_our_fleet_call(
-            &[line("peer-agent", 2)],
-            Some("fleet-42")
-        ));
-        // Positional gate re-armed (a reply already landed), but the id
-        // match still suppresses: the second overlapping call's reply
-        // must not wake us either.
         let answered = [ask, line("peer-agent", 3)];
         assert!(
             should_wake_for_agent_line(&answered),
             "positional gate re-armed"
         );
-        assert!(is_reply_to_our_fleet_call(&answered, Some("fleet-42")));
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 2)
+            && inbox_should_wake(true, true, &answered);
+        assert!(!wakes);
+
+        // Expiry: once the suppression window closes the id no longer
+        // suppresses (a straggler beyond the margin is an ordinary
+        // arrival again — the wake budget still bounds it).
+        let late = now + FLEET_PENDING_TTL_MS + 1;
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-42", late));
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", late)
+            && inbox_should_wake(true, true, &answered);
+        assert!(wakes, "expired id is not suppressed");
+    }
+
+    #[test]
+    fn fleet_suppression_survives_history_flood() {
+        // FIX 2 regression: a 500-line flood evicts the "to-agent" display
+        // marker from the bounded history — the OLD history-scan
+        // suppression would fail open and wake the master on its own
+        // reply (confused deputy). The durable registry never consults
+        // the history, so the suppression holds.
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+        let flooded: Vec<ChatLine> = (0..HISTORY_CAP + 50)
+            .map(|i| line("peer-user", i as u64))
+            .collect();
+        assert!(
+            !flooded.iter().any(|l| l.sender == "to-agent"),
+            "the marker is gone from the stored history"
+        );
+        let wakes = !fleet_pending_active_in_doc(&mut doc, "fleet-42", now + 10_000)
+            && inbox_should_wake(true, true, &flooded);
+        assert!(!wakes, "the registry suppresses despite the evicted marker");
+    }
+
+    #[test]
+    fn fleet_pending_doc_round_trips_and_prunes() {
+        // The registry file schema: id -> expires_at_ms, additive-safe
+        // (an empty/legacy doc loads), round-trips through JSON.
+        let empty: FleetPendingDoc = serde_json::from_str("{}").expect("empty doc loads");
+        assert!(empty.pending.is_empty());
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-a", now);
+        register_fleet_pending_in_doc(&mut doc, "fleet-b", now);
+        let json = serde_json::to_string(&doc).unwrap();
+        let mut back: FleetPendingDoc = serde_json::from_str(&json).unwrap();
+        assert!(fleet_pending_active_in_doc(&mut back, "fleet-a", now + 1));
+        assert!(fleet_pending_active_in_doc(&mut back, "fleet-b", now + 1));
+        // Bounded growth: a flood of stale ids is pruned on the next
+        // access — the file cannot grow without bound.
+        let old = now - FLEET_PENDING_TTL_MS - 1;
+        for i in 0..100 {
+            register_fleet_pending_in_doc(&mut doc, &format!("fleet-old-{i}"), old);
+        }
+        assert_eq!(doc.pending.len(), 102);
+        register_fleet_pending_in_doc(&mut doc, "fleet-new", now);
+        assert_eq!(doc.pending.len(), 3, "expired ids pruned on access");
+        assert!(fleet_pending_active_in_doc(&mut doc, "fleet-new", now));
+        assert!(!fleet_pending_active_in_doc(&mut doc, "fleet-old-0", now));
+    }
+
+    #[test]
+    fn concurrent_appends_do_not_lose_lines() {
+        // FIX 2 regression: the poller, assistant, and engine threads
+        // append concurrently; the UNLOCKED read-modify-write used to
+        // lose lines (last writer wins). Spawn parallel appenders and
+        // require EVERY line to survive.
+        let dir = std::env::temp_dir().join(format!("df-chat-append-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("concurrent.json");
+        let _ = std::fs::remove_file(&path); // a prior run's leftovers
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 25;
+        let mut handles = Vec::new();
+        for t in 0..THREADS {
+            let path = path.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    let id = (t * PER_THREAD + i) as u64;
+                    append_history_at(&path, line("peer-user", id));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let doc: ChatDoc = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc.lines.len(), THREADS * PER_THREAD, "no lost updates");
+        let mut ids: Vec<u64> = doc.lines.iter().map(|l| l.id).collect();
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            (0..(THREADS * PER_THREAD) as u64).collect::<Vec<_>>(),
+            "every appended line survived"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn inbox_response_read_is_capped() {
+        // FIX 4: the body is bounded BEFORE parsing — exactly the cap
+        // passes, one byte over refuses, and the buffer never grows past
+        // cap + 1 no matter how large the underlying stream is.
+        let cap = 1024u64;
+        let small = vec![b'a'; 100];
+        assert_eq!(
+            read_capped(std::io::Cursor::new(small.clone()), cap),
+            Some(small)
+        );
+        let exact = vec![b'b'; cap as usize];
+        assert_eq!(
+            read_capped(std::io::Cursor::new(exact.clone()), cap),
+            Some(exact)
+        );
+        let over = vec![b'c'; cap as usize + 1];
+        assert_eq!(read_capped(std::io::Cursor::new(over), cap), None);
+        let huge = vec![b'd'; 4 * cap as usize];
+        assert_eq!(read_capped(std::io::Cursor::new(huge), cap), None);
+        assert_eq!(
+            read_capped(std::io::Cursor::new(Vec::<u8>::new()), cap),
+            Some(Vec::<u8>::new())
+        );
+    }
+
+    #[test]
+    fn inbox_drain_batch_is_capped() {
+        // FIX 4: at most INBOX_DRAIN_CAP envelopes per drain, in arrival
+        // order (the rest are dropped — the service GET is destructive).
+        assert_eq!(INBOX_DRAIN_CAP, 64);
+        let many: Vec<serde_json::Value> =
+            (0..200).map(|i| serde_json::json!({ "i": i })).collect();
+        let batch = inbox_batch(&many);
+        assert_eq!(batch.len(), INBOX_DRAIN_CAP);
+        assert_eq!(batch[0]["i"], 0);
+        assert_eq!(batch[INBOX_DRAIN_CAP - 1]["i"], 63);
+        let few: Vec<serde_json::Value> = (0..10).map(|i| serde_json::json!({ "i": i })).collect();
+        assert_eq!(inbox_batch(&few).len(), 10);
+        assert_eq!(inbox_batch(&[]).len(), 0);
     }
 
     #[test]
@@ -1614,14 +1969,22 @@ mod tests {
         assert_eq!(payload.body, "done: freed 2 GB");
         assert_eq!(payload.fleet_call_id.as_deref(), Some("fleet-42"));
         // Master side: our fleet ask is outstanding → display, no wake,
-        // even opted in.
+        // even opted in. The positional gate sees the ask; the DURABLE
+        // registry (FIX 2) is the suppression source of truth.
         let mut ask = line("to-agent", 1);
         ask.fleet_call_id = Some("fleet-42".to_owned());
         assert!(!should_wake_for_agent_line(&[ask.clone()]));
         assert!(!inbox_should_wake(payload.agent, true, &[ask.clone()]));
-        assert!(is_reply_to_our_fleet_call(
-            &[ask],
-            payload.fleet_call_id.as_deref()
+        let mut doc = FleetPendingDoc::default();
+        let now = 1_750_000_000_000u64;
+        register_fleet_pending_in_doc(&mut doc, "fleet-42", now);
+        assert!(fleet_pending_active_in_doc(
+            &mut doc,
+            payload
+                .fleet_call_id
+                .as_deref()
+                .expect("reply carries the id"),
+            now + 1
         ));
     }
 

@@ -363,12 +363,29 @@ impl ChatTurn {
     }
 }
 
+/// The turn's authority origin (security review FIX 1). PeerAgent wakes
+/// are Remote — a paired machine's assistant instructed this one, so the
+/// turn may act on THIS machine but never propagate instructions or
+/// persist recurring tasks. User and Scheduled turns are Local: a
+/// scheduled task was CREATED by the local user (trusted intent), so
+/// firing it keeps full powers — the guard stops a REMOTE turn from
+/// creating one, not the local user's own task from running.
+fn turn_origin(input: &AssistantInput) -> tools::TurnOrigin {
+    match input {
+        AssistantInput::PeerAgent { .. } => tools::TurnOrigin::Remote,
+        AssistantInput::User(_) | AssistantInput::Scheduled { .. } => tools::TurnOrigin::Local,
+    }
+}
+
 fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
     // Turn log: past user/assistant/tool traffic (bounded), replayed each
     // request under a FRESH system prompt (live context per turn).
     let mut log: Vec<ChatTurn> = Vec::new();
     let mut last_shot: Option<(u32, u32)> = None;
     while let Ok(input) = rx.recv() {
+        // FIX 1: derived BEFORE the input is consumed below; rides into
+        // run_turn → the advertised tool surface and execute()'s boundary.
+        let origin = turn_origin(&input);
         // Peer-agent instructions arrive as machine-chat turns and are
         // reported in the panel so their execution is always visible.
         // The fourth element is the fleet correlation id (slice 3): the
@@ -456,7 +473,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
         // (the worker thread is the only consumer of this channel —
         // review blocking finding 1's blast radius, closed generally).
         let reply = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_turn(&app, &mut log, &mut last_shot)
+            run_turn(&app, &mut log, &mut last_shot, origin)
         }))
         .unwrap_or_else(|panic| {
             let reason = panic
@@ -681,11 +698,14 @@ fn send_agent_reply(
 }
 
 /// One full agent turn: fresh system prompt + history → model → tools →
-/// final answer. Returns the final assistant text.
+/// final answer. Returns the final assistant text. `origin` (FIX 1) bounds
+/// the tool surface: a Remote turn is neither advertised nor allowed to
+/// execute fleet_run / schedule.
 fn run_turn(
     app: &AppHandle,
     log: &mut Vec<ChatTurn>,
     last_shot: &mut Option<(u32, u32)>,
+    origin: tools::TurnOrigin,
 ) -> Result<String, String> {
     let (base_url, model, key) = {
         let services = app.state::<crate::commands::AppServices>();
@@ -716,7 +736,7 @@ fn run_turn(
         let body = json!({
             "model": model,
             "messages": messages,
-            "tools": tools::tool_specs(),
+            "tools": tools::tool_specs_for(origin),
             "max_tokens": 4096,
         });
         let agent = node_runtime::http::https_agent(
@@ -789,7 +809,7 @@ fn run_turn(
                 .and_then(|v| v.as_str())
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or(json!({}));
-            let output = tools::execute(app, &name, &args, last_shot);
+            let output = tools::execute(app, &name, &args, last_shot, origin);
             // ADR-013 P3 audit rail: every executed tool leaves a local
             // who/what/when/result record. Tool NAME only — input
             // arguments never enter the log (invariant 6); a write
@@ -983,5 +1003,42 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn turn_origin_maps_peer_agent_to_remote_only() {
+        // Security review FIX 1: the security-critical mapping — a
+        // remotely-woken turn is Remote (no propagation, no persistence);
+        // the human's turn and the human-created scheduled task are Local
+        // (full powers). A Scheduled turn must NEVER be Remote: the task
+        // is the local user's trusted intent.
+        assert_eq!(
+            turn_origin(&AssistantInput::User("hi".into())),
+            tools::TurnOrigin::Local
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::PeerAgent {
+                peer: "abcdef0123456789".into(),
+                body: "free some disk space".into(),
+                fleet_call_id: Some("fleet-42".into()),
+            }),
+            tools::TurnOrigin::Remote
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::PeerAgent {
+                peer: "abcdef0123456789".into(),
+                body: "hi".into(),
+                fleet_call_id: None,
+            }),
+            tools::TurnOrigin::Remote,
+            "in-session agent wakes are Remote too"
+        );
+        assert_eq!(
+            turn_origin(&AssistantInput::Scheduled {
+                name: "nightly-clean".into(),
+                body: "clean temp files".into(),
+            }),
+            tools::TurnOrigin::Local
+        );
     }
 }

@@ -548,6 +548,56 @@ pub fn tool_specs() -> Vec<Value> {
     ]
 }
 
+/// Turn origin (security review FIX 1): a remotely-woken turn (a paired
+/// machine's assistant instructed this one) must not be able to propagate
+/// instructions to OTHER machines or persist recurring tasks — prompt
+/// wording is not a guard. Local turns (the human, or a scheduled task the
+/// human created) keep the full surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnOrigin {
+    Local,
+    Remote,
+}
+
+/// Tools a Remote-origin turn may never execute: `fleet_run` is the
+/// amplification vector (one remote instruction fans out to every paired
+/// machine), `schedule` the persistence vector (a remote instruction arms
+/// a recurring full-power turn). Everything else stays available — acting
+/// on THIS machine is the intended fleet behavior (bounded by the opt-in
+/// and the wake budget).
+pub const REMOTE_FORBIDDEN_TOOLS: &[&str] = &["fleet_run", "schedule"];
+
+/// The advertised tool surface for one turn: a Remote turn never even
+/// SEES the forbidden tools (the model cannot call what is not
+/// advertised). Local turns get the full set, unchanged.
+pub fn tool_specs_for(origin: TurnOrigin) -> Vec<Value> {
+    let specs = tool_specs();
+    match origin {
+        TurnOrigin::Local => specs,
+        TurnOrigin::Remote => specs
+            .into_iter()
+            .filter(|s| {
+                let name = s["function"]["name"].as_str().unwrap_or("");
+                !REMOTE_FORBIDDEN_TOOLS.contains(&name)
+            })
+            .collect(),
+    }
+}
+
+/// Defense in depth (FIX 1): even if a forbidden tool call reaches the
+/// dispatcher (a stale advertisement, a crafted tool_calls array), a
+/// Remote-origin turn is refused BEFORE any side effect. Pure core of the
+/// execute() boundary check — None means the call proceeds normally.
+fn remote_origin_refusal(origin: TurnOrigin, name: &str) -> Option<String> {
+    if origin == TurnOrigin::Remote && REMOTE_FORBIDDEN_TOOLS.contains(&name) {
+        return Some(format!(
+            "{name} refused: a remotely-woken turn may act on this machine only — \
+             it cannot instruct other machines (fleet_run) or create scheduled tasks (schedule)"
+        ));
+    }
+    None
+}
+
 /// Coordinate + key tables shared with the MCP bridge's semantics.
 fn to_normalized(px: f64, dim: u32) -> u16 {
     ((px / f64::from(dim.max(1))) * 65_535.0)
@@ -587,13 +637,21 @@ fn key_scan_code(name: &str) -> Option<(u16, bool)> {
 }
 
 /// Execute one tool call. `last_shot` carries the coordinate space of the
-/// most recent screenshot (click needs it).
+/// most recent screenshot (click needs it). `origin` is the turn's
+/// authority (FIX 1): a Remote turn is refused the amplification and
+/// persistence tools at this boundary, before any side effect.
 pub fn execute(
     app: &AppHandle,
     name: &str,
     args: &Value,
     last_shot: &mut Option<(u32, u32)>,
+    origin: TurnOrigin,
 ) -> ToolOutput {
+    // FIX 1 dispatch boundary (defense in depth behind the advertisement
+    // filter): a Remote-origin turn never executes fleet_run / schedule.
+    if let Some(refusal) = remote_origin_refusal(origin, name) {
+        return ToolOutput::text(refusal);
+    }
     match name {
         "status" => {
             let status = with_engine(app, |handle| {
@@ -2012,8 +2070,10 @@ fn kill_process(pid: u64) -> Result<String, String> {
 const FLEET_MAX_MACHINES: usize = 32;
 /// Reply window: every slave polls its inbox independently (5 s poller),
 /// wakes, runs its turn, and seals the reply back; the master collects
-/// by history scan until this deadline.
-const FLEET_REPLY_TIMEOUT: Duration = Duration::from_secs(90);
+/// by history scan until this deadline. `pub(crate)` so the durable
+/// pending-fleet registry (chat.rs, FIX 2) can derive its suppression
+/// window from the SAME constant — the two must never drift apart.
+pub(crate) const FLEET_REPLY_TIMEOUT: Duration = Duration::from_secs(90);
 /// Collection scan interval while replies are outstanding.
 const FLEET_POLL_INTERVAL: Duration = Duration::from_millis(1000);
 /// Bounded per-machine send retries on a transient transport error.
@@ -2956,6 +3016,46 @@ mod tests {
             assert!(spec["function"]["description"].is_string());
             assert!(spec["function"]["parameters"].is_object());
         }
+    }
+
+    #[test]
+    fn remote_turns_never_see_or_execute_the_amplification_tools() {
+        // Security review FIX 1: a Remote turn's advertised surface
+        // excludes fleet_run (amplification) and schedule (persistence)
+        // and keeps everything else — acting on the slave itself is the
+        // intended fleet behavior.
+        let remote = tool_specs_for(TurnOrigin::Remote);
+        let names: Vec<&str> = remote
+            .iter()
+            .map(|s| s["function"]["name"].as_str().unwrap())
+            .collect();
+        assert!(!names.contains(&"fleet_run"));
+        assert!(!names.contains(&"schedule"));
+        assert!(names.contains(&"run_shell"), "local-action tools stay");
+        assert!(names.contains(&"chat_send"));
+        assert!(names.contains(&"schedule_list"), "read-only tools stay");
+        // Local turns keep the full surface, unchanged.
+        let local = tool_specs_for(TurnOrigin::Local);
+        assert_eq!(local.len(), tool_specs().len());
+        assert!(local.iter().any(|s| s["function"]["name"] == "fleet_run"));
+        assert!(local.iter().any(|s| s["function"]["name"] == "schedule"));
+        assert_eq!(remote.len(), local.len() - REMOTE_FORBIDDEN_TOOLS.len());
+
+        // Defense in depth: the dispatch boundary (execute()'s FIRST
+        // check) refuses a Remote call even if it arrives crafted, and
+        // lets a Local call through to the normal arm.
+        for tool in REMOTE_FORBIDDEN_TOOLS {
+            let refusal = remote_origin_refusal(TurnOrigin::Remote, tool).expect("refused");
+            assert!(refusal.contains(tool), "{refusal}");
+            assert!(
+                remote_origin_refusal(TurnOrigin::Local, tool).is_none(),
+                "Local turns keep {tool}"
+            );
+        }
+        // Other tools are unaffected on Remote turns.
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "run_shell").is_none());
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "status").is_none());
+        assert!(remote_origin_refusal(TurnOrigin::Remote, "unknown_tool").is_none());
     }
 
     // ---- ADR-013 P3 fleet slice 3: inbox fan-out engine ----
