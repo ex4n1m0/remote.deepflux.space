@@ -11,8 +11,9 @@
 import { useState } from "react";
 import { hostView } from "../state/mapping";
 import { CopyButton } from "./Common";
+import { HumanChatCard } from "./HumanChatCard";
 import { ACCOUNT_ONLINE_WINDOW_MS } from "../types";
-import type { AccountMachine, HostStateName, PairingInfo } from "../types";
+import type { AccountMachine, HostStateName, HumanRoomState, PairingInfo } from "../types";
 
 /** A connection code is exactly 16 hex characters (the peer's device id). */
 export function looksLikeCode(value: string): boolean {
@@ -179,6 +180,10 @@ export function MachinesRail({
   swarmChip,
   swarmJoinable,
   onJoinSwarm,
+  humanRoom,
+  humanRoomActive,
+  onJoinHumanRoom,
+  onOpenHumanRoom,
   onPick,
   onConnect,
   onShare,
@@ -196,6 +201,13 @@ export function MachinesRail({
   /** ADR-013: whether to offer "Join a swarm" under the connect box. */
   swarmJoinable: boolean;
   onJoinSwarm: () => void;
+  /** ADR-013 D4/P3 human chat: the room state for the rail card (null
+   * before join). Optional — the card renders only when the handlers are
+   * wired (App), so the machine-list-only callers are unchanged. */
+  humanRoom?: HumanRoomState | null;
+  humanRoomActive?: boolean;
+  onJoinHumanRoom?: () => void;
+  onOpenHumanRoom?: () => void;
   onPick: (code: string) => void;
   onConnect: (code: string, agent: boolean) => void;
   onShare: () => void;
@@ -356,6 +368,17 @@ export function MachinesRail({
           </button>
         ) : null}
       </div>
+
+      {/* ADR-013 D4/P3: the humans-only E2E chat entry — a separate user
+       * surface below the machine list (no agent tool reads/posts rooms). */}
+      {onJoinHumanRoom && onOpenHumanRoom ? (
+        <HumanChatCard
+          room={humanRoom ?? null}
+          active={humanRoomActive ?? false}
+          onJoin={onJoinHumanRoom}
+          onOpen={onOpenHumanRoom}
+        />
+      ) : null}
     </nav>
   );
 }

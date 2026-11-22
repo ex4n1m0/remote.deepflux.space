@@ -444,6 +444,54 @@ fn swarm_state_carries_metadata_only() {
     assert_eq!(hits, vec!["probe.device_token".to_string()]);
 }
 
+/// Human-chat room payloads (ADR-013 D4/P3): the state snapshot, a message,
+/// and a log line are metadata only. The room WORD (admission material) is
+/// structurally absent — it lives in Rust state + settings, never IPC — and
+/// a future word-shaped field must fail this gate.
+#[test]
+fn human_room_payloads_carry_metadata_only() {
+    use remote_desktop_app_lib::human_chat::{
+        HumanMember, HumanRoomLog, HumanRoomMessage, HumanRoomState,
+    };
+    let state = HumanRoomState {
+        joined: true,
+        room: Some("ab".repeat(32)),
+        epoch: 3,
+        we_are_host: true,
+        status: "hosting".into(),
+        peers: vec![HumanMember {
+            peer: "12D3KooWPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerP".into(),
+            name: "MOMS-PC".into(),
+        }],
+        my_peer: Some("12D3KooWSelfSelfSelfSelfSelfSelfSelfSelfSelfSelfSelfS".into()),
+        presence_linked: true,
+        online: 2,
+        error: None,
+    };
+    let value = serde_json::to_value(&state).expect("serialize human room state");
+    assert_result_clean(&value, "HumanRoomState");
+    // The room word must never ride the state payload under any spelling.
+    let obj = value.as_object().expect("state is an object");
+    for forbidden in ["word", "passcode", "room_word"] {
+        assert!(!obj.contains_key(forbidden), "state leaks {forbidden}");
+    }
+
+    let message = HumanRoomMessage {
+        room: "ab".repeat(32),
+        sender: "12D3KooWPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerPeerP".into(),
+        body: "hello room".into(),
+        epoch: 3,
+        mine: false,
+        via_site: true,
+    };
+    assert_result_clean(&serde_json::to_value(&message).unwrap(), "HumanRoomMessage");
+
+    let log = HumanRoomLog {
+        message: "mailbox: drained 1 item(s) from the site".into(),
+    };
+    assert_result_clean(&serde_json::to_value(&log).unwrap(), "HumanRoomLog");
+}
+
 #[test]
 fn disconnect_copy_covers_every_cause_without_payloads() {
     let causes = [

@@ -26,12 +26,15 @@ import { useAssistant } from "./hooks/useAssistant";
 import { useChat } from "./hooks/useChat";
 import { useAccountDirectory } from "./hooks/useAccountDirectory";
 import { useSwarm, useSwarmJoinModal } from "./hooks/useSwarm";
+import { useHumanRooms } from "./hooks/useHumanRooms";
 import {
   MachinesRail,
   RemoveMachineButton,
   excludeSelfAccount,
   unifiedMachines,
 } from "./components/MachinesRail";
+import { HumanRoomConversation } from "./components/HumanRoomConversation";
+import { HumanRoomJoinModal } from "./components/HumanRoomJoinModal";
 import { ConsentDialog, TrustedConnectCard } from "./components/ConsentDialog";
 import { MenuBar } from "./components/MenuBar";
 import { ConfigDialog, type ConfigSection } from "./components/ConfigDialog";
@@ -66,6 +69,19 @@ export default function App() {
   const swarm = useSwarm();
   const swarmJoin = useSwarmJoinModal(swarm);
   const [dismissedSwarmError, setDismissedSwarmError] = useState<string | null>(null);
+  // ADR-013 D4/P3 human chat: the humans-only E2E room surface (a separate
+  // user surface from the machine list — no agent tool reads/posts rooms).
+  const humanRooms = useHumanRooms();
+  const [humanRoomOpen, setHumanRoomOpen] = useState(false);
+  const [humanJoinOpen, setHumanJoinOpen] = useState(false);
+  // A successful join opens the room's conversation and closes the modal.
+  const humanJoined = !!humanRooms.state?.joined;
+  useEffect(() => {
+    if (humanJoined && humanJoinOpen) {
+      setHumanJoinOpen(false);
+      setHumanRoomOpen(true);
+    }
+  }, [humanJoined, humanJoinOpen]);
   // ADR-009: the trusted-host list (pairings) is the trust leg of the
   // machine list — pulled at mount, after consent decisions, and
   // whenever a pairing event lands (offer minted / acked / removed).
@@ -326,7 +342,14 @@ export default function App() {
           swarmChip={swarmChipText(swarm.state)}
           swarmJoinable={swarmJoinable(swarm.state)}
           onJoinSwarm={openSwarmJoin}
-          onPick={(code) => setSelectedCode(code)}
+          humanRoom={humanRooms.state}
+          humanRoomActive={humanRoomOpen}
+          onJoinHumanRoom={() => setHumanJoinOpen(true)}
+          onOpenHumanRoom={() => setHumanRoomOpen(true)}
+          onPick={(code) => {
+            setSelectedCode(code);
+            setHumanRoomOpen(false);
+          }}
           onConnect={(code, agent) => void controlMachine(code, agent)}
           onShare={() => void share()}
           onStopShare={() => engine.run(() => api.hostStop())}
@@ -379,6 +402,17 @@ export default function App() {
             />
           ) : null}
 
+          {/* ADR-013 D4/P3: the humans-only E2E room conversation replaces
+           * the machine page while the user is viewing a room (the rail
+           * card's Open verb; picking a machine switches back). Consent and
+           * session cards above stay live — they are global interruptions. */}
+          {humanRoomOpen ? (
+            <HumanRoomConversation
+              rooms={humanRooms}
+              onClose={() => setHumanRoomOpen(false)}
+            />
+          ) : (
+            <>
           {/* The selected machine's page: one primary action (remote
            * control) + the conversation. Same list, same verbs. */}
           {selected ? (
@@ -477,6 +511,8 @@ export default function App() {
               {endCopy.hint ? <p className="hint">{endCopy.hint}</p> : null}
             </div>
           ) : null}
+            </>
+          )}
         </section>
 
         <AssistantPanel
@@ -507,6 +543,13 @@ export default function App() {
           state={swarm.state}
           onCancel={swarmJoin.cancel}
           onClaimAnswer={swarm.claimAnswer}
+        />
+      ) : null}
+
+      {humanJoinOpen ? (
+        <HumanRoomJoinModal
+          onJoin={humanRooms.join}
+          onCancel={() => setHumanJoinOpen(false)}
         />
       ) : null}
 

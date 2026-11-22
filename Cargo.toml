@@ -38,7 +38,7 @@ members = [
     # OnlyHumans protocol ported at the pinned v1.2.0 (ADR-013, D4; source:
     # OnlyHumans-app repo tag v1.2.0, commit 427ec0a — the standalone product
     # is untouched). Verbatim mechanical pin, MSP-import style: keeps its own
-    # edition 2024 / version 1.2.0. Two deliberate deviations from the source
+    # edition 2024 / version 1.2.0. Deliberate deviations from the source
     # tree: (1) src/gk_channel.bin re-minted — DeepMulti's own room universe,
     # no shared channel/secrets with the standalone product (D4); (2) the
     # crate-local Cargo.lock dropped — the workspace lock governs. (3) the
@@ -46,7 +46,13 @@ members = [
     # mechanical whitespace/wrap changes only — the source's fmt predates it).
     # (4) rusqlite aligned 0.40.2 -> 0.32 to share the single libsqlite3-sys
     # generation modelswarm-store pins (Cargo forbids two `links = "sqlite3"`
-    # copies); store.rs's surface is pre-0.32-stable API only.
+    # copies); store.rs's surface is pre-0.32-stable API only. (5) clippy-cleaned
+    # under -D warnings: mechanical hygiene plus scoped allows for the
+    # newer-dep-graph from_slice deprecation, the NetworkBehaviour derive's
+    # unreachable_code macro artifact, and too_many_arguments. (6) src/hub.rs
+    # paths prefixed /api/hub to match the tracker's hub mount (MSP PR #2) and
+    # DEFAULT_HUB fallback retargeted — the app overrides the base at runtime
+    # via swarm::tracker_url(); canonical preimages/crypto untouched.
     # build.rs writes its per-clone secret to crates/secrets/ (gitignored).
     "crates/onlyhumans-core",
 ]

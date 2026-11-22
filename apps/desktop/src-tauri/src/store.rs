@@ -72,6 +72,13 @@ pub struct AppSettings {
     /// predate the field — defaults ON.
     #[serde(default = "default_true")]
     pub auto_update: bool,
+    /// ADR-013 D4/P3 human chat: the word of the room this machine last
+    /// joined (empty = none). Persisted so the chat restores on launch.
+    /// Admission material — it lives here and in Rust state ONLY, never in
+    /// the settings IPC DTO (`SettingsDto`/`SettingsPatch`) and never in an
+    /// event payload (the ipc_surface walk's credential discipline).
+    #[serde(default)]
+    pub human_room_word: String,
 }
 
 /// Default assistant provider (ADR-005): DeepSeek, OpenAI-compatible.
@@ -114,6 +121,7 @@ impl Default for AppSettings {
             agent_model: default_agent_model(),
             agent_download_domains: Vec::new(),
             auto_update: true,
+            human_room_word: String::new(),
         }
     }
 }

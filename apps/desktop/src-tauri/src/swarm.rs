@@ -65,7 +65,10 @@ const ENROLL_UA: &str = "modelswarm-enroll";
 // URL / time / hex helpers (pure, unit-tested)
 // ---------------------------------------------------------------------------
 
-fn tracker_url() -> String {
+/// The tracker base URL. Shared with the human-chat node (ADR-013 D4/P3):
+/// `human_chat` sets `NodeConfig.hub_base` from this so the OnlyHumans hub
+/// client talks to the SAME tracker (mounted at `/api/hub/*`).
+pub(crate) fn tracker_url() -> String {
     let raw = std::env::var("DEEPFLUX_TRACKER_URL").unwrap_or_else(|_| DEFAULT_TRACKER_URL.into());
     if allow_tracker_url(&raw, cfg!(debug_assertions)) {
         raw

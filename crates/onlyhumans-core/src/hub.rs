@@ -129,7 +129,15 @@ pub struct HubClient {
     http: reqwest::Client,
 }
 
-pub const DEFAULT_HUB: &str = "https://onlyhumans.deepflux.space";
+/// Pin deviation #6 (ADR-013 D4/P3, DeepMulti): the standalone product
+/// mounts these routes at `/api/*` on onlyhumans.deepflux.space; DeepMulti's
+/// combined tracker mounts the SAME hub contract under `/api/hub/*` (the
+/// merged `app/api/hub/{reg,lookup,room,inbox,presence}` routes). Every path
+/// below carries the `/api/hub` prefix to match those routes exactly; the
+/// canonical preimages and crypto are unchanged. The base stays configurable
+/// via `NodeConfig.hub_base` — the app sets it at runtime from its tracker URL
+/// (`swarm::tracker_url`), so this default is only a fallback.
+pub const DEFAULT_HUB: &str = "https://modelswarm.deepflux.space";
 
 impl HubClient {
     pub fn new(base: impl Into<String>) -> Self {
@@ -163,7 +171,7 @@ impl HubClient {
         };
         let resp = self
             .http
-            .put(format!("{}/api/reg", self.base))
+            .put(format!("{}/api/hub/reg", self.base))
             .json(&reg)
             .send()
             .await?;
@@ -194,7 +202,7 @@ impl HubClient {
     pub async fn presence(&self, token: &str) -> anyhow::Result<u64> {
         let resp = self
             .http
-            .post(format!("{}/api/presence", self.base))
+            .post(format!("{}/api/hub/presence", self.base))
             .json(&PresencePing {
                 token,
                 leave: false,
@@ -222,7 +230,7 @@ impl HubClient {
     pub async fn presence_leave(&self, token: &str) -> anyhow::Result<()> {
         let resp = self
             .http
-            .post(format!("{}/api/presence", self.base))
+            .post(format!("{}/api/hub/presence", self.base))
             .json(&PresencePing { token, leave: true })
             .send()
             .await?;
@@ -261,7 +269,7 @@ impl HubClient {
         }
         let resp = self
             .http
-            .post(format!("{}/api/inbox", self.base))
+            .post(format!("{}/api/hub/inbox", self.base))
             .json(&serde_json::json!({ "items": out }))
             .send()
             .await?;
@@ -283,7 +291,7 @@ impl HubClient {
         let resp = self
             .http
             .get(format!(
-                "{}/api/inbox/{peer}?ts_ms={ts_ms}&sig_b64={sig}",
+                "{}/api/hub/inbox/{peer}?ts_ms={ts_ms}&sig_b64={sig}",
                 self.base
             ))
             .send()
@@ -309,7 +317,7 @@ impl HubClient {
     pub async fn lookup(&self, peer_id: &str) -> anyhow::Result<Option<Registration>> {
         let resp = self
             .http
-            .get(format!("{}/api/lookup/{peer_id}", self.base))
+            .get(format!("{}/api/hub/lookup/{peer_id}", self.base))
             .send()
             .await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -355,7 +363,7 @@ impl HubClient {
         };
         let resp = self
             .http
-            .put(format!("{}/api/room", self.base))
+            .put(format!("{}/api/hub/room", self.base))
             .json(&rec)
             .send()
             .await?;
@@ -374,7 +382,7 @@ impl HubClient {
     pub async fn lookup_room(&self, room_id: &str) -> anyhow::Result<Option<RoomHostRecord>> {
         let resp = self
             .http
-            .get(format!("{}/api/room/{room_id}", self.base))
+            .get(format!("{}/api/hub/room/{room_id}", self.base))
             .send()
             .await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {

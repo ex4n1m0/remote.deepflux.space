@@ -33,6 +33,16 @@ pub mod events {
     /// ADR-013 P2 account directory snapshot; payload =
     /// `[account_directory::AccountMachineDto]` — metadata only.
     pub const ACCOUNT_DIRECTORY: &str = "app://account-directory";
+    /// ADR-013 D4/P3 human chat (humans-only E2E rooms): the room state
+    /// snapshot; payload = `human_chat::HumanRoomState` — metadata only
+    /// (the room word never crosses IPC).
+    pub const HUMAN_ROOM_STATE: &str = "human-chat://state";
+    /// ADR-013 D4/P3 human chat: one decrypted room message; payload =
+    /// `human_chat::HumanRoomMessage`.
+    pub const HUMAN_ROOM_MESSAGE: &str = "human-chat://message";
+    /// ADR-013 D4/P3 human chat: a non-fatal node log line (join progress,
+    /// hub/mailbox notes); payload = `human_chat::HumanRoomLog`.
+    pub const HUMAN_ROOM_LOG: &str = "human-chat://log";
 }
 
 pub struct AppServices {
@@ -49,6 +59,10 @@ pub struct AppServices {
     /// ADR-013 swarm enrollment: membership state + the join/heartbeat
     /// thread lifecycle (secrets stay in Rust state + credstore).
     pub swarm: crate::swarm::SwarmService,
+    /// ADR-013 D4/P3 human chat: the humans-only E2E room service — the
+    /// control channel to the dedicated node thread + the mirrored room
+    /// state (the room word stays in Rust state + settings, never IPC).
+    pub human_chat: crate::human_chat::HumanChatService,
     /// ADR-013 P2 account directory: the account's machines, polled by
     /// the swarm heartbeat thread (latest-wins snapshot, no secrets).
     pub account_directory: std::sync::Arc<crate::account_directory::AccountDirectory>,
@@ -722,6 +736,10 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         agent_model: store.settings().agent_model.clone(),
         agent_download_domains: patch.agent_download_domains,
         auto_update: patch.auto_update,
+        // ADR-013 D4/P3: the human-chat room word is managed by the
+        // human_chat service (rooms_join/rooms_leave), not the settings
+        // patch — preserve it here (it never crosses the settings IPC).
+        human_room_word: store.settings().human_room_word.clone(),
     };
     let sharing_flipped = store.settings().host_sharing != patch.host_sharing;
     let admin_flipped = store.settings().agent_admin != patch.agent_admin;

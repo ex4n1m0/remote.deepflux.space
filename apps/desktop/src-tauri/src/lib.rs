@@ -12,6 +12,7 @@ pub mod directory;
 pub mod dl;
 pub mod elevate;
 pub mod engine;
+pub mod human_chat;
 pub mod ipc;
 pub mod mcp;
 pub mod store;
@@ -128,6 +129,7 @@ pub fn run() {
                 trust: Mutex::new(chat::TrustState::default()),
                 directory: Mutex::new(directory::DirectoryCache::default()),
                 swarm: swarm::SwarmService::default(),
+                human_chat: human_chat::HumanChatService::default(),
                 account_directory: std::sync::Arc::new(
                     account_directory::AccountDirectory::default(),
                 ),
@@ -182,6 +184,10 @@ pub fn run() {
             // (Joined + heartbeat) or surface NeedsRejoin; a no-op when this
             // machine never joined.
             swarm::spawn_startup(app.handle().clone());
+            // ADR-013 D4/P3 human chat: start the humans-only E2E room node
+            // thread and restore a persisted room word (a no-op when this
+            // machine never joined a room).
+            human_chat::spawn(app.handle().clone());
             // The assistant is live from app start (ADR-005): its worker
             // only calls the provider once a key is configured.
             app.state::<AppServices>()
@@ -332,6 +338,11 @@ pub fn run() {
             swarm::swarm_leave,
             swarm::swarm_claim_answer,
             swarm::swarm_rekey,
+            human_chat::rooms_state,
+            human_chat::rooms_join,
+            human_chat::rooms_send,
+            human_chat::rooms_rotate,
+            human_chat::rooms_leave,
             commands::update_state,
             commands::update_check,
             commands::update_download,

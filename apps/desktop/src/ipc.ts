@@ -8,6 +8,7 @@ import type {
   AccountMachine,
   DirectoryMachine,
   EngineStatus,
+  HumanRoomState,
   Identity,
   MonitorInfo,
   PairingInfo,
@@ -48,6 +49,13 @@ export const UPDATE_EVENT = "update://state";
 export const SWARM_EVENT = "swarm://state";
 /** ADR-013 P2 account directory snapshot push (payload: AccountMachine[]). */
 export const ACCOUNT_DIRECTORY_EVENT = "app://account-directory";
+
+/** ADR-013 D4/P3 human chat (humans-only E2E rooms): state snapshot push. */
+export const HUMAN_ROOM_STATE_EVENT = "human-chat://state";
+/** ADR-013 D4/P3 human chat: one decrypted room message. */
+export const HUMAN_ROOM_MESSAGE_EVENT = "human-chat://message";
+/** ADR-013 D4/P3 human chat: a non-fatal node log line. */
+export const HUMAN_ROOM_LOG_EVENT = "human-chat://log";
 
 export interface UpdateState {
   status:
@@ -179,6 +187,17 @@ export const api = {
   swarmClaimAnswer: (accept: boolean): Promise<void> => invoke("swarm_claim_answer", { accept }),
   swarmRekey: (): Promise<string> => invoke("swarm_rekey"),
   swarmLeave: (): Promise<void> => invoke("swarm_leave"),
+
+  // Human chat (ADR-013 D4/P3): humans-only E2E word rooms over the pinned
+  // OnlyHumans protocol. The room word is admission material — it goes IN
+  // via roomsJoin (like a password) and is persisted Rust-side; it never
+  // comes back in a result or event. roomsState returns the room id/epoch/
+  // peers; messages and progress ride the human-chat:// events.
+  roomsState: (): Promise<HumanRoomState> => invoke("rooms_state"),
+  roomsJoin: (word: string): Promise<void> => invoke("rooms_join", { word }),
+  roomsSend: (text: string): Promise<void> => invoke("rooms_send", { text }),
+  roomsRotate: (): Promise<void> => invoke("rooms_rotate"),
+  roomsLeave: (): Promise<void> => invoke("rooms_leave"),
 };
 
 /** Normalize a pasted connection code (trim, lowercase). */

@@ -265,6 +265,47 @@ export type SwarmState =
 
 export type SwarmStatusName = SwarmState["status"];
 
+// ---- human chat (ADR-013 D4/P3: humans-only E2E word rooms) ----
+
+/** One room member (peer id + shared display name) — mirrors the Rust
+ * `human_chat::HumanMember`. */
+export interface HumanMember {
+  peer: string;
+  name: string;
+}
+
+/** Human-chat room state — mirrors the Rust `human_chat::HumanRoomState`
+ * (snake_case). Metadata only: the room WORD never crosses IPC (it lives in
+ * Rust state + settings); `room` is the derived room id hex. */
+export interface HumanRoomState {
+  joined: boolean;
+  room: string | null;
+  epoch: number;
+  we_are_host: boolean;
+  /** idle | connecting | searching | joining | founding | hosting |
+   * connected | sealed | failed. */
+  status: string;
+  peers: HumanMember[];
+  my_peer: string | null;
+  presence_linked: boolean;
+  online: number;
+  error: string | null;
+}
+
+/** One decrypted room message — the `human-chat://message` payload. */
+export interface HumanRoomMessage {
+  room: string;
+  sender: string;
+  body: string;
+  epoch: number;
+  mine: boolean;
+  via_site: boolean;
+}
+
+/** A non-fatal node log line — the `human-chat://log` payload. */
+export interface HumanRoomLog {
+  message: string;
+}
 
 /** ADR-010: one discovered machine from the sealed circle directory
  * (decrypted app-side; `is_self` keeps self out of the rail's list). */
