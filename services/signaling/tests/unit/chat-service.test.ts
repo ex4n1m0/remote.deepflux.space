@@ -16,7 +16,11 @@ import {
   CHAT_INBOX_CAP,
 } from '../../lib/chat-service.ts';
 import type { Store } from '../../lib/store.ts';
-import type { ChatEnvelope } from '../../lib/chat-schema.ts';
+import {
+  chatEnvelopeSchema,
+  CHAT_MAX_FLEET_CALL_ID_LEN,
+  type ChatEnvelope,
+} from '../../lib/chat-schema.ts';
 
 /** The success shape of `drain` (envelopes present on drain results). */
 type Drained = { ok: true; envelopes: ChatEnvelope[] };
@@ -80,6 +84,22 @@ function makeEnv(i: number, from = 'a'.repeat(16)): ChatEnvelope {
     nonce_hex: 'n'.repeat(24),
     ct_hex: 'ab'.repeat(4 + i),
     ts_ms: 1_000 + i,
+    // ADR-013 slice 2: the zod output type carries the defaulted hint
+    // (the service core stores envelopes without re-validating them).
+    agent: false,
+  };
+}
+
+/** Schema-valid envelope for the zod-level tests (hex nonce, unlike the
+ * service-core fixture above, which never passes through the schema). */
+function schemaEnv(extra: Record<string, unknown> = {}) {
+  return {
+    v: 1,
+    from: 'a'.repeat(16),
+    nonce_hex: '0'.repeat(24),
+    ct_hex: 'ab'.repeat(48),
+    ts_ms: 1_000,
+    ...extra,
   };
 }
 
@@ -152,4 +172,58 @@ test('corrupt inbox resets instead of poisoning the device', async () => {
   assert.equal(put.ok, true);
   const drained = (await chat.drain(to)) as Drained;
   assert.equal(drained.envelopes.length, 1);
+});
+
+// ---- ADR-013 P3 fleet slice 2: additive v2 hints (opaque passthrough) ----
+//
+// The agent bit + fleet id ride INSIDE the seal (ct_hex) authoritatively;
+// the outside-seal hints are additive-optional metadata the service must
+// accept, bound, and pass through without interpretation. v1 envelopes
+// (no hints) keep parsing with safe defaults — never agent:true.
+
+test('v2 schema: v1 envelope parses with safe defaults', () => {
+  const parsed = chatEnvelopeSchema.safeParse(schemaEnv());
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.agent, false, 'absent hint never defaults true');
+    assert.equal(parsed.data.fleet_call_id, undefined);
+    assert.equal(parsed.data.v, 1, 'no version bump for additive hints');
+  }
+});
+
+test('v2 schema: fleet hints accepted, seal untouched', () => {
+  const env = schemaEnv({ agent: true, fleet_call_id: 'fleet-1' });
+  const parsed = chatEnvelopeSchema.safeParse(env);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.agent, true);
+    assert.equal(parsed.data.fleet_call_id, 'fleet-1');
+    assert.equal(parsed.data.ct_hex, env.ct_hex);
+  }
+});
+
+test('v2 schema: unknown additive fields stay tolerated (serde policy mirror)', () => {
+  const parsed = chatEnvelopeSchema.safeParse(schemaEnv({ future_field: 42 }));
+  assert.equal(parsed.success, true);
+});
+
+test('v2 schema: malformed or oversized hints are rejected', () => {
+  assert.equal(chatEnvelopeSchema.safeParse(schemaEnv({ agent: 'yes' })).success, false);
+  assert.equal(chatEnvelopeSchema.safeParse(schemaEnv({ agent: 1 })).success, false);
+  assert.equal(
+    chatEnvelopeSchema.safeParse(schemaEnv({
+      fleet_call_id: 'x'.repeat(CHAT_MAX_FLEET_CALL_ID_LEN + 1),
+    })).success,
+    false,
+  );
+});
+
+test('service stores v2 hints opaquely (put then drain deep-equal)', async () => {
+  const { chat } = service();
+  const to = 'b'.repeat(16);
+  const env: ChatEnvelope = { ...makeEnv(0), agent: true, fleet_call_id: 'fleet-9' };
+  assert.equal((await chat.put(to, env)).ok, true);
+  const drained = (await chat.drain(to)) as Drained;
+  assert.equal(drained.envelopes.length, 1);
+  assert.deepEqual(drained.envelopes[0], env, 'hints + ciphertext survive verbatim');
 });

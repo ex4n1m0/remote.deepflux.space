@@ -88,6 +88,9 @@ export interface ChatLine {
    * perspective; "to-agent" = your line addressed to their assistant). */
   sender: string;
   body: string;
+  /** ADR-013 P3 slice 2 (additive): fleet call correlation id on inbox
+   * lines that carried one (slice 3 reply routing). Absent otherwise. */
+  fleet_call_id?: string;
 }
 
 export interface AssistantStatus {

@@ -254,6 +254,7 @@ describe("SettingsPanel", () => {
     agent_model: "deepseek-flash",
     launch_at_login: false,
     agent_download_domains: [] as string[],
+    allow_remote_agent_instructions: false,
     auto_update: true,
   } as const;
 
@@ -272,6 +273,21 @@ describe("SettingsPanel", () => {
   it("hides the version label when the version is unavailable (tests/jsdom)", () => {
     render(<SettingsPanel settings={settings} onSave={vi.fn(async () => null)} version={null} />);
     expect(screen.queryByText(/App version:/)).toBeNull();
+  });
+
+  it("remote-agent opt-in defaults off and saves the flip (ADR-013 slice 2)", async () => {
+    const onSave = vi.fn(async () => null);
+    render(<SettingsPanel settings={settings} onSave={onSave} version={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    const toggle = screen.getByLabelText(/Let paired machines' assistants give this one tasks/);
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ allow_remote_agent_instructions: true }),
+      ),
+    );
   });
 });
 

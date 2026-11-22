@@ -67,6 +67,13 @@ pub struct AppSettings {
     /// allow" lands here). Empty = ask every time.
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-013 P3 fleet slice 2: opt-in to remote agent instructions —
+    /// an agent-bit inbox arrival from a PAIRED machine wakes the local
+    /// assistant only while this is true. Default FALSE (serde default:
+    /// upgrades never auto-enable it); the fleet can still deliver lines
+    /// to a non-opted-in machine, they just display without waking.
+    #[serde(default)]
+    pub allow_remote_agent_instructions: bool,
     /// ADR-008 automatic updates: scheduled update checks (download and
     /// install are always explicit user presses). Existing settings files
     /// predate the field — defaults ON.
@@ -120,6 +127,7 @@ impl Default for AppSettings {
             agent_base_url: default_agent_base_url(),
             agent_model: default_agent_model(),
             agent_download_domains: Vec::new(),
+            allow_remote_agent_instructions: false,
             auto_update: true,
             human_room_word: String::new(),
         }

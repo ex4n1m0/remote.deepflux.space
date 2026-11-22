@@ -702,6 +702,7 @@ pub fn get_settings(app: AppHandle) -> CmdResult<SettingsDto> {
         host_sharing: s.host_sharing,
         agent_admin: s.agent_admin,
         agent_download_domains: s.agent_download_domains.clone(),
+        allow_remote_agent_instructions: s.allow_remote_agent_instructions,
         auto_update: s.auto_update,
     })
 }
@@ -735,6 +736,9 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         agent_base_url: store.settings().agent_base_url.clone(),
         agent_model: store.settings().agent_model.clone(),
         agent_download_domains: patch.agent_download_domains,
+        // ADR-013 P3 slice 2: applies immediately — the inbox poller
+        // reads it on every drain tick (no restart needed).
+        allow_remote_agent_instructions: patch.allow_remote_agent_instructions,
         auto_update: patch.auto_update,
         // ADR-013 D4/P3: the human-chat room word is managed by the
         // human_chat service (rooms_join/rooms_leave), not the settings
@@ -775,6 +779,7 @@ pub fn set_settings(app: AppHandle, patch: SettingsPatch) -> CmdResult<SettingsD
         host_sharing: s.host_sharing,
         agent_admin: s.agent_admin,
         agent_download_domains: s.agent_download_domains.clone(),
+        allow_remote_agent_instructions: s.allow_remote_agent_instructions,
         auto_update: s.auto_update,
     })
 }
@@ -1080,9 +1085,12 @@ pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
                 .map_err(|e| e.to_string())
         });
     }
-    // The inbox envelope carries no agent bit (v1): an agent-addressed
-    // send would silently land as a plain message and never wake the
-    // peer's assistant. Refuse rather than mislead.
+    // ADR-013 P3 slice 2: the inbox CAN now carry an agent bit (sealed v2
+    // payload, `inbox_send_agent`), but the human offline "to-agent" verb
+    // stays refused until fleet slice 3 wires the reply correlation —
+    // waking a peer's assistant from a casual offline ask is not a
+    // behavior this command should grow silently. Refuse rather than
+    // mislead.
     if args.agent {
         return Err(
             "their assistant only answers during a session — connect to that machine first"

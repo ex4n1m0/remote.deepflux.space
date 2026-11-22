@@ -80,6 +80,10 @@ export interface Settings {
   /** Domains the local user allowed the assistant to download from
    * without asking again ("always allow" on the confirm card). */
   agent_download_domains: string[];
+  /** ADR-013 P3 fleet slice 2: opt-in to remote agent instructions —
+   * paired machines' agent-bit inbox messages wake this assistant.
+   * Settings toggle, default OFF (upgrades never auto-enable it). */
+  allow_remote_agent_instructions: boolean;
   /** ADR-008: automatic update checks (download/install stay explicit
    * presses). Settings toggle, default on. */
   auto_update: boolean;

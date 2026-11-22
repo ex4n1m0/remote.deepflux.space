@@ -222,6 +222,11 @@ pub struct ChatLine {
     pub ts_ms: u64,
     pub sender: String,
     pub body: String,
+    /// ADR-013 P3 slice 2 (additive): fleet call correlation id from the
+    /// sealed v2 payload, kept for slice 3 reply routing. Absent on v1
+    /// lines and ordinary chat — pre-slice-2 history loads unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fleet_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -235,7 +240,11 @@ const HISTORY_CAP: usize = 500;
 // ADR-006 §7 (code-review B1): the chat-inbox envelope contract is owned
 // by `crates/protocol::chat` — this module re-exports it so the historical
 // call sites keep working while the duplicate definition is gone.
-pub use protocol::chat::{CHAT_PROTOCOL_VERSION, ChatEnvelope};
+// ADR-013 P3 slice 2 adds the v2 sealed payload (the authoritative agent
+// bit + fleet correlation id ride INSIDE the ciphertext).
+pub use protocol::chat::{
+    CHAT_PAYLOAD_VERSION_V2, CHAT_PROTOCOL_VERSION, ChatEnvelope, ChatPayload,
+};
 
 // ---------------------------------------------------------------------------
 // Storage (locks: take the store lock only; never inside the engine lock)
@@ -727,6 +736,7 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
         ts_ms,
         sender: format!("peer-{sender}"),
         body: body.to_owned(),
+        fleet_call_id: None,
     };
     append_history(app, peer, line);
     // Agent-to-agent (ADR-005 §4): agent-authored messages wake the local
@@ -764,6 +774,62 @@ fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
     true
 }
 
+/// Inbox arrival (ADR-013 P3 fleet slice 2): store the decrypted line
+/// (dedupe by id) and route an agent-bit arrival through the SAME wake
+/// gate as in-session chat — but only when this machine opted in
+/// (`allow_remote_agent_instructions`, default false). Opted out: the
+/// line still lands as "peer-agent" (the fleet delivered it; the human
+/// can read it), it just never wakes the assistant. `fleet_call_id`
+/// rides along for slice 3 reply correlation. Returns whether the line
+/// was stored (false = duplicate id).
+pub fn record_incoming_inbox(
+    app: &AppHandle,
+    peer: &str,
+    id: u64,
+    ts_ms: u64,
+    agent_bit: bool,
+    body: &str,
+    fleet_call_id: Option<String>,
+    allow_remote_agent_instructions: bool,
+) -> bool {
+    let existing = history(app, peer);
+    if existing.iter().any(|l| l.id == id) {
+        return false;
+    }
+    let sender = if agent_bit { "peer-agent" } else { "peer-user" };
+    let line = ChatLine {
+        id,
+        ts_ms,
+        sender: sender.to_owned(),
+        body: body.to_owned(),
+        fleet_call_id,
+    };
+    append_history(app, peer, line);
+    // The wake gate is the in-session one (reply-to-our-ask suppression
+    // included); deliver_peer_agent keeps the rolling wake budget. The
+    // opt-in is checked HERE, at the only inbox wake site — a non-opted-in
+    // machine stores agent-bit lines but never auto-acts on them.
+    if inbox_should_wake(agent_bit, allow_remote_agent_instructions, &existing) {
+        app.state::<crate::commands::AppServices>()
+            .assistant
+            .deliver_peer_agent(peer, body);
+    }
+    true
+}
+
+/// Pure wake decision for an inbox arrival (ADR-013 P3 slice 2): an
+/// agent-bit line wakes the assistant only when the machine opted in
+/// (`allow_remote_agent_instructions`) AND the in-session reply gate
+/// agrees (an unanswered human "to-agent" ask means the arrival is its
+/// reply — display, don't wake). Human arrivals never wake.
+fn inbox_should_wake(
+    agent_bit: bool,
+    allow_remote_agent_instructions: bool,
+    prior: &[ChatLine],
+) -> bool {
+    agent_bit && allow_remote_agent_instructions && should_wake_for_agent_line(prior)
+}
+
 /// Outgoing line (this machine's user or agent) → store.
 pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) -> ChatLine {
     let line = ChatLine {
@@ -771,6 +837,7 @@ pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) ->
         ts_ms: now_ms(),
         sender: sender.to_owned(),
         body: body.to_owned(),
+        fleet_call_id: None,
     };
     append_history(app, peer, line.clone());
     line
@@ -787,18 +854,40 @@ pub(crate) fn now_ms() -> u64 {
 // Sealing (AES-256-GCM under the pairing secret; AAD = from|to|ts)
 // ---------------------------------------------------------------------------
 
-fn seal(secret_hex: &str, from: &str, to: &str, ts_ms: u64, body: &str) -> Option<ChatEnvelope> {
+fn seal(
+    secret_hex: &str,
+    from: &str,
+    to: &str,
+    ts_ms: u64,
+    body: &str,
+    agent: bool,
+    fleet_call_id: Option<&str>,
+) -> Option<ChatEnvelope> {
     let key_bytes = hex_decode(secret_hex)?;
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
     let mut nonce_bytes = [0u8; 12];
     let _ = getrandom::fill(&mut nonce_bytes);
     let aad = format!("{CHAT_PROTOCOL_VERSION}|{from}|{to}|{ts_ms}");
+    // ADR-013 P3 slice 2: fleet metadata rides INSIDE the seal (v2 JSON
+    // payload) so the service can neither read nor forge the agent bit.
+    // Plain human chat keeps the v1 plain-text payload byte-for-byte.
+    let plaintext = if agent || fleet_call_id.is_some() {
+        ChatPayload {
+            v: CHAT_PAYLOAD_VERSION_V2,
+            body: body.to_owned(),
+            agent,
+            fleet_call_id: fleet_call_id.map(str::to_owned),
+        }
+        .to_json()
+    } else {
+        body.to_owned()
+    };
     let ct = cipher
         .encrypt(
             Nonce::from_slice(&nonce_bytes),
             Payload {
-                msg: body.as_bytes(),
+                msg: plaintext.as_bytes(),
                 aad: aad.as_bytes(),
             },
         )
@@ -809,6 +898,10 @@ fn seal(secret_hex: &str, from: &str, to: &str, ts_ms: u64, body: &str) -> Optio
         nonce_hex: nonce_bytes.iter().map(|b| format!("{b:02x}")).collect(),
         ct_hex: ct.iter().map(|b| format!("{b:02x}")).collect(),
         ts_ms,
+        // Outside-seal routing hints (additive; the receiver trusts only
+        // the sealed payload — see protocol::chat).
+        agent,
+        fleet_call_id: fleet_call_id.map(str::to_owned),
     })
 }
 
@@ -852,6 +945,8 @@ fn chat_api(base: &str) -> String {
 }
 
 /// Send one out-of-session chat message (sealed with the pairing secret).
+/// Human chat: v1 plain-text payload, no agent bit — the historical
+/// signature and wire shape are unchanged.
 pub fn inbox_send(
     app: &AppHandle,
     base_url: &str,
@@ -860,16 +955,43 @@ pub fn inbox_send(
     to: &str,
     body: &str,
 ) -> Result<(), String> {
+    inbox_send_agent(app, base_url, token, from, to, body, false, None)
+}
+
+/// ADR-013 P3 fleet slice 2: send an out-of-session message carrying the
+/// agent bit and/or a fleet call id INSIDE the sealed v2 payload. The
+/// receiver wakes its assistant only if it opted in
+/// (`allow_remote_agent_instructions`); paired machines only — the seal
+/// is the pairing secret, so an unpaired party cannot forge an agent-bit
+/// arrival that opens.
+pub fn inbox_send_agent(
+    app: &AppHandle,
+    base_url: &str,
+    token: &str,
+    from: &str,
+    to: &str,
+    body: &str,
+    agent: bool,
+    fleet_call_id: Option<&str>,
+) -> Result<(), String> {
     let Some(pairing) = pairing_for(app, to) else {
         return Err(format!(
             "no pairing with {to} — connect once to establish chat"
         ));
     };
     let ts = now_ms();
-    let env =
-        seal(&pairing.secret_hex, from, to, ts, body).ok_or_else(|| "sealing failed".to_owned())?;
-    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
-    let response = agent
+    let env = seal(
+        &pairing.secret_hex,
+        from,
+        to,
+        ts,
+        body,
+        agent,
+        fleet_call_id,
+    )
+    .ok_or_else(|| "sealing failed".to_owned())?;
+    let http = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    let response = http
         .post(&chat_api(base_url))
         .set("Authorization", format!("Bearer {token}").as_str())
         .send_json(json!({ "to": to, "envelope": env }))
@@ -882,13 +1004,29 @@ pub fn inbox_send(
 
 /// Drain our inbox; every decryptable envelope becomes a stored line +
 /// webview event. Returns the count delivered.
+///
+/// ADR-013 P3 fleet slice 2: a v2 sealed payload's agent bit routes the
+/// arrival through the in-session wake gate — but only when this machine
+/// opted in (`allow_remote_agent_instructions`, default false). Opted
+/// out, agent-bit lines are stored ("peer-agent") without waking. The
+/// outer envelope's `agent`/`fleet_call_id` hints are server-visible and
+/// therefore NEVER drive the wake decision; only the sealed payload does.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
-    let agent = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
+    // The opt-in is read once per drain (the poller holds no store lock
+    // across the network call; a settings flip applies next tick).
+    let allow_remote = {
+        let services = app.state::<crate::commands::AppServices>();
+        let Ok(store) = services.store.lock() else {
+            return 0;
+        };
+        store.settings().allow_remote_agent_instructions
+    };
+    let http = node_runtime::http::https_agent(Duration::from_secs(15), "remote-desktop-chat");
     // The drain contract requires the caller's `device` as a query param
     // (GET /api/chat?device=…): without it the service 400s every poll and
     // the inbox never delivers (the live 400 flood, diagnosed 2026-11-03).
     let url = format!("{}?device={me}", chat_api(base_url));
-    let Ok(response) = agent
+    let Ok(response) = http
         .get(&url)
         .set("Authorization", format!("Bearer {token}").as_str())
         .call()
@@ -912,14 +1050,33 @@ pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> us
         let Some(body) = open(&pairing.secret_hex, me, &env) else {
             continue; // failed auth: skip, never store
         };
-        // Inbox envelopes carry no sender kind (v1): treat as the peer's
-        // human. Agent-authored offline messages are a later variant.
-        record_incoming(app, &env.from, env.ts_ms, env.ts_ms, "user", &body);
-        let _ = app.emit(
-            "engine://chat",
-            json!({ "peer": env.from, "id": env.ts_ms, "ts_ms": env.ts_ms, "sender": "user", "body": body }),
+        // The authoritative sender kind rides INSIDE the seal: a v2 JSON
+        // payload carries the agent bit + fleet id; a v1 payload is plain
+        // text (the peer's human — the pre-slice-2 behavior, unchanged).
+        let (agent_bit, text, fleet_call_id) = match ChatPayload::parse(&body) {
+            Some(payload) => (payload.agent, payload.body, payload.fleet_call_id),
+            None => (false, body, None),
+        };
+        let stored = record_incoming_inbox(
+            app,
+            &env.from,
+            env.ts_ms,
+            env.ts_ms,
+            agent_bit,
+            &text,
+            fleet_call_id,
+            allow_remote,
         );
-        delivered += 1;
+        if stored {
+            // Wire-style sender (the webview prefixes "peer-"), matching
+            // the in-session ChatReceived event convention.
+            let sender = if agent_bit { "agent" } else { "user" };
+            let _ = app.emit(
+                "engine://chat",
+                json!({ "peer": env.from, "id": env.ts_ms, "ts_ms": env.ts_ms, "sender": sender, "body": text }),
+            );
+            delivered += 1;
+        }
     }
     delivered
 }
@@ -1040,6 +1197,7 @@ mod tests {
             ts_ms: id,
             sender: sender.to_owned(),
             body: "x".to_owned(),
+            fleet_call_id: None,
         }
     }
 
@@ -1079,6 +1237,139 @@ mod tests {
         // Plain-only history changes nothing.
         let plain = [line("user", 7), line("peer-user", 8)];
         assert!(should_wake_for_agent_line(&plain));
+    }
+
+    // ---- ADR-013 P3 fleet slice 2: inbox agent-bit + opt-in wake gate ----
+
+    #[test]
+    fn inbox_wake_requires_the_opt_in() {
+        // Opted in: a fresh agent-bit arrival wakes (same gate as
+        // in-session chat).
+        assert!(inbox_should_wake(true, true, &[]));
+        // Opted OUT (the serde default): the line is stored by the caller
+        // but never wakes — a non-opted-in slave does not auto-act.
+        assert!(!inbox_should_wake(true, false, &[]));
+        // Human arrivals never wake, opt-in or not.
+        assert!(!inbox_should_wake(false, true, &[]));
+        assert!(!inbox_should_wake(false, false, &[]));
+        // The in-session reply suppression still applies when opted in:
+        // an agent-bit arrival right after our unanswered human ask is
+        // the reply coming home, not an instruction.
+        let ask = [line("to-agent", 1)];
+        assert!(!inbox_should_wake(true, true, &ask));
+        // Once the reply landed, the next agent-bit arrival wakes again.
+        let answered = [line("to-agent", 1), line("peer-agent", 2)];
+        assert!(inbox_should_wake(true, true, &answered));
+    }
+
+    #[test]
+    fn agent_bit_and_fleet_id_ride_inside_the_seal() {
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "free some disk space",
+            true,
+            Some("fleet-7"),
+        )
+        .expect("seal");
+        // The outer hints mirror the payload (additive, untrusted).
+        assert!(env.agent);
+        assert_eq!(env.fleet_call_id.as_deref(), Some("fleet-7"));
+        assert_eq!(env.v, CHAT_PROTOCOL_VERSION, "no envelope version bump");
+        // The receiver opens the seal and finds the authoritative bits.
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        let payload = ChatPayload::parse(&pt).expect("v2 payload");
+        assert!(payload.agent);
+        assert_eq!(payload.body, "free some disk space");
+        assert_eq!(payload.fleet_call_id.as_deref(), Some("fleet-7"));
+    }
+
+    #[test]
+    fn human_inbox_send_keeps_the_v1_plain_text_payload() {
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "hello there",
+            false,
+            None,
+        )
+        .expect("seal");
+        assert!(!env.agent);
+        assert_eq!(env.fleet_call_id, None);
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(pt, "hello there", "v1 payload stays plain text");
+        assert_eq!(ChatPayload::parse(&pt), None, "no agent routing");
+    }
+
+    #[test]
+    fn outer_hints_cannot_forge_a_wake() {
+        // The service (or anyone editing the stored row) can flip the
+        // outside-seal hints — the receiver must still route by the
+        // sealed payload. A human message with tampered hints stays
+        // human: no agent bit, no fleet id, no wake.
+        let mut env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "just chatting",
+            false,
+            None,
+        )
+        .expect("seal");
+        env.agent = true;
+        env.fleet_call_id = Some("forged".to_owned());
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(ChatPayload::parse(&pt), None, "hints are not authority");
+        assert!(!inbox_should_wake(false, true, &[]));
+    }
+
+    #[test]
+    fn an_unpaired_secret_never_opens_an_agent_envelope() {
+        // The inbox is pairing-sealed: a party without the pairing secret
+        // (another machine, the service itself) cannot produce an
+        // agent-bit arrival that opens — wrong key fails the GCM tag.
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "instruction",
+            true,
+            Some("fleet-1"),
+        )
+        .expect("seal");
+        assert!(open(SECRET_B, "1111111111111111", &env).is_none());
+        // Wrong recipient binding (AAD) also fails.
+        assert!(open(SECRET_A, "2222222222222222", &env).is_none());
+    }
+
+    #[test]
+    fn chat_line_fleet_id_is_additive() {
+        // Pre-slice-2 history (no fleet_call_id key) loads unchanged.
+        let legacy = serde_json::json!({
+            "id": 1, "ts_ms": 1, "sender": "peer-user", "body": "hi"
+        });
+        let l: ChatLine = serde_json::from_value(legacy).expect("legacy line loads");
+        assert_eq!(l.fleet_call_id, None);
+        // A fleet line round-trips its correlation id; None stays absent.
+        let fleet = ChatLine {
+            id: 2,
+            ts_ms: 2,
+            sender: "peer-agent".to_owned(),
+            body: "done".to_owned(),
+            fleet_call_id: Some("fleet-9".to_owned()),
+        };
+        let json = serde_json::to_string(&fleet).unwrap();
+        assert!(json.contains("\"fleet_call_id\":\"fleet-9\""));
+        let back: ChatLine = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, fleet);
+        let plain = serde_json::to_string(&line("user", 3)).unwrap();
+        assert!(!plain.contains("fleet_call_id"));
     }
 
     #[test]

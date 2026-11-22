@@ -821,6 +821,140 @@ test('send-path rate limits: per-sender window + connect_request per pair (ADR-0
   assert.equal(other.status, 200);
 });
 
+// ---------------------------------------------------------------------------
+// Chat inbox v2 matrix (ADR-013 P3 fleet slice 2)
+// ---------------------------------------------------------------------------
+//
+// The chat surface shares the emulator store with signaling; the
+// dev-server exposes it at signal-port + 2000. Envelopes are sealed
+// client-side (AES-256-GCM under the pairing secret) — the contract here
+// is OPAQUE passthrough: the additive v2 hints (`agent`, `fleet_call_id`)
+// ride outside the seal and the service must store/return them without
+// interpretation; the authoritative agent bit lives inside ct_hex (Rust
+// side: protocol::chat::ChatPayload). v1 shapes keep working both ways.
+
+const CHAT_STANDALONE = 'http://127.0.0.1:40013'; // STANDALONE + 2000
+const CHAT_STANDALONE2 = 'http://127.0.0.1:40015'; // STANDALONE2 + 2000
+const CHAT_DEV_A = 'a1a1a1a1a1a1a1a1';
+const CHAT_DEV_B = 'b2b2b2b2b2b2b2b2';
+const CHAT_DEV_C = 'c3c3c3c3c3c3c3c3';
+
+function sealedEnvelope(from: string, extra: Record<string, unknown> = {}) {
+  return {
+    v: 1,
+    from,
+    nonce_hex: '0'.repeat(24),
+    ct_hex: 'ab'.repeat(48),
+    ts_ms: 1_750_000_000_000,
+    ...extra,
+  };
+}
+
+async function chatPut(base: string, from: string, to: string, env: object) {
+  const r = await fetch(`${base}/api/chat`, {
+    method: 'PUT',
+    headers: hdr(from),
+    body: JSON.stringify({ to, envelope: env }),
+    signal: AbortSignal.timeout(8000),
+  });
+  return { status: r.status, json: (await r.json()) as Record<string, unknown> };
+}
+
+async function chatDrain(base: string, device: string) {
+  const r = await fetch(`${base}/api/chat?device=${device}`, {
+    headers: hdr(device),
+    signal: AbortSignal.timeout(8000),
+  });
+  return { status: r.status, json: (await r.json()) as Record<string, unknown> };
+}
+
+/** The pre-slice-2 (v1) view of an envelope: the old zod schema stripped
+ * unknown keys, so a v1 client/server sees exactly the five v1 fields.
+ * Simulating that strip is how the v2-client ↔ v1-server degradation is
+ * exercised against the real v2 service code (no old binary needed). */
+function v1View(env: Record<string, unknown>): Record<string, unknown> {
+  const { v, from, nonce_hex, ct_hex, ts_ms } = env;
+  return { v, from, nonce_hex, ct_hex, ts_ms };
+}
+
+test('chat inbox: v1 client ↔ v2 server — plain envelope round-trips', async () => {
+  await register(STANDALONE, CHAT_DEV_A);
+  await register(STANDALONE, CHAT_DEV_B);
+  const env = sealedEnvelope(CHAT_DEV_A);
+  const put = await chatPut(CHAT_STANDALONE, CHAT_DEV_A, CHAT_DEV_B, env);
+  assert.equal(put.status, 200);
+  assert.equal(put.json.ok, true);
+  const drained = await chatDrain(CHAT_STANDALONE, CHAT_DEV_B);
+  assert.equal(drained.status, 200);
+  const list = drained.json.envelopes as Array<Record<string, unknown>>;
+  assert.equal(list.length, 1);
+  // The v1 client's view is byte-identical to what it sent (the additive
+  // hint the v2 schema defaults in is invisible to it).
+  assert.deepEqual(v1View(list[0]!), env);
+  assert.equal(list[0]!.agent, false, 'absent hint defaults false, never true');
+  // Destructive drain: a second poll is empty.
+  const again = await chatDrain(CHAT_STANDALONE, CHAT_DEV_B);
+  assert.equal((again.json.envelopes as unknown[]).length, 0);
+});
+
+test('chat inbox: v2 client ↔ v2 server — fleet hints pass through opaquely', async () => {
+  await register(STANDALONE, CHAT_DEV_A);
+  await register(STANDALONE, CHAT_DEV_B);
+  const env = sealedEnvelope(CHAT_DEV_A, { agent: true, fleet_call_id: 'fleet-42' });
+  const put = await chatPut(CHAT_STANDALONE, CHAT_DEV_A, CHAT_DEV_B, env);
+  assert.equal(put.status, 200);
+  const drained = await chatDrain(CHAT_STANDALONE, CHAT_DEV_B);
+  const list = drained.json.envelopes as Array<Record<string, unknown>>;
+  assert.equal(list.length, 1);
+  // The whole envelope — seal included — survives untouched: the service
+  // stores ciphertext + opaque hints, it never interprets the agent bit.
+  assert.deepEqual(list[0], env);
+});
+
+test('chat inbox: v2 client ↔ v1 server degrades safely (hints stripped, seal intact)', async () => {
+  await register(STANDALONE2, CHAT_DEV_A);
+  await register(STANDALONE2, CHAT_DEV_C);
+  const env = sealedEnvelope(CHAT_DEV_A, { agent: true, fleet_call_id: 'fleet-7' });
+  const put = await chatPut(CHAT_STANDALONE2, CHAT_DEV_A, CHAT_DEV_C, env);
+  assert.equal(put.status, 200);
+  const drained = await chatDrain(CHAT_STANDALONE2, CHAT_DEV_C);
+  const list = drained.json.envelopes as Array<Record<string, unknown>>;
+  assert.equal(list.length, 1);
+  // A v1 server strips the unknown hint keys (old zod behavior); what
+  // remains is exactly the v1 envelope — the sealed payload is untouched,
+  // so a v1 receiver displays it as plain chat and never wakes.
+  const stripped = v1View(list[0]!);
+  assert.deepEqual(stripped, sealedEnvelope(CHAT_DEV_A));
+  assert.equal(stripped.ct_hex, env.ct_hex, 'ciphertext survives the strip');
+  // And the stripped shape still validates as a v1 PUT (re-store cycle).
+  const rePut = await chatPut(CHAT_STANDALONE2, CHAT_DEV_A, CHAT_DEV_C, stripped);
+  assert.equal(rePut.status, 200);
+  const reDrained = await chatDrain(CHAT_STANDALONE2, CHAT_DEV_C);
+  const reList = reDrained.json.envelopes as Array<Record<string, unknown>>;
+  assert.equal(reList.length, 1);
+  assert.deepEqual(v1View(reList[0]!), stripped);
+});
+
+test('chat inbox: malformed v2 hints are rejected, never stored', async () => {
+  await register(STANDALONE, CHAT_DEV_A);
+  await register(STANDALONE, CHAT_DEV_B);
+  // agent must be a boolean; fleet_call_id is bounded (storage discipline).
+  const badAgent = await chatPut(
+    CHAT_STANDALONE, CHAT_DEV_A, CHAT_DEV_B,
+    sealedEnvelope(CHAT_DEV_A, { agent: 'yes' }),
+  );
+  assert.equal(badAgent.status, 400);
+  assert.equal(badAgent.json.error, 'malformed');
+  const longId = await chatPut(
+    CHAT_STANDALONE, CHAT_DEV_A, CHAT_DEV_B,
+    sealedEnvelope(CHAT_DEV_A, { fleet_call_id: 'x'.repeat(129) }),
+  );
+  assert.equal(longId.status, 400);
+  // Nothing landed in the inbox.
+  const drained = await chatDrain(CHAT_STANDALONE, CHAT_DEV_B);
+  assert.equal((drained.json.envelopes as unknown[]).length, 0);
+});
+
 test('no secrets or SDP material in service logs', async () => {
   await delay(300);
   const dump = [...logs.values()].map((f) => f()).join('\n');

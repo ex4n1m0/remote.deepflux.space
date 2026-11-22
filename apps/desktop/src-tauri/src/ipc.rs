@@ -32,6 +32,11 @@ pub struct SettingsPatch {
     /// UI editable; `agent_download_domains` in the store).
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-013 P3 fleet slice 2: opt-in to remote agent instructions
+    /// (paired machines' agent-bit inbox messages wake the assistant).
+    /// Defaults OFF for callers that predate the field — never auto-on.
+    #[serde(default)]
+    pub allow_remote_agent_instructions: bool,
     /// ADR-008: automatic update checks (download/install stay explicit
     /// user presses). Defaults ON for callers that predate the field.
     #[serde(default = "default_true")]
@@ -92,6 +97,10 @@ pub struct SettingsDto {
     pub agent_admin: bool,
     #[serde(default)]
     pub agent_download_domains: Vec<String>,
+    /// ADR-013 P3 fleet slice 2: remote agent instructions opt-in
+    /// (Settings toggle; default off).
+    #[serde(default)]
+    pub allow_remote_agent_instructions: bool,
     /// ADR-008: automatic update checks (Settings toggle).
     #[serde(default = "default_true")]
     pub auto_update: bool,
