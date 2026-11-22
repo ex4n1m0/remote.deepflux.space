@@ -123,18 +123,10 @@ pub struct HumanRoomLog {
 /// on the command side), and the volume is user-driven (a few presses), so
 /// it cannot grow without bound in practice.
 enum Ctrl {
-    Join {
-        word: String,
-    },
-    Send {
-        text: String,
-    },
+    Join { word: String },
+    Send { text: String },
     Rotate,
     Leave,
-    /// Re-emit the current state snapshot (UI startup / post-listen pull).
-    State,
-    /// Tear the node down and exit the thread (app shutdown).
-    Shutdown,
 }
 
 /// Managed state: the control channel to the node thread (None until
@@ -364,16 +356,6 @@ async fn run_loop(app: AppHandle, mut ctrl_rx: mpsc::UnboundedReceiver<Ctrl>) {
                         teardown(&mut node, &mut forward).await;
                         snap = HumanRoomState::default();
                         push_state(&app, snap.clone());
-                    }
-                    Ctrl::State => {
-                        push_state(&app, snap.clone());
-                        if let Some(handle) = &node {
-                            let _ = handle.cmd_tx.send(Command::RequestState).await;
-                        }
-                    }
-                    Ctrl::Shutdown => {
-                        teardown(&mut node, &mut forward).await;
-                        break;
                     }
                 }
             }
