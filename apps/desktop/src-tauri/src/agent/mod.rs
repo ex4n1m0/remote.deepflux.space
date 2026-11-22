@@ -114,6 +114,11 @@ pub enum AssistantInput {
     PeerAgent {
         peer: String,
         body: String,
+        /// ADR-013 P3 slice 3: fleet call correlation id from the sealed
+        /// inbox payload (None for in-session arrivals and ordinary agent
+        /// chat). Threaded into the reply so the calling machine's fleet
+        /// can match the answer to its call by history scan.
+        fleet_call_id: Option<String>,
     },
     /// ADR-012 release B: a scheduled task fired — same authority as a
     /// user turn, and the final answer is reported to every paired
@@ -213,7 +218,9 @@ impl AssistantState {
     /// Deliver an incoming peer-agent instruction as a turn. Bounded: a
     /// busy assistant skips it (the text is still in the chat log), and
     /// the rolling wake budget below caps machine-to-machine chatter.
-    pub fn deliver_peer_agent(&self, peer: &str, body: &str) {
+    /// `fleet_call_id` (slice 3) rides from the sealed inbox line into
+    /// the turn so the final reply carries it back to the caller.
+    pub fn deliver_peer_agent(&self, peer: &str, body: &str, fleet_call_id: Option<String>) {
         if *self.busy.lock().expect("assistant busy") {
             return;
         }
@@ -239,6 +246,7 @@ impl AssistantState {
         let _ = self.deliver(AssistantInput::PeerAgent {
             peer: peer.to_owned(),
             body: body.to_owned(),
+            fleet_call_id,
         });
     }
 
@@ -363,12 +371,20 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
     while let Ok(input) = rx.recv() {
         // Peer-agent instructions arrive as machine-chat turns and are
         // reported in the panel so their execution is always visible.
-        let (user_text, reply_to, scheduled) = match input {
-            AssistantInput::User(text) => (text, None, None),
-            AssistantInput::PeerAgent { peer, body } => {
+        // The fourth element is the fleet correlation id (slice 3): the
+        // reply leg seals it back to the calling machine's fleet scan.
+        let (user_text, reply_to, scheduled, fleet_call_id) = match input {
+            AssistantInput::User(text) => (text, None, None, None),
+            AssistantInput::PeerAgent {
+                peer,
+                body,
+                fleet_call_id,
+            } => {
                 // ADR-013 P3 audit rail: this turn runs at a paired
                 // machine's assistant's instruction — one local record.
-                // The instruction BODY is user content and never enters
+                // Fires for EVERY PeerAgent wake, in-session or inbox
+                // (slice 3 fleet wakes ride the same audited path). The
+                // instruction BODY is user content and never enters
                 // the log (invariant 6): fixed action label, actor = the
                 // peer's device id. Recorded before the turn so a crash
                 // mid-turn still leaves the trail; write failures are
@@ -396,7 +412,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                         content: format!("from {peer}'s assistant: {body}"),
                     },
                 );
-                (text, Some(peer), None)
+                (text, Some(peer), None, fleet_call_id)
             }
             AssistantInput::Scheduled { name, body } => {
                 let text = format!(
@@ -415,7 +431,7 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                         content: format!("scheduled {name}: {body}"),
                     },
                 );
-                (text, None, Some(name))
+                (text, None, Some(name), None)
             }
         };
         if api_key(&app).is_none() {
@@ -478,7 +494,8 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
                 // model may skip (the 0.11.0 field report: the reply
                 // rendered on the host only).
                 if let Some(peer) = reply_to
-                    && let Err(err) = send_agent_reply(&app, &peer, &final_text)
+                    && let Err(err) =
+                        send_agent_reply(&app, &peer, &final_text, fleet_call_id.as_deref())
                 {
                     eprintln!("[assistant] reply to {peer} failed: {err}");
                 }
@@ -601,7 +618,20 @@ pub fn spawn_scheduler(app: AppHandle) {
 /// WITH that machine, otherwise sealed through the signaling inbox (it
 /// lands there as a plain message — the inbox envelope carries no agent
 /// bit, and a delivered plain reply beats a lost one).
-fn send_agent_reply(app: &AppHandle, peer: &str, text: &str) -> Result<(), String> {
+///
+/// ADR-013 P3 slice 3: a fleet-correlated reply (`fleet_call_id` Some)
+/// ALWAYS rides the sealed inbox as a v2 agent payload carrying the id —
+/// the live-session chat wire has no fleet id field, so a session reply
+/// would lose the correlation the caller's fleet scan needs. The caller
+/// collects it by history scan; its wake gate displays it without acting
+/// (the fleet ask is the last agent-box line, and the id matches its own
+/// sent call).
+fn send_agent_reply(
+    app: &AppHandle,
+    peer: &str,
+    text: &str,
+    fleet_call_id: Option<&str>,
+) -> Result<(), String> {
     let code = peer.trim().to_lowercase();
     if code.is_empty() {
         return Err("empty peer code".to_owned());
@@ -613,6 +643,18 @@ fn send_agent_reply(app: &AppHandle, peer: &str, text: &str) -> Result<(), Strin
         (s.signaling_base_url, s.device_token, s.device_id)
     };
     crate::chat::record_outgoing(app, &code, "agent", text);
+    if let Some(id) = fleet_call_id {
+        return crate::chat::inbox_send_agent(
+            app,
+            &base_url,
+            &token,
+            &me,
+            &code,
+            text,
+            true,
+            Some(id),
+        );
+    }
     let status = services
         .engine
         .lock()
@@ -904,5 +946,42 @@ mod tests {
         .to_json();
         assert_eq!(tool["tool_call_id"], "call-1");
         assert_eq!(tool["name"], "status");
+    }
+
+    #[test]
+    fn peer_agent_input_carries_the_fleet_id() {
+        // Slice 3 reply threading: the inbox wake's correlation id rides
+        // the input enum into the turn (the reply leg seals it back to
+        // the calling machine's fleet scan).
+        let input = AssistantInput::PeerAgent {
+            peer: "abcdef0123456789".to_owned(),
+            body: "free some disk space".to_owned(),
+            fleet_call_id: Some("fleet-42".to_owned()),
+        };
+        match input {
+            AssistantInput::PeerAgent {
+                peer,
+                body,
+                fleet_call_id,
+            } => {
+                assert_eq!(peer, "abcdef0123456789");
+                assert_eq!(body, "free some disk space");
+                assert_eq!(fleet_call_id.as_deref(), Some("fleet-42"));
+            }
+            _ => panic!("PeerAgent expected"),
+        }
+        // In-session arrivals and ordinary agent chat carry no id.
+        let plain = AssistantInput::PeerAgent {
+            peer: "abcdef0123456789".to_owned(),
+            body: "hi".to_owned(),
+            fleet_call_id: None,
+        };
+        assert!(matches!(
+            plain,
+            AssistantInput::PeerAgent {
+                fleet_call_id: None,
+                ..
+            }
+        ));
     }
 }

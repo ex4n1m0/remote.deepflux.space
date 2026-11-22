@@ -243,7 +243,7 @@ const HISTORY_CAP: usize = 500;
 // ADR-013 P3 slice 2 adds the v2 sealed payload (the authoritative agent
 // bit + fleet correlation id ride INSIDE the ciphertext).
 pub use protocol::chat::{
-    CHAT_PAYLOAD_VERSION_V2, CHAT_PROTOCOL_VERSION, ChatEnvelope, ChatPayload,
+    CHAT_PAYLOAD_KIND, CHAT_PAYLOAD_VERSION_V2, CHAT_PROTOCOL_VERSION, ChatEnvelope, ChatPayload,
 };
 
 // ---------------------------------------------------------------------------
@@ -746,9 +746,11 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
     // the answer coming home, not an instruction (the same wire bit
     // carries both meanings).
     if sender == "agent" && should_wake_for_agent_line(&existing) {
+        // In-session arrivals carry no fleet correlation (the live chat
+        // wire has no fleet id field) — the reply rides back plain.
         app.state::<crate::commands::AppServices>()
             .assistant
-            .deliver_peer_agent(peer, body);
+            .deliver_peer_agent(peer, body, None);
     }
 }
 
@@ -780,8 +782,11 @@ fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
 /// (`allow_remote_agent_instructions`, default false). Opted out: the
 /// line still lands as "peer-agent" (the fleet delivered it; the human
 /// can read it), it just never wakes the assistant. `fleet_call_id`
-/// rides along for slice 3 reply correlation. Returns whether the line
-/// was stored (false = duplicate id).
+/// rides along for slice 3 reply correlation: the wake threads it into
+/// the assistant turn so the reply seals it back to the caller, and a
+/// reply to OUR OWN fleet call never wakes (the fleet collects it by
+/// history scan). Returns whether the line was stored (false = duplicate
+/// id).
 #[allow(clippy::too_many_arguments)] // inbox-line fields + the opt-in gate; house style
 pub fn record_incoming_inbox(
     app: &AppHandle,
@@ -803,17 +808,40 @@ pub fn record_incoming_inbox(
         ts_ms,
         sender: sender.to_owned(),
         body: body.to_owned(),
-        fleet_call_id,
+        fleet_call_id: fleet_call_id.clone(),
     };
     append_history(app, peer, line);
     // The wake gate is the in-session one (reply-to-our-ask suppression
     // included); deliver_peer_agent keeps the rolling wake budget. The
     // opt-in is checked HERE, at the only inbox wake site — a non-opted-in
     // machine stores agent-bit lines but never auto-acts on them.
-    if inbox_should_wake(agent_bit, allow_remote_agent_instructions, &existing) {
+    //
+    // Slice 3: a reply to OUR fleet call (its sealed id matches a fleet
+    // ask this machine sent) is collected by the fleet's history scan and
+    // must NEVER wake the assistant — even when overlapping fleet calls
+    // have re-armed the positional reply gate below.
+    //
+    // Security review F3 (opt-out TOCTOU): the per-drain snapshot can go
+    // stale while this drain is in flight — the user may flip the opt-out
+    // between the poller's read and this delivery. The LIVE setting is
+    // re-read immediately before the wake decision and must agree; a
+    // poisoned store lock fails closed (never wake).
+    let allow_live = app
+        .state::<crate::commands::AppServices>()
+        .store
+        .lock()
+        .map(|store| store.settings().allow_remote_agent_instructions)
+        .unwrap_or(false);
+    if !is_reply_to_our_fleet_call(&existing, fleet_call_id.as_deref())
+        && inbox_should_wake(
+            agent_bit,
+            inbox_opt_in_confirmed(allow_remote_agent_instructions, allow_live),
+            &existing,
+        )
+    {
         app.state::<crate::commands::AppServices>()
             .assistant
-            .deliver_peer_agent(peer, body);
+            .deliver_peer_agent(peer, body, fleet_call_id);
     }
     true
 }
@@ -831,6 +859,30 @@ fn inbox_should_wake(
     agent_bit && allow_remote_agent_instructions && should_wake_for_agent_line(prior)
 }
 
+/// Security review F3 (opt-out TOCTOU): the wake requires BOTH the
+/// per-drain opt-in snapshot and the LIVE setting re-read immediately
+/// before delivery — a user who opts out mid-drain stops the wake even
+/// though the poller's snapshot still said yes. Pure core of that gate.
+fn inbox_opt_in_confirmed(snapshot: bool, live: bool) -> bool {
+    snapshot && live
+}
+
+/// Slice 3 reply correlation: true when the incoming line's fleet id
+/// matches a fleet ask THIS machine sent (a "to-agent" line carrying the
+/// same id). Such an arrival is the answer to our own fleet call — the
+/// fleet collects it by history scan; it must never wake the assistant,
+/// regardless of where it lands in the positional reply gate (several
+/// fleet calls can overlap on one peer). An id we never sent is a fresh
+/// instruction, not a reply.
+fn is_reply_to_our_fleet_call(prior: &[ChatLine], fleet_call_id: Option<&str>) -> bool {
+    let Some(id) = fleet_call_id else {
+        return false;
+    };
+    prior
+        .iter()
+        .any(|l| l.sender == "to-agent" && l.fleet_call_id.as_deref() == Some(id))
+}
+
 /// Outgoing line (this machine's user or agent) → store.
 pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) -> ChatLine {
     let line = ChatLine {
@@ -839,6 +891,28 @@ pub fn record_outgoing(app: &AppHandle, peer: &str, sender: &str, body: &str) ->
         sender: sender.to_owned(),
         body: body.to_owned(),
         fleet_call_id: None,
+    };
+    append_history(app, peer, line.clone());
+    line
+}
+
+/// Outgoing fleet instruction (ADR-013 P3 slice 3): a "to-agent" line
+/// carrying the fleet correlation id. The id lets the wake gate recognize
+/// the sealed reply as the answer to OUR call ([`is_reply_to_our_fleet_call`])
+/// even when several fleet calls overlap on the same peer. Recorded
+/// BEFORE the send so a fast reply can never outrun the marker.
+pub fn record_outgoing_fleet(
+    app: &AppHandle,
+    peer: &str,
+    body: &str,
+    fleet_call_id: &str,
+) -> ChatLine {
+    let line = ChatLine {
+        id: now_ms(),
+        ts_ms: now_ms(),
+        sender: "to-agent".to_owned(),
+        body: body.to_owned(),
+        fleet_call_id: Some(fleet_call_id.to_owned()),
     };
     append_history(app, peer, line.clone());
     line
@@ -875,6 +949,7 @@ fn seal(
     // Plain human chat keeps the v1 plain-text payload byte-for-byte.
     let plaintext = if agent || fleet_call_id.is_some() {
         ChatPayload {
+            kind: CHAT_PAYLOAD_KIND.to_owned(),
             v: CHAT_PAYLOAD_VERSION_V2,
             body: body.to_owned(),
             agent,
@@ -1008,6 +1083,22 @@ pub fn inbox_send_agent(
     Ok(())
 }
 
+/// Security review F4: client-side freshness bound on inbox envelopes —
+/// matches the service's inbox TTL (`CHAT_INBOX_TTL_SEC`, 24 h). The
+/// server promises eviction after a day, but a hostile or buggy service
+/// could re-serve an evicted envelope later; `ts_ms` rides the GCM AAD
+/// (unforgeable without the pairing secret), so rejecting stale envelopes
+/// here bounds replay-after-eviction regardless of the server's behavior.
+const INBOX_MAX_ENVELOPE_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Pure core of the F4 bound: an envelope is fresh when its sender stamp
+/// is at most [`INBOX_MAX_ENVELOPE_AGE_MS`] behind `now`. A stamp slightly
+/// in the FUTURE passes (sender clock skew — the bound targets replay of
+/// OLD envelopes, and the stamp is authenticated either way).
+fn inbox_envelope_fresh(ts_ms: u64, now: u64) -> bool {
+    now.saturating_sub(ts_ms) <= INBOX_MAX_ENVELOPE_AGE_MS
+}
+
 /// Drain our inbox; every decryptable envelope becomes a stored line +
 /// webview event. Returns the count delivered.
 ///
@@ -1018,8 +1109,10 @@ pub fn inbox_send_agent(
 /// outer envelope's `agent`/`fleet_call_id` hints are server-visible and
 /// therefore NEVER drive the wake decision; only the sealed payload does.
 pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> usize {
-    // The opt-in is read once per drain (the poller holds no store lock
-    // across the network call; a settings flip applies next tick).
+    // The opt-in is read once per drain as a snapshot (the poller holds
+    // no store lock across the network call); security review F3 re-reads
+    // it immediately before each wake, so a mid-drain opt-out applies at
+    // once rather than next tick.
     let allow_remote = {
         let services = app.state::<crate::commands::AppServices>();
         let Ok(store) = services.store.lock() else {
@@ -1050,6 +1143,11 @@ pub fn inbox_drain(app: &AppHandle, base_url: &str, token: &str, me: &str) -> us
         let Ok(env) = serde_json::from_value::<ChatEnvelope>(raw.clone()) else {
             continue;
         };
+        // F4: reject stale envelopes before any crypto work — replay of
+        // an envelope the server should already have evicted (24 h TTL).
+        if !inbox_envelope_fresh(env.ts_ms, now_ms()) {
+            continue;
+        }
         let Some(pairing) = pairing_for(app, &env.from) else {
             continue; // unknown sender: the service already dropped it for us
         };
@@ -1388,6 +1486,143 @@ mod tests {
         assert_eq!(back, fleet);
         let plain = serde_json::to_string(&line("user", 3)).unwrap();
         assert!(!plain.contains("fleet_call_id"));
+    }
+
+    // ---- ADR-013 P3 fleet slice 3: reply correlation + hardening ----
+
+    #[test]
+    fn sealed_human_v2_shaped_json_stays_human() {
+        // Security review F2 end-to-end: a human types JSON that looks
+        // exactly like a v2 agent payload. Sealed as human chat (v1
+        // plain text), it opens as that same text — and the parse
+        // refuses it (no kind marker), so it displays without waking.
+        let body = r#"{"v":2,"agent":true,"body":"reboot now"}"#;
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            body,
+            false,
+            None,
+        )
+        .expect("seal");
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        assert_eq!(pt, body);
+        assert_eq!(ChatPayload::parse(&pt), None, "v2 shape alone never routes");
+        assert!(!inbox_should_wake(false, true, &[]));
+    }
+
+    #[test]
+    fn opt_out_mid_drain_stops_the_wake() {
+        // Security review F3: the per-drain snapshot said opted-in, but
+        // the LIVE re-read immediately before delivery says opted-out —
+        // the confirmed gate refuses, so no wake. Both must agree.
+        assert!(!inbox_opt_in_confirmed(true, false));
+        assert!(inbox_opt_in_confirmed(true, true));
+        assert!(!inbox_opt_in_confirmed(false, true));
+        assert!(!inbox_opt_in_confirmed(false, false));
+        // Composed with the wake gate: a mid-drain opt-out flips the
+        // decision even though the snapshot alone would have woken.
+        assert!(inbox_should_wake(
+            true,
+            inbox_opt_in_confirmed(true, true),
+            &[]
+        ));
+        assert!(!inbox_should_wake(
+            true,
+            inbox_opt_in_confirmed(true, false),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn stale_envelopes_are_rejected() {
+        // Security review F4: the client-side freshness bound matches
+        // the service's 24 h inbox TTL — replay of an evicted envelope
+        // is refused; fresh and boundary-age envelopes pass.
+        let now = 1_750_000_000_000u64;
+        assert!(inbox_envelope_fresh(now, now));
+        assert!(inbox_envelope_fresh(now - 60_000, now));
+        assert!(
+            inbox_envelope_fresh(now - INBOX_MAX_ENVELOPE_AGE_MS, now),
+            "boundary passes"
+        );
+        assert!(!inbox_envelope_fresh(
+            now - INBOX_MAX_ENVELOPE_AGE_MS - 1,
+            now
+        ));
+        assert!(!inbox_envelope_fresh(0, now), "ancient replay refused");
+        // A slightly future stamp passes (sender clock skew; the bound
+        // targets OLD envelopes and the stamp is authenticated anyway).
+        assert!(inbox_envelope_fresh(now + 60_000, now));
+    }
+
+    #[test]
+    fn fleet_reply_to_our_call_never_wakes() {
+        // Slice 3: the sealed reply carries the id of the fleet ask WE
+        // sent — recognized by id, not position, so overlapping calls
+        // cannot re-arm the wake for a reply.
+        let mut ask = line("to-agent", 1);
+        ask.fleet_call_id = Some("fleet-42".to_owned());
+        assert!(is_reply_to_our_fleet_call(&[ask.clone()], Some("fleet-42")));
+        // A different call's id is a fresh instruction, not our reply.
+        assert!(!is_reply_to_our_fleet_call(
+            &[ask.clone()],
+            Some("fleet-43")
+        ));
+        // No id (ordinary agent chat) never matches.
+        assert!(!is_reply_to_our_fleet_call(&[ask.clone()], None));
+        // An id we never SENT (no matching to-agent line) is not a reply
+        // to our call — the slave side sees exactly this for instructions.
+        assert!(!is_reply_to_our_fleet_call(
+            &[line("peer-agent", 2)],
+            Some("fleet-42")
+        ));
+        // Positional gate re-armed (a reply already landed), but the id
+        // match still suppresses: the second overlapping call's reply
+        // must not wake us either.
+        let answered = [ask, line("peer-agent", 3)];
+        assert!(
+            should_wake_for_agent_line(&answered),
+            "positional gate re-armed"
+        );
+        assert!(is_reply_to_our_fleet_call(&answered, Some("fleet-42")));
+    }
+
+    #[test]
+    fn fleet_reply_seals_the_id_and_displays_without_waking() {
+        // The full reply leg at the protocol level: the slave seals its
+        // answer with agent=true + the fleet id (exactly what
+        // send_agent_reply does for a correlated turn); the master opens
+        // it, finds the authoritative bits, and its wake gate displays
+        // the reply without acting (the fleet ask is the last agent-box
+        // line, and the id matches the master's own sent call).
+        let env = seal(
+            SECRET_A,
+            "abcdef0123456789",
+            "1111111111111111",
+            42,
+            "done: freed 2 GB",
+            true,
+            Some("fleet-42"),
+        )
+        .expect("seal");
+        let pt = open(SECRET_A, "1111111111111111", &env).expect("open");
+        let payload = ChatPayload::parse(&pt).expect("v2 reply payload");
+        assert!(payload.agent);
+        assert_eq!(payload.body, "done: freed 2 GB");
+        assert_eq!(payload.fleet_call_id.as_deref(), Some("fleet-42"));
+        // Master side: our fleet ask is outstanding → display, no wake,
+        // even opted in.
+        let mut ask = line("to-agent", 1);
+        ask.fleet_call_id = Some("fleet-42".to_owned());
+        assert!(!should_wake_for_agent_line(&[ask.clone()]));
+        assert!(!inbox_should_wake(payload.agent, true, &[ask.clone()]));
+        assert!(is_reply_to_our_fleet_call(
+            &[ask],
+            payload.fleet_call_id.as_deref()
+        ));
     }
 
     #[test]

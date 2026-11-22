@@ -281,6 +281,11 @@ describe("SettingsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     const toggle = screen.getByLabelText(/Let paired machines' assistants give this one tasks/);
     expect((toggle as HTMLInputElement).checked).toBe(false);
+    // Security review F5: the copy scopes the opt-in to OUT-OF-SESSION
+    // inbox messages — a live session is a separate full-control trust.
+    const labelText = toggle.closest("label")?.textContent ?? "";
+    expect(labelText).toMatch(/while no session is live/);
+    expect(labelText).toMatch(/live remote-control session is separate/);
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() =>

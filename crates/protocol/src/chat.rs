@@ -70,6 +70,11 @@ pub struct ChatEnvelope {
 /// machine holding the pairing secret can produce a payload that opens.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatPayload {
+    /// Required structural marker (security review F2): must equal
+    /// [`CHAT_PAYLOAD_KIND`]. A human-typed message that happens to be
+    /// JSON with `v:2`/`agent:true` keys lacks this field, so it fails
+    /// the parse and stays plain human chat — never an instruction.
+    pub kind: String,
     /// Payload layout version (2 = this struct; v1 payloads are raw text).
     pub v: u32,
     /// The chat body (user text — never logged, invariant 6).
@@ -91,6 +96,11 @@ pub struct ChatPayload {
 /// working, so the envelope version does not bump.
 pub const CHAT_PAYLOAD_VERSION_V2: u32 = 2;
 
+/// Required `kind` marker on every v2 payload (security review F2).
+/// The structural discriminator that separates a sealed agent payload
+/// from human-typed JSON that merely happens to carry the same keys.
+pub const CHAT_PAYLOAD_KIND: &str = "chat-v2";
+
 impl ChatPayload {
     /// Serialize as the v2 sealed-payload JSON (what `seal` encrypts).
     pub fn to_json(&self) -> String {
@@ -98,11 +108,14 @@ impl ChatPayload {
     }
 
     /// Parse a decrypted inbox body: `Some` only for a well-formed v2
-    /// payload (correct version tag); `None` = v1 plain text (the caller
-    /// displays it as the peer's human chat, never wakes on it).
+    /// payload (correct `kind` marker AND version tag); `None` = v1 plain
+    /// text (the caller displays it as the peer's human chat, never wakes
+    /// on it). F2: human JSON shaped like a v2 payload but missing the
+    /// required `kind` (or carrying a wrong one) fails here and stays
+    /// human — the version tag alone is not authority.
     pub fn parse(pt: &str) -> Option<Self> {
         let payload: Self = serde_json::from_str(pt).ok()?;
-        if payload.v != CHAT_PAYLOAD_VERSION_V2 {
+        if payload.kind != CHAT_PAYLOAD_KIND || payload.v != CHAT_PAYLOAD_VERSION_V2 {
             return None;
         }
         Some(payload)
@@ -177,14 +190,19 @@ mod tests {
     }
 
     #[test]
-    fn chat_payload_v2_round_trips_and_gates_on_version() {
+    fn chat_payload_v2_round_trips_and_gates_on_kind_and_version() {
         let payload = ChatPayload {
+            kind: CHAT_PAYLOAD_KIND.to_owned(),
             v: CHAT_PAYLOAD_VERSION_V2,
             body: "reboot the lab pc".to_owned(),
             agent: true,
             fleet_call_id: Some("fleet-7".to_owned()),
         };
         let json = payload.to_json();
+        assert!(
+            json.contains("\"kind\":\"chat-v2\""),
+            "marker rides the seal"
+        );
         let back = ChatPayload::parse(&json).expect("v2 payload parses");
         assert_eq!(back, payload);
         // v1 plain text is NOT a v2 payload (the caller displays it).
@@ -193,12 +211,46 @@ mod tests {
         // either — human-typed JSON must not route as an instruction.
         assert_eq!(ChatPayload::parse("{\"body\":\"hi\",\"agent\":true}"), None);
         assert_eq!(
-            ChatPayload::parse("{\"v\":3,\"body\":\"hi\",\"agent\":true}"),
+            ChatPayload::parse("{\"kind\":\"chat-v2\",\"v\":3,\"body\":\"hi\",\"agent\":true}"),
             None
         );
-        // Additive within the payload: agent defaults false when absent.
-        let minimal = ChatPayload::parse("{\"v\":2,\"body\":\"hi\"}").expect("minimal v2");
+        // Additive within the payload: agent defaults false when absent
+        // (the kind marker is still required).
+        let minimal = ChatPayload::parse("{\"kind\":\"chat-v2\",\"v\":2,\"body\":\"hi\"}")
+            .expect("minimal v2");
         assert!(!minimal.agent);
         assert_eq!(minimal.fleet_call_id, None);
+    }
+
+    #[test]
+    fn human_json_with_v2_shape_but_no_kind_stays_human() {
+        // Security review F2: a human can type JSON that looks exactly
+        // like a v2 payload. Without the required structural `kind`
+        // marker it must NOT parse — the receiver displays it as plain
+        // human chat and never wakes on it.
+        assert_eq!(
+            ChatPayload::parse("{\"v\":2,\"agent\":true,\"body\":\"reboot now\"}"),
+            None,
+            "v2 shape alone is not authority"
+        );
+        // A wrong kind value is refused too (only CHAT_PAYLOAD_KIND routes).
+        assert_eq!(
+            ChatPayload::parse("{\"kind\":\"chat\",\"v\":2,\"agent\":true,\"body\":\"hi\"}"),
+            None
+        );
+        assert_eq!(
+            ChatPayload::parse("{\"kind\":\"chat-v1\",\"v\":2,\"body\":\"hi\"}"),
+            None
+        );
+        // The marker without the version tag does not route either.
+        assert_eq!(
+            ChatPayload::parse("{\"kind\":\"chat-v2\",\"body\":\"hi\"}"),
+            None
+        );
+        // The well-formed shape (kind + version) routes.
+        let ok =
+            ChatPayload::parse("{\"kind\":\"chat-v2\",\"v\":2,\"agent\":true,\"body\":\"hi\"}")
+                .expect("kind + version routes");
+        assert!(ok.agent);
     }
 }

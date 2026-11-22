@@ -158,8 +158,11 @@ export function SettingsPanel({
               onChange={(event) => setAllowRemoteAgent(event.target.checked)}
             />
             Let paired machines' assistants give this one tasks — their
-            agent messages wake your assistant to act on them (fleet).
-            Off by default; their messages still show in chat either way.
+            agent messages sent while no session is live (the sealed
+            inbox, used by fleet) wake your assistant to act on them. Off
+            by default; their messages still show in chat either way. A
+            live remote-control session is separate: whoever you accept
+            has full control of this machine regardless of this setting.
           </label>
           <label className="settings-check">
             <input

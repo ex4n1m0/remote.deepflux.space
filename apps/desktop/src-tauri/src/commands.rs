@@ -1085,12 +1085,11 @@ pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
                 .map_err(|e| e.to_string())
         });
     }
-    // ADR-013 P3 slice 2: the inbox CAN now carry an agent bit (sealed v2
-    // payload, `inbox_send_agent`), but the human offline "to-agent" verb
-    // stays refused until fleet slice 3 wires the reply correlation —
-    // waking a peer's assistant from a casual offline ask is not a
-    // behavior this command should grow silently. Refuse rather than
-    // mislead.
+    // ADR-013 P3: the inbox CAN carry an agent bit (sealed v2 payload,
+    // `inbox_send_agent`) — slice 3 wires it for fleet_run's correlated
+    // fan-out. The human offline "to-agent" verb stays refused: waking a
+    // peer's assistant from a casual offline ask is not a behavior this
+    // command should grow silently. Refuse rather than mislead.
     if args.agent {
         return Err(
             "their assistant only answers during a session — connect to that machine first"
