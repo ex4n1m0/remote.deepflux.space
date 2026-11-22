@@ -10,6 +10,5 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 bincode = { workspace = true }
-
-[dev-dependencies]
+# ChatPayload v2 (fleet slice 2) serializes/parses JSON in non-test code.
 serde_json = { workspace = true }

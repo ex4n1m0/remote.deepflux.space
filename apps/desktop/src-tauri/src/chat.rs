@@ -928,7 +928,11 @@ fn open(secret_hex: &str, to: &str, env: &ChatEnvelope) -> Option<String> {
 }
 
 fn hex_decode(hex: &str) -> Option<Vec<u8>> {
-    if !hex.len().is_multiple_of(2) {
+    // Reject non-ASCII before byte-index slicing: a hostile server could send
+    // multi-byte UTF-8 (e.g. "aéb") whose even byte length passes the parity
+    // check but whose byte slices split a char boundary and PANIC, killing the
+    // inbox poller thread permanently (security review F1). ASCII-hex only.
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..hex.len() / 2)
@@ -1179,6 +1183,18 @@ pub fn offer_pairing_if_new(app: &AppHandle, host_device_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hex_decode_rejects_non_ascii_without_panicking() {
+        // Security review F1: a hostile server could send multi-byte UTF-8 with
+        // an even byte length; byte-index slicing must not panic (it would kill
+        // the inbox poller). Non-ASCII hex is rejected, valid hex still decodes.
+        assert_eq!(hex_decode("aéb"), None); // 4 bytes, splits a char boundary
+        assert_eq!(hex_decode("zz"), None); // even length, non-hex digits
+        assert_eq!(hex_decode("abc"), None); // odd length
+        assert_eq!(hex_decode("00ff10"), Some(vec![0x00, 0xff, 0x10]));
+        assert_eq!(hex_decode(""), Some(vec![]));
+    }
 
     const SECRET_A: &str = "aa9d6c507d4a3e2f1b8c7d6e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4";
     const SECRET_B: &str = "bb1e5f4a3b2c1908a7b6c5d4e3f2a1b0c9d8e7f6a5b4aa9d6c507d4a3e2f8c7d";
