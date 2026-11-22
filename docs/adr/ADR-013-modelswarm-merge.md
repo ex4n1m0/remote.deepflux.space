@@ -318,6 +318,37 @@ public launch, woven through the phases):**
   inference tools. *Accept:* master's assistant answers a prompt
   served by a slave's hosted model through the swarm path, including
   via relay.
+  *P4 status (2026-11-22, started — S1 landed; serving work paused on
+  three rulings):* the P1 import (D1) brought only the leaf MSP crates;
+  the composition wiring P4 needs (engine sidecar supervisor, serving,
+  requester, catalog, artifacts) lives in `modelswarm-node`, which was
+  not imported. S1 imported `modelswarm-node`, `-tracker-api`, `-dns`
+  at the same pin with their four `include_str!` fixtures (`ebafca7`) and
+  re-pointed node's chat-wall suite (ADR-037) at this repo's app crate
+  rather than relaxing it. The runtime is a hash-pinned `llama-server`
+  sidecar plus GGUF weights fetched on first host; the installer ships no
+  engine. Three findings, each of which changes the design, were made
+  before any serving code was written and need an owner ruling:
+  (1) **the serving side has no account boundary** — `LeasePolicy::check`
+  in `modelswarm-node/src/serving.rs` verifies only that a lease is
+  hub-signed, unexpired, for the right profile, consume-entitled, and
+  bound to the connecting peer; a hosting machine would therefore serve
+  any holder of a hub lease for that profile, including strangers, which
+  contradicts the account-ownership model above;
+  (2) **relayed sessions are readable by the relay** — the transport's
+  own module docs (`relay_client.rs`: "the QUIC crypto terminates at the
+  relay … a malicious relay can impersonate the far end or read relayed
+  frames") mean the "including via relay" acceptance path would carry
+  prompts and completions in clear text through the relay VM, the same
+  class of gap the E2E-or-direct rule below reserves for agent-command
+  traffic;
+  (3) **a hub-signed lease presupposes the public swarm economy** —
+  issuance derives from a global `/peers` roster lease and a passed
+  hosting challenge, so an account-scoped consumption lease is a second
+  issuance policy in the hub and raises whether DeepMulti machines join
+  the global, unfiltered peer roster at all.
+  Also unverified: the pinned `protocol/keys/hub-public.hex` must equal
+  the staging tracker's `MSP_HUB_SEED` public key (needs VM access).
 - **P5 — hardening + launch:** posture items above closed, security
   review pass, app rebrand to DeepMulti, unified domain, public
   positioning.

@@ -45,6 +45,16 @@ members = [
     # (2) protocol/keys/hub-public.hex copied verbatim from the pin — it MUST
     # match the staging tracker's MSP_HUB_SEED, a verification that needs VM
     # access not available here (gap recorded, key not re-minted/weakened).
+    # (3) node's chat-wall suite (tests/advisory_chat_wall.rs, ADR-037) is
+    # RE-POINTED at this repo's consumer, not relaxed: the dependency-graph
+    # pin names remote-desktop-app as node's only dependent, the
+    # one-transport-site scan walks the app crate in place of MSP's dropped
+    # desktop shell, and the chat-scope leg asserts the app-wide
+    # no-advisory-surface property. There the name `AssistantState` is
+    # excluded (the app has its own unrelated type of that name) — the
+    # module path `modelswarm_node::advisory` stays forbidden and node
+    # re-exports nothing at its root, so that opens no route. The original
+    # bare-word and provider ("DeepSeek") clauses are not transplanted.
     # Fixture tree copied to the workspace root for node's/tracker-api's
     # include_str!: runtime-pins.json, protocol/keys/hub-public.hex,
     # protocol/advisory-egress-v1.json, protocol/advisory-clamp-table-v1.json

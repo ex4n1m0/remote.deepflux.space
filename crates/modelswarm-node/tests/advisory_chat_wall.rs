@@ -27,6 +27,17 @@
 //!   record ZERO assistant calls — here the runtime-less failure paths
 //!   (no_peer); the success path and the desktop swarm paths ride the
 //!   suites named above.
+//!
+//! **DeepMulti re-point (ADR-013 D1, 2026-11-22).** This crate was imported
+//! into the DeepMulti workspace, where the merged product's desktop is the
+//! app crate `remote-desktop-app` (`apps/desktop/src-tauri/src`); MSP's
+//! `modelswarm-desktop` shell and `modelswarm-bench` do not exist there. The
+//! three consumer-bound legs were RE-POINTED, not relaxed: the
+//! dependency-graph pin names the app as the only dependent, the
+//! one-transport-site scan walks the app crate in place of the dropped
+//! shell, and the chat-scope leg asserts the stronger app-wide property
+//! (see the test). Layer 3's "desktop swarm paths" leg has no counterpart
+//! until the app grows swarm-chat scopes (ADR-013 P4).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -586,9 +597,12 @@ fn layer1_decision_crates_do_not_depend_on_the_advisory_host() {
         }
     }
     // ADR-037 item-10 extension: the advisory host is depended on ONLY
-    // by modelswarm-node/modelswarm-desktop — with the module placement,
-    // `modelswarm-node` (the host) may be a normal dependency of
-    // `modelswarm-desktop` and NOTHING else among workspace members.
+    // by the consumer — with the module placement, `modelswarm-node` (the
+    // host) may be a normal dependency of the desktop and NOTHING else
+    // among workspace members. DeepMulti re-point (ADR-013 D1): that
+    // desktop is the app crate `remote-desktop-app`; MSP's
+    // `modelswarm-desktop` and the `modelswarm-bench` shadow-ledger
+    // exemption (ADR-033 §9.2(6)) do not exist in this workspace.
     for package in meta["packages"].as_array().expect("packages") {
         let name = package["name"].as_str().unwrap_or_default();
         for dep in package["dependencies"].as_array().expect("dependencies") {
@@ -599,15 +613,12 @@ fn layer1_decision_crates_do_not_depend_on_the_advisory_host() {
             }
         }
     }
-    let mut expected = vec![
-        "modelswarm-bench".to_string(),
-        "modelswarm-desktop".to_string(),
-    ];
+    let mut expected = vec!["remote-desktop-app".to_string()];
     expected.sort();
     dependents_of_node.sort();
     assert_eq!(
         dependents_of_node, expected,
-        "modelswarm-node (the advisory host) may be a normal dependency of the desktop and — per ADR-033 §9.2(6)'s explicit exemption — modelswarm-bench (the sanctioned shadow-ledger consumer; it uses node's measure/remote/serving, and the layer-2 source scan below proves it touches no advisory name) and NOTHING else"
+        "modelswarm-node (the advisory host) may be a normal dependency of the DeepMulti app crate and NOTHING else"
     );
 }
 
@@ -619,22 +630,20 @@ fn layer1_decision_crates_do_not_depend_on_the_advisory_host() {
 fn layer2_advisory_names_live_only_in_the_advisory_module_and_tests() {
     let root = workspace_root();
     let advisory_dir = root.join("crates/modelswarm-node/src/advisory");
-    // The module's sanctioned homes: the advisory module itself, the
-    // node's lib.rs (the daemon COMPOSITION file whose Node::start
-    // wires the plane — §9.4: "the advisory client lands … in
-    // crates/modelswarm-node::advisory", hosted by this crate), and —
-    // since the ADR-037 §7 step-3 leg — the desktop's assistant module
-    // (`crates/modelswarm-desktop/src/app/assistant.rs`), the §4.5
-    // sanctioned home of the panel/IPC/renderer/static-help/disclosure
-    // surface. app.rs itself stays UNEXEMPTED: the chat scopes live
-    // there and must not know the plane exists (the test below).
+    // The module's sanctioned homes: the advisory module itself and the
+    // node's lib.rs (the daemon COMPOSITION file whose Node::start wires
+    // the plane — §9.4: "the advisory client lands … in
+    // crates/modelswarm-node::advisory", hosted by this crate). In MSP a
+    // third home was the desktop's assistant module (ADR-037 §7 step 3);
+    // DeepMulti has no counterpart (ADR-013 D1 — its app runs its own,
+    // separate assistant), so that exemption is dropped rather than left
+    // pointing at a path that does not exist. This scan covers `crates/`;
+    // the app crate is the consumer and is held to the wall by the
+    // chat-scope leg below.
     let composition_host = root.join("crates/modelswarm-node/src/lib.rs");
-    let desktop_assistant = root.join("crates/modelswarm-desktop/src/app/assistant.rs");
     let crates = root.join("crates");
     let mut sources = rust_sources_under(&crates, None);
-    sources.retain(|path, _| {
-        !path.starts_with(&advisory_dir) && *path != composition_host && *path != desktop_assistant
-    });
+    sources.retain(|path, _| !path.starts_with(&advisory_dir) && *path != composition_host);
     for name in ADVISORY_NAMES {
         let hits = find_hits(&sources, name);
         assert!(
@@ -668,6 +677,9 @@ fn layer2_advisory_names_live_only_in_the_advisory_module_and_tests() {
 /// Extracts one function's source from `app.rs` (from `async fn NAME(`
 /// to the next top-level `\nasync fn `/`\nfn ` — a drift detector in
 /// itself: if the file's shape changes, extraction fails loudly).
+/// Unused since the DeepMulti re-point (no swarm-chat scopes in the app
+/// yet); kept for the scope-level leg ADR-013 P4 adds with them.
+#[allow(dead_code)]
 fn function_scope(app_rs: &str, name: &str) -> String {
     let start = app_rs
         .find(&format!("async fn {name}("))
@@ -689,24 +701,48 @@ fn function_scope(app_rs: &str, name: &str) -> String {
 
 #[test]
 fn layer2_chat_scopes_reference_no_advisory_surface() {
+    // DeepMulti re-point (ADR-013 D1): MSP's desktop `app.rs` with its
+    // `send_chat`/`try_swarm_chat` scopes does not exist in this
+    // workspace — the consumer is the app crate. Until the app grows its
+    // own swarm-chat scopes, W1 is asserted over the WHOLE app
+    // production source, which is strictly stronger than two named
+    // scopes: the app must not know the advisory plane exists.
+    //
+    // `AssistantState` is excluded from this app scan BY NAME: the app
+    // has its own, unrelated `agent::AssistantState` (its assistant
+    // predates this import). The exclusion opens no route — the advisory
+    // module is reachable only through the `modelswarm_node::advisory`
+    // path (the node crate re-exports nothing at its root), and that
+    // path is in the forbidden list.
+    //
+    // The original leg's provider clause ("DeepSeek") is NOT transplanted:
+    // the app's own assistant legitimately talks to its own provider
+    // (`agent_base_url`); that is the app's agent, not MSP's advisory
+    // plane. Re-add a scope-level provider/key clause when the app's
+    // swarm-chat scopes land, so no key material sits near the chat path.
+    // The bare word "advisory" is likewise not forbidden in the app: it
+    // uses the word in ordinary English in comments. What makes the wall
+    // structural here are the module path and the type names.
     let root = workspace_root();
-    let app_rs = read_file(&root.join("crates/modelswarm-desktop/src/app.rs"));
-    for scope_name in ["send_chat", "try_swarm_chat"] {
-        let scope = function_scope(&app_rs, scope_name);
-        for name in ADVISORY_NAMES {
-            assert!(
-                !scope.contains(name),
-                "chat scope {scope_name} references advisory name {name:?} — W1: NO ROUTE, EVER"
-            );
-        }
-        // The full chat-wall vocabulary (W1/W3): no advisory reach, no
-        // provider endpoint, no key material near the chat path.
-        for forbidden in ["advisory", "MSP_ADVISORY", "DeepSeek"] {
-            assert!(
-                !scope.to_lowercase().contains(&forbidden.to_lowercase()),
-                "chat scope {scope_name} mentions {forbidden:?} — the chat path must not know the advisory plane exists"
-            );
-        }
+    let app_src = root.join("apps/desktop/src-tauri/src");
+    let sources = rust_sources_under(&app_src, None);
+    assert!(
+        !sources.is_empty(),
+        "the app crate source must be scanned (no .rs files under {})",
+        app_src.display()
+    );
+    let mut app_wide: Vec<&str> = ADVISORY_NAMES
+        .iter()
+        .copied()
+        .filter(|name| *name != "AssistantState")
+        .collect();
+    app_wide.push("MSP_ADVISORY");
+    for name in app_wide {
+        let hits = find_hits(&sources, name);
+        assert!(
+            hits.is_empty(),
+            "app source references advisory name {name:?} — W1: NO ROUTE, EVER: {hits:?}"
+        );
     }
 }
 
@@ -756,7 +792,10 @@ fn layer2_the_transport_call_executes_from_exactly_one_site() {
     // `AssistantPlane::spawn`).
     let root = workspace_root();
     let node_src = root.join("crates/modelswarm-node/src");
-    let desktop_src = root.join("crates/modelswarm-desktop/src");
+    // DeepMulti re-point (ADR-013 D1): the consumer scanned alongside the
+    // node is the app crate, in place of MSP's dropped desktop shell. The
+    // assertions are unchanged — the app contributes no transport site.
+    let desktop_src = root.join("apps/desktop/src-tauri/src");
     let mut production = rust_sources_under(&node_src, None);
     for (path, text) in rust_sources_under(&desktop_src, None) {
         production.insert(path, text);
