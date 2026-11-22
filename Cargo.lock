@@ -5537,6 +5537,7 @@ dependencies = [
  "modelswarm-identity",
  "native-tls",
  "node-runtime",
+ "onlyhumans_core",
  "protocol",
  "render-windows",
  "rmcp",
