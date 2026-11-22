@@ -311,6 +311,7 @@ fn command_argument_dtos_carry_metadata_only() {
                 host_sharing: true,
                 agent_admin: true,
                 auto_update: true,
+                allow_remote_agent_instructions: false,
             })
             .unwrap(),
         ),
