@@ -598,6 +598,20 @@ fn remote_origin_refusal(origin: TurnOrigin, name: &str) -> Option<String> {
     None
 }
 
+/// Security review F1: the agent-addressed form of chat_send is a propagation
+/// vector for a remotely-woken turn (connect -> chat_send(to_agent) -> recurse),
+/// so refuse it on Remote origin. Plain human-visible chat_send stays available.
+fn remote_agent_chat_refusal(origin: TurnOrigin, to_agent: bool) -> Option<String> {
+    if origin == TurnOrigin::Remote && to_agent {
+        return Some(
+            "chat_send with to_agent=true refused: a remotely-woken turn may act on \
+             this machine only — it cannot instruct another machine's assistant"
+                .to_string(),
+        );
+    }
+    None
+}
+
 /// Coordinate + key tables shared with the MCP bridge's semantics.
 fn to_normalized(px: f64, dim: u32) -> u16 {
     ((px / f64::from(dim.max(1))) * 65_535.0)
@@ -1351,6 +1365,11 @@ pub fn execute(
                 .get("to_agent")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            // Security review F1: refuse the agent-addressed form on Remote turns
+            // (connect -> chat_send(to_agent) -> recurse is a propagation wave).
+            if let Some(msg) = remote_agent_chat_refusal(origin, to_agent) {
+                return ToolOutput::text(msg);
+            }
             let result = (|| -> Result<(), String> {
                 let (base_url, token, me) = {
                     let services = app.state::<crate::commands::AppServices>();
@@ -3056,6 +3075,18 @@ mod tests {
         assert!(remote_origin_refusal(TurnOrigin::Remote, "run_shell").is_none());
         assert!(remote_origin_refusal(TurnOrigin::Remote, "status").is_none());
         assert!(remote_origin_refusal(TurnOrigin::Remote, "unknown_tool").is_none());
+    }
+
+    #[test]
+    fn remote_turns_cannot_address_another_assistant_via_chat_send() {
+        // Security review F1: the agent-addressed form of chat_send is a
+        // propagation vector (connect -> chat_send(to_agent) -> recurse), so a
+        // Remote turn is refused; plain human-visible chat_send and all Local
+        // turns are unaffected.
+        assert!(remote_agent_chat_refusal(TurnOrigin::Remote, true).is_some());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Remote, false).is_none());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Local, true).is_none());
+        assert!(remote_agent_chat_refusal(TurnOrigin::Local, false).is_none());
     }
 
     // ---- ADR-013 P3 fleet slice 3: inbox fan-out engine ----

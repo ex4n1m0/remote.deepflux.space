@@ -1253,7 +1253,7 @@ const INBOX_MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 /// FIX 4 pure core: read at most `cap` bytes (one extra byte probes for
 /// oversize — exactly `cap` passes, `cap + 1` refuses). Memory is bounded
 /// before any parse work.
-fn read_capped(mut reader: impl Read, cap: u64) -> Option<Vec<u8>> {
+fn read_capped(reader: impl Read, cap: u64) -> Option<Vec<u8>> {
     let mut buf = Vec::new();
     reader.take(cap + 1).read_to_end(&mut buf).ok()?;
     if buf.len() as u64 > cap {

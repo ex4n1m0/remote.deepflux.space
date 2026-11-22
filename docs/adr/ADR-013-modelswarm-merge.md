@@ -284,9 +284,35 @@ public launch, woven through the phases):**
   room) is now machine-enforced; criterion 2 (two humans E2E-chat with epoch
   rotation) is code-complete, its live drill pending the staging deployment
   + `DM1_*` env on the GCP VM; criterion 1 (one instruction to 5+ machines
-  with per-machine results + audit) awaits the fleet slices 2–3, which are
-  parked on two owner decisions — inbox-based fan-out vs an engine
-  multi-session rewrite, and paired-only vs all-account target scope.
+  with per-machine results + audit) is code-complete — fleet slices 2–3
+  landed on the inbox-based, paired-only design (owner waived the formal
+  decision; integrator proceeded on the recommended low-risk path):
+  slice 2 = the sealed inbox agent-bit v2 (authoritative bit inside a
+  `ChatPayload` v2 under the pairing GCM seal, outer fields untrusted hints)
+  + the `allow_remote_agent_instructions` slave opt-in (default off);
+  slice 3 = `fleet_run` v2 fan-out (cap 32, bounded retries, 90 s reply
+  window, per-machine rows + master/per-slave audit, reply correlation by
+  `fleet_call_id`). Its live 5-machine drill is deployment-dependent like
+  criterion 2.
+  *Fleet security posture (independent reviews 2026-11-22):* the trust
+  boundary is **pairing consent + the slave opt-in + the rolling wake budget
+  (4/10 min)**. A remotely-woken (`PeerAgent`-origin) turn is structurally
+  barred from the propagation/persistence tools — `fleet_run`, `schedule`,
+  and the agent-addressed `chat_send(to_agent=true)` are filtered from its
+  advertised surface AND refused at the dispatch boundary; fleet-reply
+  suppression rests on a durable locked `fleet-pending.json` registry, not
+  the volatile chat history. **Accepted residual (owner judgment):** this
+  origin guard is a *model-behavior guardrail against naive/spontaneous
+  propagation, not a sandbox* — Remote turns deliberately retain local
+  execution (`run_shell`, `fs_write`, `connect`), which IS the fleet
+  capability (instruct a slave's agent to act on that slave). A determined
+  prompt-injection on an opted-in paired slave could still abuse those local
+  powers (e.g. write `scheduled.json` directly, or read pairings and POST
+  sealed envelopes outside the tool layer). Confine-remote-turns' write/exec
+  surface is a **P5 hardening** consideration, not a P3 blocker. The inbox
+  opt-in is deliberately inbox-scoped: the in-session agent wake rides the
+  live remote-control session's full-control consent (a separate trust
+  grant), as the toggle's UI copy states.
 - **P4 — swarm inference in the app:** per-machine "host models"
   toggle; local gateway on every node; master's agent gains swarm
   inference tools. *Accept:* master's assistant answers a prompt
