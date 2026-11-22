@@ -264,6 +264,29 @@ public launch, woven through the phases):**
   collected, audit entries present on each slave; AND two humans on
   merged-app machines join the same word room and chat E2E with key
   rotation verified — and no agent tool can read or write a room.
+  *P3 status (2026-11-22, human-chat track code-complete):* the chat half
+  is built and verified. Slice 1 (the agent audit rail — capped JSONL at
+  `<app-data>/audit/`, tool-funnel + remote-wake hooks) and slice 4 (the
+  `onlyhumans-core` v1.2.0 mechanical pin at `crates/onlyhumans-core`, own
+  re-minted GK channel = own room universe, six documented deviations in
+  the workspace manifest) landed gate-green (`91a4cb9`). Slice 5 (the
+  OnlyHumans hub API on the tracker, isolated `dm1:` universe + dedicated
+  `DM1_UPSTASH_REDIS_REST_*` env) merged via the tracker repo's PR #2
+  (`a1d133d`) after an independent security review (no blockers; server-side
+  Ed25519 verification + drain-ownership gating restored) and hardening for
+  the self-hosted staging target (streaming body cap, `no-store`, fail-closed
+  503). Slice 6 (in-app humans-only chat — `human_chat.rs` runtime, `rooms_*`
+  commands, React surface; client repointed to the tracker's `/api/hub/*`
+  mount) landed gate-green (`3b0e4c0`). Slice 7 adds
+  `tests/agent_room_isolation.rs`, which FAILS the build if the agent tool
+  layer (in-app tools + the MCP bridge) ever names or targets the human-chat
+  surface. Acceptance mapping: criterion 3 (no agent tool reads/writes a
+  room) is now machine-enforced; criterion 2 (two humans E2E-chat with epoch
+  rotation) is code-complete, its live drill pending the staging deployment
+  + `DM1_*` env on the GCP VM; criterion 1 (one instruction to 5+ machines
+  with per-machine results + audit) awaits the fleet slices 2–3, which are
+  parked on two owner decisions — inbox-based fan-out vs an engine
+  multi-session rewrite, and paired-only vs all-account target scope.
 - **P4 — swarm inference in the app:** per-machine "host models"
   toggle; local gateway on every node; master's agent gains swarm
   inference tools. *Accept:* master's assistant answers a prompt
