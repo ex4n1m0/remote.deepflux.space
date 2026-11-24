@@ -343,19 +343,23 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                 // engine send failed the UI must show the dialog, not a
                 // decisionless passive card.
                 proof_ok = crate::chat::auto_accept_if_paired(app, &controller_device_id);
-            } else if cfg!(deepflux_staging_kit) && !proof_ok {
-                // ADR-014 (staging kit only — the cfg is false in every
-                // ordinary build): no prompt, ever. The host answers the
-                // request itself, as "Allow once" would: `remember: false`
-                // on purpose — the kit never asks and never remembers, so
-                // no trust outlives the session. Falls through to the same
-                // proof_ok contract as the arms around it: a failed engine
-                // send leaves the dialog as the fallback.
+            }
+            // ADR-014 (staging kit only — the cfg is false in every
+            // ordinary build): no prompt, ever. The host answers the
+            // request itself, as "Allow once" would: `remember: false`
+            // on purpose — the kit never asks and never remembers, so
+            // no trust outlives the session. Deliberately not an `else`
+            // of the arm above, and not a guard on the prompt path below:
+            // a failed engine send leaves `proof_ok` false, and the
+            // ordinary prompt path (window raised, prompt recorded, flood
+            // defenses) still runs — the fallback a late human needs.
+            if cfg!(deepflux_staging_kit) && !proof_ok {
                 proof_ok = with_engine(app, |handle| {
                     handle.send(EngineCmd::ConsentAccept { remember: false })
                 })
                 .is_ok();
-            } else if !proof_ok {
+            }
+            if !verified && !proof_ok {
                 // (An account silent-accept already set proof_ok — it is a
                 // VERIFIED requester and must not consume the untrusted
                 // prompt budget or run the cooldown checks; security review

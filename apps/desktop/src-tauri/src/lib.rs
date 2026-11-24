@@ -151,7 +151,12 @@ pub fn run() {
             }
             // Always-ready first-run default: login autostart on once
             // (idempotent — the flag persists; reversible in Settings).
-            commands::enable_autostart_default(app.handle());
+            // ADR-014: a staging kit never registers itself for logon — the
+            // no-ask build must not outlive the test run — and leaves an
+            // existing entry (the ordinary app's) exactly as it is.
+            if !cfg!(deepflux_staging_kit) {
+                commands::enable_autostart_default(app.handle());
+            }
             // ADR-011: while running elevated with login autostart on,
             // keep the HIGHEST scheduled task in place (idempotent) so
             // logon starts the admin app with no UAC prompt. The refresh
@@ -160,15 +165,16 @@ pub fn run() {
             // completes the swap by dropping a stale Run key — the two
             // would double-start at logon (and the second instance's
             // single-instance handoff pops the window, defeating
-            // start-minimized).
-            if elevate::is_elevated() && launch_at_login {
+            // start-minimized). ADR-014: skipped in a staging kit, so the
+            // logon entry is never re-pointed at the no-ask exe.
+            if !cfg!(deepflux_staging_kit) && elevate::is_elevated() && launch_at_login {
                 let exe = std::env::current_exe().unwrap_or_default();
                 if !exe.as_os_str().is_empty() && elevate::ensure_admin_autostart(&exe) {
                     let _ = commands::plugin_autostart(app.handle(), false);
                 } else {
                     eprintln!("[autostart] elevated task refresh failed (non-fatal)");
                 }
-            } else if launch_at_login && !agent_admin {
+            } else if !cfg!(deepflux_staging_kit) && launch_at_login && !agent_admin {
                 // Admin-off posture (the Run key IS the autostart
                 // mechanism): rewrite it so pre-0.15.3 entries gain
                 // `--minimized` as well; new entries already carry it.
@@ -255,6 +261,15 @@ pub fn run() {
             // Tray icon with open/quit — close-to-tray keeps the
             // app running (and reachable) when the window closes.
             setup_tray(app.handle().clone())?;
+
+            // ADR-014: a no-ask kit must be recognizable at a glance. The
+            // title and the tray tooltip (setup_tray) say so; nothing else
+            // in the window differs.
+            if cfg!(deepflux_staging_kit)
+                && let Some(window) = app.get_webview_window("shell")
+            {
+                let _ = window.set_title("Remote Desktop — NO-ASK TEST KIT");
+            }
 
             // Start-minimized (0.15.3): with the tray in place as the
             // front door, a `--minimized` logon start keeps the shell
@@ -384,6 +399,10 @@ fn setup_tray(app: tauri::AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(&app)?;
-    tray.set_tooltip(Some("DeepFlux — remote desktop host"))?;
+    tray.set_tooltip(Some(if cfg!(deepflux_staging_kit) {
+        "DeepFlux — NO-ASK TEST KIT (accepts every connection)"
+    } else {
+        "DeepFlux — remote desktop host"
+    }))?;
     Ok(())
 }

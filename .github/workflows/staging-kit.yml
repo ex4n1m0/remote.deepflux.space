@@ -12,6 +12,11 @@ on:
     branches:
       - "kit/**"
 
+# Least privilege: the build only reads the repository. Uploading the
+# artifact uses the run's own runtime token, not the repo token.
+permissions:
+  contents: read
+
 jobs:
   kit:
     runs-on: windows-latest
