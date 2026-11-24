@@ -1312,12 +1312,17 @@ mod tests {
     /// ADR-014: the no-consent switch is compile-time and OFF in every
     /// ordinary build (CI, the public installer). A build that skipped
     /// consent by default would hand each machine to anyone holding its
-    /// connection code — so the test suite itself refuses to pass as a kit.
+    /// connection code.
     #[test]
     fn ordinary_builds_keep_the_consent_prompt() {
-        assert!(
-            !cfg!(deepflux_staging_kit),
-            "DEEPFLUX_STAGING_KIT was set for this build — the tests only certify ordinary builds"
-        );
+        // A const assertion (what clippy::assertions_on_constants asks
+        // for), which is also the stronger guard: a kit build fails to
+        // COMPILE its tests, not merely to run them.
+        const {
+            assert!(
+                !cfg!(deepflux_staging_kit),
+                "DEEPFLUX_STAGING_KIT was set for this build — the tests only certify ordinary builds"
+            );
+        }
     }
 }
