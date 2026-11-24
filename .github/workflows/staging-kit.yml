@@ -1,0 +1,65 @@
+name: staging-kit
+
+# ADR-014: builds the TEST-ONLY "no-ask" staging kit exe. This is never the
+# public installer: it is keyless, has no NSIS bundle, and DEEPFLUX_STAGING_KIT
+# makes its host accept every session without the consent prompt. Anyone with a
+# machine's connection code can control a machine running this build, so the
+# artifact is for the owner's test machines only — never publish it on the
+# landing. The ordinary gate (ci.yml) still runs on every push.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "kit/**"
+
+jobs:
+  kit:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install desktop dependencies
+        run: pnpm --dir apps/desktop install --frozen-lockfile
+
+      # Same entry point as scripts/build-family.sh (it also sets the
+      # TAURI_ENV_* the frontend reads and enables tauri/custom-protocol, so
+      # the exe embeds the frontend instead of pointing at the dev server).
+      # No keys are passed: a keyless build, like the P2 kit. --no-bundle
+      # skips the NSIS installer.
+      - name: Build the app (keyless, no-ask kit, no installer)
+        working-directory: apps/desktop
+        run: pnpm tauri build --no-bundle
+        env:
+          DEEPFLUX_STAGING_KIT: "1"
+
+      - name: Stage the kit exe
+        run: |
+          New-Item -ItemType Directory -Force kit | Out-Null
+          Copy-Item target/release/remote-desktop-app.exe kit/DeepMulti.exe
+          $hash = (Get-FileHash kit/DeepMulti.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  DeepMulti.exe" | Out-File -Encoding ascii kit/SHA256.txt
+          Get-Content kit/SHA256.txt
+          (Get-Item kit/DeepMulti.exe).Length
+
+      - name: Upload kit exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepMulti-noask-exe
+          path: kit/
+          if-no-files-found: error
+          retention-days: 14

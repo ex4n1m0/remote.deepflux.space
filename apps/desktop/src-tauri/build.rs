@@ -29,5 +29,25 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DEEPFLUX_CIRCLE_KEY");
     println!("cargo:rerun-if-env-changed=DEEPFLUX_FAMILY_BUILD");
 
+    // ADR-014: the staging kit — a TEST-ONLY build whose host accepts
+    // every session without the consent prompt (`cfg!(deepflux_staging_kit)`
+    // in commands.rs). Compile-time and off unless DEEPFLUX_STAGING_KIT=1
+    // is set for this build; there is no runtime switch, so an installed
+    // app can never be talked into skipping consent. The public installer
+    // can never be one: the family build refuses the combination outright.
+    // The check-cfg line is emitted unconditionally so the `cfg!` lints
+    // clean in ordinary builds.
+    let staging_kit = std::env::var("DEEPFLUX_STAGING_KIT").unwrap_or_default() == "1";
+    if staging_kit && family {
+        panic!(
+            "DEEPFLUX_STAGING_KIT=1 with DEEPFLUX_FAMILY_BUILD=1 — refusing to build the public installer without the consent prompt"
+        );
+    }
+    println!("cargo:rerun-if-env-changed=DEEPFLUX_STAGING_KIT");
+    println!("cargo:rustc-check-cfg=cfg(deepflux_staging_kit)");
+    if staging_kit {
+        println!("cargo:rustc-cfg=deepflux_staging_kit");
+    }
+
     tauri_build::build()
 }

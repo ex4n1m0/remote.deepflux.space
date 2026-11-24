@@ -21,7 +21,10 @@ control gate). The machine list merges the trusted-host list
 with the restored discovery list (ADR-010, 2026-10-29: the sealed
 circle directory, one row per machine, no new trust — discovered
 machines connect through the ordinary consent prompt); the one-time
-connection code (a machine's device id) still reaches any machine. An
+connection code (a machine's device id) still reaches any machine. The
+test-only staging kit is the one build that skips that prompt
+(`DEEPFLUX_STAGING_KIT=1` at build time, ADR-014 — never the public
+installer). An
 automatic-update engine (ADR-008, 2026-10-28) reads a published
 `latest.json` from the landing (same origin), downloads and SHA-256
 verifies the installer via the existing segmented download engine
