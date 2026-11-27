@@ -1,6 +1,7 @@
 /** Small presentational pieces shared across the shell. */
 import type { ReactNode } from "react";
 import type { Tone } from "../state/mapping";
+import { Icon } from "./Icon";
 
 export function StatusChip({
   tone,
@@ -77,19 +78,32 @@ export function InfoLine({ text }: { text: string }) {
   );
 }
 
-export function CopyButton({ value, label }: { value: string; label: string }) {
+/** Copy-to-clipboard. Plain: an icon and the word. `chip`: the value itself
+ * inside a small pill with a copy glyph — for a code shown on screen. */
+export function CopyButton({
+  value,
+  label,
+  chip = false,
+}: {
+  value: string;
+  label: string;
+  chip?: boolean;
+}) {
   return (
     <button
       type="button"
-      className="ghost"
+      className={chip ? "ghost code-chip" : "ghost"}
       onClick={() => {
         navigator.clipboard?.writeText(value).catch(() => {
           // Clipboard may be unavailable; the code is selectable text.
         });
       }}
       aria-label={`Copy ${label}`}
+      title={`Copy ${label}`}
     >
-      Copy
+      {chip ? <code className="code">{value}</code> : null}
+      <Icon name="copy" size={chip ? 12 : 16} />
+      {chip ? null : "Copy"}
     </button>
   );
 }

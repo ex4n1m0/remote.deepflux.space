@@ -47,6 +47,9 @@ fn default_true() -> bool {
     true
 }
 
+/// The frontend passes this one in snake_case (`ipc.ts`: `{ args: { monitor_id } }`).
+/// `tests/command_args_wire.rs` checks every typed command argument against
+/// the keys `ipc.ts` really sends.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SelectMonitorArgs {
     pub monitor_id: String,

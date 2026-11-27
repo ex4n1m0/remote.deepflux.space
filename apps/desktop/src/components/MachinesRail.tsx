@@ -12,6 +12,7 @@ import { useState } from "react";
 import { hostView } from "../state/mapping";
 import { CopyButton } from "./Common";
 import { HumanChatCard } from "./HumanChatCard";
+import { Icon } from "./Icon";
 import { ACCOUNT_ONLINE_WINDOW_MS } from "../types";
 import type { AccountMachine, HostStateName, HumanRoomState, PairingInfo } from "../types";
 
@@ -21,7 +22,7 @@ export function looksLikeCode(value: string): boolean {
 }
 
 export const BAD_CODE_HINT =
-  "That doesn't look like a connection code — it's 16 letters and numbers, on the other machine's \"This machine\" card.";
+  "That is not a connection code — it is 16 letters and digits, shown on the other machine.";
 
 export interface MachineRow {
   id: string;
@@ -135,15 +136,18 @@ export function RemoveMachineButton({
         type="button"
         className="ghost small machine-remove"
         onClick={() => setConfirming(true)}
+        title={`Forget ${name} — it will have to be approved again`}
+        aria-label={`Forget ${name}`}
       >
-        Remove…
+        <Icon name="trash" />
+        Forget
       </button>
     );
   }
   return (
-    <span className="machine-remove-confirm" role="alertdialog" aria-label="Remove machine">
+    <span className="machine-remove-confirm" role="alertdialog" aria-label="Forget machine">
       <span className="hint">
-        Remove {name} from your list? It asks for approval again next time.
+        Forget {name}? It asks for approval again next time.
       </span>
       <button
         type="button"
@@ -153,7 +157,7 @@ export function RemoveMachineButton({
           onRemove();
         }}
       >
-        Remove
+        Forget
       </button>
       <button type="button" className="ghost small" onClick={() => setConfirming(false)}>
         Cancel
@@ -243,13 +247,13 @@ export function MachinesRail({
       <div className="rail-head">
         <span>Machines</span>
       </div>
-      <p className="rail-sub muted">message or control — same list</p>
 
       <div className="rail-add">
         <input
           value={code}
-          placeholder="connection code"
+          placeholder="Connection code"
           aria-label="Connection code"
+          title="The code is on the other machine's “This machine” card"
           aria-invalid={codeError ? true : undefined}
           onChange={(e) => {
             setCode(e.target.value);
@@ -265,8 +269,9 @@ export function MachinesRail({
             className="primary small"
             disabled={!code.trim()}
             onClick={() => dial(false)}
-            title="Ask to control this machine — its user allows it once"
+            title="Open the other machine's screen and control it"
           >
+            <Icon name="monitor" />
             Control
           </button>
           <button
@@ -274,8 +279,9 @@ export function MachinesRail({
             className="ghost small"
             disabled={!code.trim()}
             onClick={() => dial(true)}
-            title="Connect chat-only: give this machine's assistant instructions without opening the screen"
+            title="Give the other machine's assistant a task — no screen"
           >
+            <Icon name="bot" />
             Agent
           </button>
         </div>
@@ -283,16 +289,15 @@ export function MachinesRail({
           <p className="form-error" role="alert">
             {codeError}
           </p>
-        ) : (
-          <p className="hint">the code is on the other machine's "This machine" card</p>
-        )}
+        ) : null}
         {swarmJoinable ? (
           <button
             type="button"
             className="ghost small rail-join-swarm"
             onClick={onJoinSwarm}
-            title="Bind this machine to your ModelSwarm account — approve an 8-character code on the website"
+            title="Link this machine to your account — approve an 8-character code on the website"
           >
+            <Icon name="link" />
             Join a swarm
           </button>
         ) : null}
@@ -302,7 +307,7 @@ export function MachinesRail({
         type="search"
         className="rail-search"
         value={query}
-        placeholder="Search machines"
+        placeholder="Search"
         aria-label="Search machines"
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -326,18 +331,14 @@ export function MachinesRail({
           <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
         ))}
         {discovered.length > 0 ? (
-          <li className="rail-group-hint">Found for you — not paired yet</li>
+          <li className="rail-group-hint">Not paired yet</li>
         ) : null}
         {discovered.map((m) => (
           <MachineRowView key={m.code} row={m} onPick={onPick} onConnect={onConnect} />
         ))}
       </ul>
       {machines.length === 0 ? (
-        <p className="rail-empty muted">
-          No machines yet. Other machines running this app appear here on
-          their own; you can also enter a connection code above. Their user
-          answers {"\""}Always allow{"\""} once and it stays in this list.
-        </p>
+        <p className="rail-empty muted">No machines yet — enter a code above.</p>
       ) : null}
 
       <div className="rail-this">
@@ -353,17 +354,27 @@ export function MachinesRail({
           </span>
         ) : null}
         <div className="row">
-          <code className="code">{thisCode}</code>
-          <CopyButton value={thisCode} label="code" />
+          <CopyButton value={thisCode} label="code" chip />
         </div>
-        <p className="hint">family enter this code to reach you</p>
         {host.can.start ? (
-          <button type="button" className="primary small" onClick={onShare}>
+          <button
+            type="button"
+            className="primary small"
+            onClick={onShare}
+            title="Let others connect to this screen — they ask once"
+          >
+            <Icon name="share" />
             Share this machine
           </button>
         ) : null}
         {host.can.stop ? (
-          <button type="button" className="danger small" onClick={onStopShare}>
+          <button
+            type="button"
+            className="small"
+            onClick={onStopShare}
+            title="Stop letting others connect"
+          >
+            <Icon name="stop" />
             Stop sharing
           </button>
         ) : null}
@@ -413,11 +424,15 @@ function MachineRowView({
         <span className="rail-name">{row.name}</span>
         {row.trusted ? (
           <span className="trusted-shield" title="Trusted — connects without asking again">
-            ✓
+            <Icon name="check" size={12} />
           </span>
         ) : row.fromDirectory ? (
-          <span className="dir-tag" title="Discovered — pair it once and it stays" aria-hidden="true">
-            ◦
+          <span
+            className="dir-tag"
+            title="Discovered — pair it once and it stays"
+            aria-hidden="true"
+          >
+            <Icon name="link" size={12} />
           </span>
         ) : null}
       </button>
@@ -434,7 +449,7 @@ function MachineRowView({
         }
         aria-label={`Control ${row.name}${row.online === false ? " (offline)" : ""}`}
       >
-        Control
+        <Icon name="monitor" />
       </button>
     </li>
   );

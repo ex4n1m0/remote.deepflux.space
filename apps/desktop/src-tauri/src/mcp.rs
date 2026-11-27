@@ -393,23 +393,39 @@ impl AgentBridge {
 
     /// Block until the session is live (or timeout) — for consent waits.
     #[tool(
-        description = "Wait up to timeout_ms (default 30000) for the controller session to reach Connected (i.e. the host human accepted). Returns the final state."
+        description = "Wait up to timeout_ms (default 45000, covering the host's 30 s consent window) for the controller session to reach Connected (i.e. the host human accepted). Returns as soon as the host answers either way, with the final state."
     )]
     fn deepflux_wait_connected(
         &self,
         Parameters(WaitParams { timeout_ms }): Parameters<WaitParams>,
     ) -> String {
         let deadline = std::time::Instant::now()
-            + Duration::from_millis(timeout_ms.unwrap_or(30_000).min(120_000));
+            + Duration::from_millis(timeout_ms.unwrap_or(45_000).min(120_000));
+        let mut asking = false;
         loop {
             match self.with_engine(|handle| Ok(handle.status().controller_state)) {
                 Ok(state) if state == "Connected" => {
                     return ok_json("session connected");
                 }
-                Ok(state) if std::time::Instant::now() >= deadline => {
-                    return err_json("wait_connected", &format!("timed out in state {state}"));
+                Ok(state) => {
+                    asking |= matches!(state.as_str(), "Requesting" | "Offering" | "Connecting");
+                    // Once the request was under way, Disconnected is the
+                    // host's final answer: no reason to sit out the rest of
+                    // the timeout.
+                    let refused = asking && state == "Disconnected";
+                    if refused || std::time::Instant::now() >= deadline {
+                        let why = if refused {
+                            " — the other machine declined, is busy, or nobody answered its prompt"
+                        } else {
+                            ""
+                        };
+                        return err_json(
+                            "wait_connected",
+                            &format!("not connected — controller state {state}{why}"),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
                 }
-                Ok(_) => std::thread::sleep(Duration::from_millis(200)),
                 Err(e) => return err_json("wait_connected", &e),
             }
         }

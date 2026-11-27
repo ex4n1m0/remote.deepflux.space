@@ -7,6 +7,7 @@
  * card) to watch what it does; closing that window returns here. */
 import { useEffect, useRef, useState } from "react";
 import type { ChatBinding } from "../hooks/useChat";
+import { Icon } from "./Icon";
 
 /** Lines that belong to the agent conversation: your instructions
  * ("to-agent") and the peer assistant's replies ("peer-agent"). */
@@ -38,17 +39,15 @@ export function AgentChat({
   return (
     <div className="conversation agent-box" aria-label="Assistant on the remote machine">
       <header className="agent-box-head">
-        <span className="agent-box-title">
+        <span className="agent-box-title" title={`Runs on ${name ?? "that machine"} — it executes there and answers here`}>
+          <Icon name="bot" />
           {name ? `${name}'s assistant` : "Their assistant"}
         </span>
-        <span className="hint">runs on {name ?? "that machine"} — it executes there and replies here</span>
       </header>
       <div className="conversation-log" ref={logRef}>
         {lines.length === 0 ? (
           <p className="muted">
-            Tell {name ? `${name}'s assistant` : "the assistant"} what to do — clean
-            up disk, fix a setting, install something. Watch it work by attaching
-            the screen from the session card.
+            Tell {name ? `${name}'s assistant` : "the assistant"} what to do.
           </p>
         ) : (
           lines.map((line) => (
@@ -83,6 +82,7 @@ export function AgentChat({
           disabled={!draft.trim() || chat.sending}
           onClick={() => void submit()}
         >
+          <Icon name="send" />
           Send
         </button>
       </div>

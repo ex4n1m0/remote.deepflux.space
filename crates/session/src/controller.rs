@@ -1165,10 +1165,27 @@ mod tests {
                 assert!(matches!(env.body, SignalingBody::ConnectRequest { .. }));
                 assert_eq!(env.session_id.as_deref(), Some(session_id.as_str()));
                 assert_eq!(*id, TimerId::ControllerRequest);
-                assert_eq!(*fire_at_ms, 100 + 10_000);
+                assert_eq!(
+                    *fire_at_ms,
+                    100 + crate::common::SessionConfig::default().request_timeout_ms
+                );
             }
             other => panic!("unexpected actions {other:?}"),
         }
+    }
+
+    /// The controller waits for the WHOLE consent window: its request
+    /// timeout outlasts the host's prompt, so an unanswered prompt comes
+    /// back as the host's explicit `Reject{Timeout}` (which also tells the
+    /// user what happened) instead of the controller's own generic timeout.
+    #[test]
+    fn the_request_timeout_outlasts_the_consent_prompt() {
+        let cfg = SessionConfig::default();
+        let (request, consent) = (cfg.request_timeout_ms, cfg.consent_timeout_ms);
+        assert!(
+            request > consent,
+            "request {request} ms must outlast the consent prompt {consent} ms"
+        );
     }
 
     #[test]

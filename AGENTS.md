@@ -250,7 +250,15 @@ like `crates/session/tests/two_peers.rs` (the executable reference model).
   (Uninstall-hive registry reads) and `agent/startup.rs` (Run-key
   enumerate/disable/restore) still contain reviewed Win32 unsafe.
   The placement split is documented in `input-windows/src/capture.rs`'s
-  module docs.
+  module docs. Added 2026-11-27 (ADR-015, owner request; independently
+  reviewed): `agent/winctl.rs` (window enumerate / focus / minimize /
+  close — listed here retroactively, it dates from ADR-012) and
+  `agent/localdesktop.rs` (a one-shot GDI still capture of the primary
+  monitor for the assistant's own screen, plus the own-window and
+  foreground guards). Input itself still goes through
+  `input-windows::SendInputSink`. The still capture is deliberately not a
+  `CaptureSource`: it is a single copy made for the model, never the
+  real-time pipeline.
 
 ## Workflow for agents
 
