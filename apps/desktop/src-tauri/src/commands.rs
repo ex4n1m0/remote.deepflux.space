@@ -230,24 +230,14 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
             // ADR-006 B3: a host consent prompt that fell back to Online
             // without an accept or an explicit reject was a TIMEOUT — cool
             // the controller down so an unanswered prompt cannot be
-            // re-spammed.
-            if machine == "Host" && state == "Online" {
+            // re-spammed. The engine names the role with
+            // `MachineKind::name()` (lowercase); comparing against "Host"
+            // never matched, so the cooldown never fired until 2026-11-27.
+            if machine == node_runtime::MachineKind::Host.name() && state == "Online" {
                 let now = crate::chat::now_ms();
                 let services = app.state::<AppServices>();
                 let mut trust = services.trust.lock().expect("trust state");
-                trust.sweep(now);
-                // ADR-013 P2 (security review finding 1): the prompt's
-                // account claim dies WITH the prompt — a later accept for a
-                // different machine (e.g. a paired auto-accept) must never
-                // arm a remembered account intent the user never answered.
-                trust.prompt_account = None;
-                if let Some((controller, accepted, rejected)) = trust.prompt.take()
-                    && !accepted
-                    && !rejected
-                    && !trust.blocked(&controller, now)
-                {
-                    trust.block(&controller, now + crate::chat::TIMEOUT_COOLDOWN_MS);
-                }
+                trust.note_host_back_online(now);
             }
             emit(
                 events::STATE,

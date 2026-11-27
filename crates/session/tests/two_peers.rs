@@ -635,29 +635,41 @@ fn rejection_path_ends_controller_with_typed_cause() {
     assert!(w.timers.is_empty(), "all timers must be canceled");
 }
 
+/// The controller's request timeout outlasts the host's consent prompt:
+/// the human gets the whole window, and an unanswered prompt comes back as
+/// the host's explicit `Reject{Timeout}` (which cancels the request timer)
+/// instead of the controller's own generic timeout two-thirds of the way in.
 #[test]
-fn request_and_consent_timeouts_fire_in_schedule_order() {
+fn an_unanswered_prompt_rejects_the_controller_before_its_own_timeout() {
     let mut w = World::new(&["device-a", "device-b"]);
     w.register_all();
     w.now = 200;
     w.controller_connect(0, "device-b");
 
-    // request_timeout (10s) fires before consent_timeout (30s).
+    // Past the old 10 s request timeout: still asking, prompt still up.
     w.run_until(11_000);
     assert!(matches!(
         w.peers[0].controller.state(),
-        ControllerState::Disconnected {
-            cause: DisconnectCause::Timeout
-        }
+        ControllerState::Requesting { .. }
     ));
     assert!(matches!(
         w.peers[1].host.state(),
         HostState::ConsentPrompted { .. }
     ));
 
-    w.run_until(40_000);
+    // The consent window closes at 30 s: the host rejects explicitly.
+    w.run_until(31_000);
     assert_eq!(w.peers[1].host.state().name(), "Online");
-    assert!(w.timers.is_empty());
+    assert!(matches!(
+        w.peers[0].controller.state(),
+        ControllerState::Disconnected {
+            cause: DisconnectCause::Rejected(RejectReason::Timeout)
+        }
+    ));
+    assert!(
+        w.timers.is_empty(),
+        "the reject cancelled the request timer"
+    );
 }
 
 #[test]

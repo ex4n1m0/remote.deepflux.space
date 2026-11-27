@@ -161,6 +161,37 @@ impl TrustState {
         self.block_until.retain(|_, until| *until > now);
     }
 
+    /// A consent prompt is on screen and nobody has answered it. (The
+    /// assistant's own-screen tools refuse to act while this is true:
+    /// consent is the human's decision, ADR-015.)
+    pub fn consent_unanswered(&self) -> bool {
+        self.prompt
+            .as_ref()
+            .is_some_and(|(_, accepted, rejected)| !accepted && !rejected)
+    }
+
+    /// ADR-006 B3, the timeout half, as a pure step: the host fell back to
+    /// Online without an accept or an explicit reject, so the prompt on
+    /// screen expired unanswered — put that controller on the timeout
+    /// cooldown so it cannot re-spam prompts. The prompt's account claim
+    /// dies with the prompt (ADR-013 P2: a later accept for a different
+    /// machine must never arm an intent the user never answered). Returns
+    /// the controller that was put on cooldown, if any.
+    ///
+    /// Until 2026-11-27 this never ran: the engine names the machine
+    /// `"host"` (lowercase, `MachineKind::name`) and the caller compared
+    /// against `"Host"`.
+    pub fn note_host_back_online(&mut self, now: u64) -> Option<String> {
+        self.sweep(now);
+        self.prompt_account = None;
+        let (controller, accepted, rejected) = self.prompt.take()?;
+        if accepted || rejected || self.blocked(&controller, now) {
+            return None;
+        }
+        self.block(&controller, now + TIMEOUT_COOLDOWN_MS);
+        Some(controller)
+    }
+
     /// Global prompt budget: call before showing a prompt to an
     /// UNPAIRED controller. Records the prompt and returns true while
     /// the last-hour count is under the limit; false means the budget is
@@ -2172,6 +2203,56 @@ mod tests {
         t.block("old", now - 1);
         t.sweep(now);
         assert!(t.block_until.len() == 1, "swept the expired block");
+    }
+
+    #[test]
+    fn an_expired_prompt_cools_its_controller_down() {
+        // ADR-006 B3, the timeout half — which never ran before 2026-11-27:
+        // the engine names the role "host" and the caller compared with
+        // "Host", so the condition was always false.
+        let now = 10_000u64;
+
+        // A prompt nobody answered, then the host falls back to Online.
+        let mut t = TrustState::default();
+        t.prompt = Some(("ctrl".to_owned(), false, false));
+        t.prompt_account = Some("install-a".to_owned());
+        assert!(t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now).as_deref(), Some("ctrl"));
+        assert!(t.blocked("ctrl", now + 1), "on the timeout cooldown");
+        assert!(
+            !t.blocked("ctrl", now + TIMEOUT_COOLDOWN_MS),
+            "for exactly one window"
+        );
+        assert!(!t.blocked("other", now + 1), "per controller");
+        assert!(
+            t.prompt.is_none() && t.prompt_account.is_none(),
+            "the prompt is gone together with its account claim"
+        );
+        assert!(!t.consent_unanswered());
+        assert_eq!(
+            t.note_host_back_online(now + 1),
+            None,
+            "a plain host restart onto Online changes nothing"
+        );
+
+        // Answered prompts — either way — never cool anything down.
+        let mut t = TrustState::default();
+        t.prompt = Some(("ctrl".to_owned(), true, false));
+        assert!(!t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now), None);
+        t.prompt = Some(("ctrl".to_owned(), false, true));
+        assert!(!t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now), None);
+        assert!(!t.blocked("ctrl", now + 1));
+    }
+
+    #[test]
+    fn the_host_role_is_named_the_way_the_engine_names_it() {
+        // commands.rs compares the engine's role name through the typed
+        // constant; a literal "Host" there is how the cooldown above was
+        // lost for weeks.
+        assert_eq!(node_runtime::MachineKind::Host.name(), "host");
+        assert_eq!(node_runtime::MachineKind::Controller.name(), "controller");
     }
 
     #[test]
