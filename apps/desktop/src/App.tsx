@@ -484,7 +484,6 @@ export default function App() {
           ) : (
             <div className="machine-head">
               <h2>Pick a machine</h2>
-              <p className="muted">Or enter its code on the left.</p>
             </div>
           )}
 

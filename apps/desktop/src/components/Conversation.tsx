@@ -43,7 +43,7 @@ export function Conversation({
           <p className="muted">
             {name
               ? `No messages yet — a message waits for ${name} to come online.`
-              : "Pick a machine to chat."}
+              : "Choose one on the left, or enter its code."}
           </p>
         ) : (
           lines.map((line) => (
