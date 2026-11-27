@@ -28,9 +28,9 @@ use crate::credstore::SessionStore;
 use crate::credstore::WindowsCredStore;
 
 /// Bounded conversation history (messages kept for context). One tool step
-/// adds two messages (its request and its result), so the cap holds a
-/// whole maximum-length turn: the instruction must never fall out of the
-/// model's view while it is still working on it.
+/// with a single call adds two messages, so the cap holds a whole
+/// maximum-length turn of those. Nothing is trimmed mid-turn either way, so
+/// the instruction stays in view while it is being worked on.
 const HISTORY_CAP: usize = 2 * MAX_STEPS + 8;
 /// Bounded tool-loop steps per turn (safety: the model cannot loop
 /// forever; each step costs a request). A desktop task — look, click,
@@ -49,6 +49,12 @@ const STEP_BUDGET_NOTE: &str = "[SYSTEM: the step budget for this task is used u
 /// The turn ended without a report (the model kept calling tools on the
 /// wrap-up request).
 const STEP_BUDGET_ERROR: &str = "step budget spent without a report";
+/// Sent instead of an empty final answer when another machine is waiting
+/// for one.
+const NO_ANSWER_TEXT: &str = "(the assistant ended without an answer)";
+/// Sent to a machine whose instruction did not start a turn here.
+pub(crate) const NOT_TAKEN_REPLY: &str =
+    "this machine's assistant is busy, or was woken too often just now — try again in a minute";
 
 /// Events → UI (`assistant://…`). Text + metadata only — never secrets.
 #[derive(Clone, serde::Serialize)]
@@ -119,6 +125,9 @@ pub struct AssistantState {
     pub busy: Mutex<bool>,
     tx: Mutex<Option<SyncSender<AssistantInput>>>,
     join: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Held for the whole of a respawn (old worker out, new one in), so
+    /// two `Clear` presses in a row can never end with two workers alive.
+    respawn: Mutex<()>,
     confirm: Mutex<Option<PendingConfirm>>,
     /// Rolling timestamps of recent peer-agent wakes (loop breaker).
     agent_wake_times: Mutex<VecDeque<u64>>,
@@ -159,6 +168,7 @@ impl AssistantState {
             busy: Mutex::new(false),
             tx: Mutex::new(None),
             join: Mutex::new(None),
+            respawn: Mutex::new(()),
             confirm: Mutex::new(None),
             agent_wake_times: Mutex::new(VecDeque::new()),
         }
@@ -238,9 +248,17 @@ impl AssistantState {
     /// the rolling wake budget below caps machine-to-machine chatter.
     /// `fleet_call_id` (slice 3) rides from the sealed inbox line into
     /// the turn so the final reply carries it back to the caller.
-    pub fn deliver_peer_agent(&self, peer: &str, body: &str, fleet_call_id: Option<String>) {
+    /// Returns whether a turn was started; the caller answers the asking
+    /// machine with [`NOT_TAKEN_REPLY`] when not, so its `chat_wait` does
+    /// not sit out its whole timeout.
+    pub fn deliver_peer_agent(
+        &self,
+        peer: &str,
+        body: &str,
+        fleet_call_id: Option<String>,
+    ) -> bool {
         if *self.busy.lock().expect("assistant busy") {
-            return;
+            return false;
         }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -257,15 +275,16 @@ impl AssistantState {
                 eprintln!(
                     "[assistant] peer-agent wake budget spent — displaying instruction from {peer} without a turn"
                 );
-                return;
+                return false;
             }
             times.push_back(now);
         }
-        let _ = self.deliver(AssistantInput::PeerAgent {
+        self.deliver(AssistantInput::PeerAgent {
             peer: peer.to_owned(),
             body: body.to_owned(),
             fleet_call_id,
-        });
+        })
+        .is_ok()
     }
 
     fn deliver(&self, input: AssistantInput) -> Result<(), String> {
@@ -285,19 +304,38 @@ impl AssistantState {
     pub fn spawn(&self, app: AppHandle) {
         let (tx, rx) = std::sync::mpsc::sync_channel::<AssistantInput>(4);
         *self.tx.lock().expect("assistant tx") = Some(tx);
-        // Replace any prior worker: dropping its sender closes the old
-        // channel after in-flight turns finish; join is best-effort.
-        if let Some(old) = self.join.lock().expect("assistant join").take() {
-            let _ = old.join();
-        }
-        let worker = std::thread::Builder::new()
-            .name("assistant".into())
+        // Replace any prior worker — but never two at once, and never by
+        // blocking the caller: a turn in flight can hold a blocking tool
+        // (a reply wait, a shell command, a question to the human) for
+        // minutes, and `Clear` must not freeze the window for that long.
+        // A reaper thread waits the old worker out and only then starts
+        // the new one; `respawn` serializes reapers, and each takes the
+        // handle it waits on AFTER taking that lock, so a second reset
+        // waits for the first's worker rather than racing it. Until the
+        // new worker starts, inputs queue on the fresh channel.
+        std::thread::Builder::new()
+            .name("assistant-reaper".into())
             .spawn({
                 let app = app.clone();
-                move || run_worker(app, rx)
+                move || {
+                    let services = app.state::<crate::commands::AppServices>();
+                    let assistant = &services.assistant;
+                    let _one_respawn_at_a_time =
+                        assistant.respawn.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(old) = assistant.join.lock().expect("assistant join").take() {
+                        let _ = old.join();
+                    }
+                    let worker = std::thread::Builder::new()
+                        .name("assistant".into())
+                        .spawn({
+                            let app = app.clone();
+                            move || run_worker(app, rx)
+                        })
+                        .expect("spawn assistant worker");
+                    *assistant.join.lock().expect("assistant join") = Some(worker);
+                }
             })
-            .expect("spawn assistant worker");
-        *self.join.lock().expect("assistant join") = Some(worker);
+            .expect("spawn assistant reaper");
     }
 }
 
@@ -575,6 +613,14 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
         // task (security review finding 1).
         match reply {
             Ok(final_text) => {
+                // An instructed turn that ends with nothing to say still
+                // answers: an empty line would read on the asking machine as
+                // "no instruction outstanding" and invite a resend.
+                let final_text = if reply_to.is_some() && final_text.trim().is_empty() {
+                    NO_ANSWER_TEXT.to_owned()
+                } else {
+                    final_text
+                };
                 log.push(ChatTurn {
                     role: "assistant",
                     content: Value::String(final_text.clone()),
@@ -639,10 +685,25 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
             .busy
             .lock()
             .expect("assistant busy") = false;
-        if log.len() > HISTORY_CAP {
-            let drop = log.len() - HISTORY_CAP;
-            log.drain(..drop);
+        trim_history(&mut log);
+    }
+}
+
+/// Keep the turn log inside [`HISTORY_CAP`] and start what remains on a
+/// turn boundary. A log that opens with a tool result (its requesting
+/// message dropped) is a shape providers reject, and every later turn
+/// would fail until the history drained again.
+fn trim_history(log: &mut Vec<ChatTurn>) {
+    if log.len() <= HISTORY_CAP {
+        return;
+    }
+    let excess = log.len() - HISTORY_CAP;
+    log.drain(..excess);
+    match log.iter().position(|turn| turn.role == "user") {
+        Some(next_turn) => {
+            log.drain(..next_turn);
         }
+        None => log.clear(),
     }
 }
 
@@ -791,7 +852,12 @@ fn send_agent_reply(
 /// Tell the machine that instructed this assistant why its instruction was
 /// not carried out — the same reply leg a final answer takes, so its
 /// `chat_wait` (or fleet scan) receives it like any answer.
-fn send_failure_reply(app: &AppHandle, peer: &str, reason: &str, fleet_call_id: Option<&str>) {
+pub(crate) fn send_failure_reply(
+    app: &AppHandle,
+    peer: &str,
+    reason: &str,
+    fleet_call_id: Option<&str>,
+) {
     let text = format!("FAILED — could not complete the instruction: {reason}");
     if let Err(err) = send_agent_reply(app, peer, &text, fleet_call_id) {
         eprintln!("[assistant] failure reply to {peer} failed: {err}");
@@ -973,7 +1039,7 @@ fn run_turn(
 
 /// The frontend sends camelCase keys (`apiKey`, `baseUrl`): without the
 /// rename they were silently ignored and only `model` ever saved.
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentConfigureArgs {
     pub api_key: Option<String>,
@@ -992,6 +1058,15 @@ pub fn agent_configure(app: AppHandle, args: AgentConfigureArgs) -> Result<Value
         }
     }
     if args.base_url.is_some() || args.model.is_some() {
+        if let Some(url) = args.base_url.as_deref().map(str::trim)
+            && !url.is_empty()
+            && !acceptable_base_url(url)
+        {
+            return Err(
+                "The Base URL must start with https:// — or http://127.0.0.1 for a model running on this machine"
+                    .to_owned(),
+            );
+        }
         let services = app.state::<crate::commands::AppServices>();
         let mut store = services.store.lock().expect("store");
         let mut next = store.settings().clone();
@@ -1004,6 +1079,32 @@ pub fn agent_configure(app: AppHandle, args: AgentConfigureArgs) -> Result<Value
         store.update_settings(next)?;
     }
     Ok(agent_status_inner(&app))
+}
+
+/// A provider address the assistant may talk to. Every request carries the
+/// API key and, with the own-screen tools, pictures of the screen — so
+/// `https://` only, except for a model served on this machine.
+fn acceptable_base_url(url: &str) -> bool {
+    match url.strip_prefix("https://") {
+        Some(rest) => !rest.is_empty(),
+        None => is_loopback_http(url),
+    }
+}
+
+/// `http://` is allowed only to this machine: the host part is exactly a
+/// loopback name (optionally with a port) — `http://127.0.0.1.evil.example`
+/// is not a loopback address.
+fn is_loopback_http(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match authority.strip_prefix('[') {
+        // "[::1]" or "[::1]:8080"
+        Some(bracketed) => bracketed.split(']').next().unwrap_or(""),
+        None => authority.split(':').next().unwrap_or(""),
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 #[tauri::command]
@@ -1041,7 +1142,7 @@ pub fn agent_send(app: AppHandle, args: AgentSendArgs) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct AgentSendArgs {
     pub text: String,
 }
@@ -1154,15 +1255,78 @@ mod tests {
     }
 
     #[test]
-    fn a_whole_turn_fits_inside_the_history_cap() {
-        // One tool step adds two messages; the cap must hold the user's
-        // instruction plus every step of a maximum-length turn, or the
-        // instruction falls out of the model's view mid-task. Checked at
-        // compile time (the gate's lint rejects constant runtime asserts).
+    fn a_whole_turn_of_single_call_steps_fits_inside_the_history_cap() {
+        // One tool step with a single call adds two messages; the cap holds
+        // the user's instruction plus every step of a maximum-length turn of
+        // those. (A step that issues several calls at once adds more, but
+        // nothing is trimmed mid-turn, so the instruction stays in view
+        // either way.) Checked at compile time — the gate's lint rejects
+        // constant runtime asserts.
         const {
             assert!(HISTORY_CAP > 2 * MAX_STEPS);
             assert!(MAX_STEPS > 16, "a desktop task needs more than the old 16");
         }
+    }
+
+    fn tool_result(n: usize) -> ChatTurn {
+        ChatTurn {
+            role: "tool",
+            content: Value::String(format!("result {n}")),
+            tool_calls: None,
+            tool_call_id: Some(format!("call-{n}")),
+            name: Some("status".to_owned()),
+        }
+    }
+
+    #[test]
+    fn a_trimmed_log_starts_on_a_turn_boundary() {
+        // One long turn (user, then request + result pairs), then the next
+        // user turn: well past the cap.
+        let mut log = vec![ChatTurn::user("first")];
+        for n in 0..100 {
+            log.push(tool_result(n));
+        }
+        log.push(ChatTurn::user("second"));
+        assert!(log.len() > HISTORY_CAP, "the fixture overflows the cap");
+        trim_history(&mut log);
+        assert!(log.len() <= HISTORY_CAP);
+        assert_eq!(
+            log[0].role, "user",
+            "a kept log never opens on a tool result"
+        );
+        assert_eq!(log[0].content, "second");
+    }
+
+    #[test]
+    fn a_log_inside_the_cap_is_left_alone_and_one_without_a_turn_start_is_cleared() {
+        let mut log = vec![ChatTurn::user("hi")];
+        trim_history(&mut log);
+        assert_eq!(log.len(), 1, "nothing to trim");
+
+        // Nothing but tool traffic: there is no turn to start on.
+        let mut log: Vec<ChatTurn> = (0..HISTORY_CAP + 5).map(tool_result).collect();
+        trim_history(&mut log);
+        assert!(
+            log.is_empty(),
+            "a headless log would be a shape providers reject"
+        );
+    }
+
+    #[test]
+    fn a_provider_address_is_https_or_this_machine() {
+        // Every request carries the key (and, with the own-screen tools,
+        // pictures of the screen): plain http is for a local model only.
+        assert!(acceptable_base_url("https://api.deepseek.com/v1"));
+        assert!(acceptable_base_url("http://127.0.0.1:11434/v1"));
+        assert!(acceptable_base_url("http://localhost:1234/v1"));
+        assert!(acceptable_base_url("http://[::1]:8080/v1"));
+        assert!(!acceptable_base_url("http://api.example.com/v1"));
+        assert!(
+            !acceptable_base_url("http://127.0.0.1.evil.example/v1"),
+            "a hostname that merely starts like a loopback address"
+        );
+        assert!(!acceptable_base_url("https://"));
+        assert!(!acceptable_base_url("ftp://example.com"));
     }
 
     #[test]

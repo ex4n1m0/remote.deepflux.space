@@ -47,11 +47,10 @@ fn default_true() -> bool {
     true
 }
 
-/// The frontend sends camelCase keys (`ipc.ts`: `{ args: { monitorId } }`).
-/// Without the rename the field never matched, so a monitor picked in the UI
-/// was refused as a missing argument.
+/// The frontend passes this one in snake_case (`ipc.ts`: `{ args: { monitor_id } }`).
+/// `tests/command_args_wire.rs` checks every typed command argument against
+/// the keys `ipc.ts` really sends.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SelectMonitorArgs {
     pub monitor_id: String,
 }

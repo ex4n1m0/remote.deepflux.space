@@ -1064,14 +1064,9 @@ pub fn execute(
             let report = xy_args(args, "x", "y").and_then(|(x, y)| {
                 let clicks = count_arg(args, "clicks", 1, localdesktop::CLICKS_MAX);
                 let ((sx, sy), (nx, ny)) = local_point(shots, x, y)?;
-                localdesktop::click(
-                    (sx, sy),
-                    nx,
-                    ny,
-                    mouse_button_arg(args),
-                    clicks,
-                    consent_waiting(app),
-                )
+                localdesktop::click((sx, sy), nx, ny, mouse_button_arg(args), clicks, &|| {
+                    consent_waiting(app)
+                })
             });
             ToolOutput::text(outcome("local_click", report))
         }
@@ -1082,7 +1077,7 @@ pub fn execute(
             let report = if text.is_empty() {
                 Ok("empty text ignored".to_owned())
             } else {
-                localdesktop::type_text(text, consent_waiting(app))
+                localdesktop::type_text(text, &|| consent_waiting(app))
             };
             ToolOutput::text(outcome("local_type_text", report))
         }
@@ -1095,7 +1090,7 @@ pub fn execute(
             };
             let report = modifiers_arg(args).and_then(|modifiers| {
                 let count = count_arg(args, "count", 1, localdesktop::KEYS_MAX);
-                localdesktop::press_key(key, &modifiers, count, consent_waiting(app))
+                localdesktop::press_key(key, &modifiers, count, &|| consent_waiting(app))
             });
             ToolOutput::text(outcome("local_press_key", report))
         }
@@ -1110,12 +1105,15 @@ pub fn execute(
                     args.get("x").and_then(|v| v.as_f64()),
                     args.get("y").and_then(|v| v.as_f64()),
                 ) {
-                    (Some(x), Some(y)) => local_normalized(shots, x, y)
-                        .map(|(_, nx, ny)| (nx, ny))
-                        .and_then(|at| {
-                            localdesktop::scroll(notches, Some(at), consent_waiting(app))
+                    // Aiming at a point runs the own-window guard on it too.
+                    (Some(x), Some(y)) => local_point(shots, x, y)
+                        .map(|(point, at)| (Some(point), at))
+                        .and_then(|(point, at)| {
+                            localdesktop::scroll(notches, Some(at), point, &|| consent_waiting(app))
                         }),
-                    (None, None) => localdesktop::scroll(notches, None, consent_waiting(app)),
+                    (None, None) => {
+                        localdesktop::scroll(notches, None, None, &|| consent_waiting(app))
+                    }
                     _ => Err("needs both x and y, or neither".to_owned()),
                 }
             };
@@ -1124,9 +1122,11 @@ pub fn execute(
         "local_drag" => {
             let report = xy_args(args, "x", "y").and_then(|(x, y)| {
                 xy_args(args, "to_x", "to_y").and_then(|(to_x, to_y)| {
-                    let ((sx, sy), from) = local_point(shots, x, y)?;
-                    let (_, to_nx, to_ny) = local_normalized(shots, to_x, to_y)?;
-                    localdesktop::drag((sx, sy), from, (to_nx, to_ny), consent_waiting(app))
+                    let ((from_sx, from_sy), from) = local_point(shots, x, y)?;
+                    let ((to_sx, to_sy), to) = local_point(shots, to_x, to_y)?;
+                    localdesktop::drag((from_sx, from_sy), (to_sx, to_sy), from, to, &|| {
+                        consent_waiting(app)
+                    })
                 })
             });
             ToolOutput::text(outcome("local_drag", report))
@@ -1611,47 +1611,58 @@ pub fn execute(
                     let s = store.settings().clone();
                     (s.signaling_base_url, s.device_token, s.device_id)
                 };
-                let code = code.trim().to_lowercase();
-                // An agent-addressed line is recorded like the human's own
-                // "address their assistant" line: the peer's answer must read
-                // as a REPLY (the wake gate keys on "to-agent"), never as a
-                // fresh instruction that would start a wake/reply echo.
-                let sender = if to_agent { "to-agent" } else { "user" };
-                crate::chat::record_outgoing(app, &code, sender, text);
-                // In-session rides the direct channel; otherwise the inbox.
-                let in_session = {
+                // The machine the live session (if any) is with.
+                let live_with = {
                     let services = app.state::<crate::commands::AppServices>();
                     services
                         .engine
                         .lock()
                         .expect("engine slot")
                         .as_ref()
-                        .is_some_and(|handle| {
-                            let s = handle.status();
-                            s.controller_state == "Connected" || s.host_state == "Connected"
+                        .and_then(|handle| {
+                            let status = handle.status();
+                            ((status.controller_state == "Connected"
+                                || status.host_state == "Connected")
+                                .then_some(status.session_peer))
+                            .flatten()
                         })
                 };
-                if in_session {
-                    let services = app.state::<crate::commands::AppServices>();
-                    let slot = services.engine.lock().expect("engine slot");
-                    if let Some(handle) = slot.as_ref() {
-                        return handle
-                            .send(engine::EngineCmd::ChatSend {
-                                body: text.to_owned(),
-                                agent: to_agent,
-                            })
-                            .map_err(|e| e.to_string());
-                    }
-                }
-                // The inbox envelope carries no agent bit (v1): an
-                // instruction sent offline would land as a plain message
-                // and never wake the peer's assistant. Tell the model the
-                // actionable fix instead of pretending it was delivered.
-                if to_agent {
+                let code = code.trim().to_lowercase();
+                // An instruction needs the live session to be with THAT
+                // machine — decided before anything is recorded. A
+                // "to-agent" line that never left would make the wake gate
+                // read the peer's next message as "the reply" and make
+                // chat_wait sit out its timeout.
+                if to_agent && live_with.as_deref() != Some(code.as_str()) {
                     return Err(format!(
                         "instructions to {code}'s assistant need a live session with it — \
                          call connect(\"{code}\") and wait_connected first"
                     ));
+                }
+                // An agent-addressed line is recorded like the human's own
+                // "address their assistant" line: the peer's answer must read
+                // as a REPLY (the wake gate keys on "to-agent"), never as a
+                // fresh instruction that would start a wake/reply echo.
+                let sender = if to_agent { "to-agent" } else { "user" };
+                crate::chat::record_outgoing(app, &code, sender, text);
+                // In-session rides the direct channel — only with the
+                // machine the session is with; everything else goes sealed
+                // through the inbox.
+                if live_with.as_deref() == Some(code.as_str()) {
+                    let sent = with_engine(app, |handle| {
+                        handle
+                            .send(engine::EngineCmd::ChatSend {
+                                body: text.to_owned(),
+                                agent: to_agent,
+                            })
+                            .map_err(|e| e.to_string())
+                    });
+                    if let Err(err) = sent {
+                        // Un-arm the marker: the line above never left.
+                        crate::chat::record_outgoing(app, &code, "agent", "[not sent]");
+                        return Err(err);
+                    }
+                    return Ok(());
                 }
                 crate::chat::inbox_send(app, &base_url, &token, &me, &code, text)
             })();
@@ -1733,12 +1744,17 @@ fn xy_args(args: &Value, x_key: &str, y_key: &str) -> Result<(f64, f64), String>
 }
 
 /// A small count argument: `default` when absent, never below 1 or above
-/// `max`.
+/// `max`. Models sometimes write `2.0` for `2`; a whole number written as
+/// a float counts.
 fn count_arg(args: &Value, key: &str, default: u64, max: u64) -> u64 {
-    args.get(key)
-        .and_then(|v| v.as_u64())
-        .unwrap_or(default)
-        .clamp(1, max)
+    let raw = args.get(key).and_then(|v| {
+        v.as_u64().or_else(|| {
+            v.as_f64()
+                .filter(|f| *f >= 1.0 && *f < 1e9 && f.fract() == 0.0)
+                .map(|f| f as u64)
+        })
+    });
+    raw.unwrap_or(default).clamp(1, max)
 }
 
 /// One report line for a local action: the result, or why it was not done
@@ -1762,38 +1778,41 @@ type ScreenPoint = (i32, i32);
 /// A point on the input wire: 0..=65535 over the monitor.
 type WirePoint = (u16, u16);
 
-/// A screenshot pixel as both the normalized wire coordinate and a monitor
-/// pixel (what the own-window guard tests).
+/// A screenshot pixel as both the normalized wire coordinate and the
+/// monitor pixel it lands on. The pixel comes from the SAME mapping the
+/// sink applies (`normalized_to_px`), so the guard tests the pixel that
+/// will be clicked — not a rounded neighbour of it.
 fn local_point(shots: &ShotSpaces, x: f64, y: f64) -> Result<(ScreenPoint, WirePoint), String> {
     let space = local_space(shots)?;
-    Ok((
-        localdesktop::shot_to_screen(x, y, space),
-        (
-            to_normalized(x, space.width),
-            to_normalized(y, space.height),
-        ),
-    ))
-}
-
-/// A screenshot pixel → normalized wire coordinate, with its space.
-fn local_normalized(
-    shots: &ShotSpaces,
-    x: f64,
-    y: f64,
-) -> Result<(localdesktop::LocalSpace, u16, u16), String> {
-    let space = local_space(shots)?;
-    Ok((
-        space,
+    let wire: WirePoint = (
         to_normalized(x, space.width),
         to_normalized(y, space.height),
+    );
+    Ok((
+        (
+            input_windows::normalized_to_px(wire.0, space.screen_width),
+            input_windows::normalized_to_px(wire.1, space.screen_height),
+        ),
+        wire,
     ))
 }
 
-/// A consent prompt is on screen and nobody has answered it yet.
+/// A consent prompt is on screen and nobody has answered it yet. The
+/// engine says whether a prompt is up at all (the bookkeeping alone can go
+/// stale — a prompt cut short by "Stop sharing" never reaches Online); the
+/// trust state says whether it was answered. Never starts the engine.
 fn consent_waiting(app: &AppHandle) -> bool {
     let services = app.state::<crate::commands::AppServices>();
-    let trust = services.trust.lock().expect("trust state");
-    trust.consent_unanswered()
+    let prompting = services
+        .engine
+        .lock()
+        .expect("engine slot")
+        .as_ref()
+        .is_some_and(|handle| handle.status().host_state == "ConsentPrompted");
+    prompting && {
+        let trust = services.trust.lock().expect("trust state");
+        trust.consent_unanswered()
+    }
 }
 
 /// The `modifiers` array (duplicates dropped), or the first unknown name.
@@ -1834,12 +1853,21 @@ const CHAT_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(300);
 /// Answers are the peer assistant's final text; longer ones are clipped.
 const CHAT_WAIT_REPLY_CAP: usize = 4000;
 
-/// Whether an agent-addressed line of ours is still unanswered: the NEWEST
-/// agent-box line ("to-agent" ask, "peer-agent" arrival, "agent" reply of
-/// ours) is a "to-agent" ask.
+/// Whether an agent-addressed line of ours is still waiting for its answer:
+/// the NEWEST agent-box line ("to-agent" ask, "peer-agent" arrival, "agent"
+/// reply of ours) is a "to-agent" ask young enough to still expect one.
+/// An ask nobody answered for longer than the reply window is presumed
+/// lost — the same rule the wake gate applies.
 fn ask_pending(history: &[crate::chat::ChatLine]) -> bool {
-    let newest = history.iter().rev().find(|line| is_agent_box_line(line));
-    newest.is_some_and(|line| line.sender == "to-agent")
+    let now = crate::chat::now_ms();
+    history
+        .iter()
+        .rev()
+        .find(|line| is_agent_box_line(line))
+        .is_some_and(|line| {
+            line.sender == "to-agent"
+                && now.saturating_sub(line.ts_ms) <= crate::chat::ASK_REPLY_WINDOW_MS
+        })
 }
 
 /// The agent-box lines: instructions to an assistant and what came back.
@@ -1907,8 +1935,9 @@ fn chat_wait(app: &AppHandle, code: &str, timeout: Duration) -> String {
 //   never instructions).
 
 /// Tools whose results carry external content (both screens: whatever is
-/// showing there was not written by the user).
-pub const UNTRUSTED_RESULT_TOOLS: &[&str] = &["chat_read", "screenshot", "local_screenshot"];
+/// showing there was not written by the user; the peer's words likewise).
+pub const UNTRUSTED_RESULT_TOOLS: &[&str] =
+    &["chat_read", "chat_wait", "screenshot", "local_screenshot"];
 /// Tools gated on the local human's confirmation.
 pub const CONFIRMATION_GATED_TOOLS: &[&str] = &["download_file"];
 
@@ -3562,7 +3591,8 @@ mod tests {
     fn chat_line(sender: &str, body: &str) -> crate::chat::ChatLine {
         crate::chat::ChatLine {
             id: 0,
-            ts_ms: 0,
+            // Fresh: only a young ask still expects its answer.
+            ts_ms: crate::chat::now_ms(),
             sender: sender.to_owned(),
             body: body.to_owned(),
             fleet_call_id: None,
@@ -3618,6 +3648,15 @@ mod tests {
             assert!(!ask_pending(history), "{label}");
             assert_eq!(agent_reply_after_ask(history), None, "{label}");
         }
+
+        // An ask nobody answered for longer than the reply window is
+        // presumed lost: nothing is waited for any more.
+        let mut stale = chat_line("to-agent", "open Notepad");
+        stale.ts_ms = crate::chat::now_ms().saturating_sub(crate::chat::ASK_REPLY_WINDOW_MS + 1);
+        assert!(
+            !ask_pending(&[stale.clone()]),
+            "a stale ask waits for nothing"
+        );
     }
 
     #[test]
@@ -3647,6 +3686,15 @@ mod tests {
         assert_eq!(count_arg(&args, "count", 1, 3), 1, "never below one");
         assert_eq!(count_arg(&args, "secs", 2, 30), 7);
         assert_eq!(count_arg(&args, "missing", 2, 30), 2, "the default");
+        // A model that writes a whole number as a float still means it.
+        let floats = serde_json::json!({ "double": 2.0, "zero": 0.0, "half": 1.5 });
+        assert_eq!(count_arg(&floats, "double", 1, 3), 2);
+        assert_eq!(count_arg(&floats, "zero", 1, 3), 1);
+        assert_eq!(
+            count_arg(&floats, "half", 1, 3),
+            1,
+            "not a whole number: the default"
+        );
 
         assert_eq!(
             xy_args(&serde_json::json!({"x": 3, "y": 4.5}), "x", "y"),

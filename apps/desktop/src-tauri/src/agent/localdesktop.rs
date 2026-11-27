@@ -35,21 +35,28 @@ use protocol::wire::{AllKeysUpTrigger, ButtonState, InputEvent, MouseButton};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CAPTUREBLT, CreateCompatibleDC, CreateDIBSection,
-    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, GdiFlush, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY,
+    SelectObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GA_ROOT, GetAncestor, GetCursorPos, GetForegroundWindow, GetSystemMetrics,
+    GA_ROOT, GA_ROOTOWNER, GetAncestor, GetCursorPos, GetForegroundWindow, GetSystemMetrics,
     GetWindowThreadProcessId, SM_CXSCREEN, SM_CYSCREEN, WindowFromPoint,
 };
 
 /// Long edge of a local screenshot — the same limit as the remote one.
 const MAX_EDGE: u32 = 1600;
 const JPEG_QUALITY: u8 = 80;
-/// A corrupt screen metric must not make the capture allocate without bound.
-const MAX_SCREEN_PIXELS: u64 = 4096 * 4096;
+/// A corrupt screen metric must not make the capture allocate without
+/// bound. Room for an 8K primary monitor (7680 × 4320), no more.
+const MAX_SCREEN_PIXELS: u64 = 4096 * 4096 * 4;
 /// `Text` events go out in chunks of at most this many UTF-16 code units
 /// (the sink's own cap is higher; small batches keep each call light).
 const TEXT_CHUNK_UNITS: usize = 400;
+/// One `local_type_text` call types at most this much; the model sends
+/// longer text in parts, and a text full of newlines cannot keep pressing
+/// Enter for minutes.
+const TEXT_MAX_UNITS: usize = 4000;
+const TEXT_MAX_LINES: usize = 100;
 /// One wheel notch (Windows' fixed `WHEEL_DELTA`).
 const WHEEL_NOTCH: i32 = 120;
 /// Wheel notches per call, either way.
@@ -111,21 +118,6 @@ pub fn screenshot() -> Result<LocalShot, String> {
         },
         jpeg,
     })
-}
-
-/// Screenshot pixel → monitor pixel (for the own-window hit test; the click
-/// itself travels through the normalized wire mapping, not through here).
-pub(crate) fn shot_to_screen(x: f64, y: f64, space: LocalSpace) -> (i32, i32) {
-    let map = |value: f64, shot: u32, screen: u32| -> i32 {
-        let ratio = f64::from(screen.max(1)) / f64::from(shot.max(1));
-        (value * ratio)
-            .round()
-            .clamp(0.0, f64::from(screen.max(1) - 1)) as i32
-    };
-    (
-        map(x, space.width, space.screen_width),
-        map(y, space.height, space.screen_height),
-    )
 }
 
 /// Monitor pixel → screenshot pixel; `None` when the point is off the
@@ -203,6 +195,8 @@ fn capture_primary_monitor() -> Result<(Vec<u8>, u32, u32), String> {
             0,
             SRCCOPY | CAPTUREBLT,
         );
+        // GDI batches calls; the DIB is only complete once they are flushed.
+        let _ = GdiFlush();
         // 32 bpp rows are already a multiple of four bytes: no padding.
         let stride = width as usize * 4;
         let pixels = if copied.is_ok() && !bits.is_null() {
@@ -256,7 +250,7 @@ impl fmt::Display for Refusal {
             }
             Self::OwnWindow => {
                 "not done: that point is inside this app's own window — the assistant never \
-                 clicks its own app. Aim at the window you want to operate"
+                 operates its own app. Aim at the window you want to operate"
             }
             Self::OwnForeground => {
                 "not done: this app's own window is in front, so the keystrokes would land \
@@ -268,36 +262,43 @@ impl fmt::Display for Refusal {
     }
 }
 
-/// True when the foreground window belongs to this app's process.
-fn foreground_is_own_process() -> bool {
-    // SAFETY: neither call has preconditions; the out-pointer is valid.
+/// True when the window under a monitor pixel belongs to this app's
+/// process — its top-level window, or a popup owned by one (menus and
+/// dialogs the webview pops up can be separate top-level windows).
+fn point_is_own_window(x: i32, y: i32) -> bool {
+    // SAFETY: WindowFromPoint has no preconditions; GetAncestor returns a
+    // null handle for a window with no such ancestor (checked).
     unsafe {
-        let window = GetForegroundWindow();
-        if window.is_invalid() {
+        let hit = WindowFromPoint(POINT { x, y });
+        if hit.is_invalid() {
             return false;
         }
+        [
+            hit,
+            GetAncestor(hit, GA_ROOT),
+            GetAncestor(hit, GA_ROOTOWNER),
+        ]
+        .into_iter()
+        .filter(|window| !window.is_invalid())
+        .any(window_belongs_to_this_process)
+    }
+}
+
+/// True when `window` was created by this app's process.
+fn window_belongs_to_this_process(window: windows::Win32::Foundation::HWND) -> bool {
+    // SAFETY: no preconditions; the out-pointer is valid.
+    unsafe {
         let mut pid: u32 = 0;
         let _ = GetWindowThreadProcessId(window, Some(&mut pid));
         pid == std::process::id()
     }
 }
 
-/// True when the top-level window under a monitor pixel belongs to this
-/// app's process.
-fn point_is_own_window(x: i32, y: i32) -> bool {
-    // SAFETY: WindowFromPoint has no preconditions; GetAncestor tolerates
-    // the null handle an empty desktop yields (checked all the same).
-    unsafe {
-        let hit = WindowFromPoint(POINT { x, y });
-        if hit.is_invalid() {
-            return false;
-        }
-        let root = GetAncestor(hit, GA_ROOT);
-        let target = if root.is_invalid() { hit } else { root };
-        let mut pid: u32 = 0;
-        let _ = GetWindowThreadProcessId(target, Some(&mut pid));
-        pid == std::process::id()
-    }
+/// True when the foreground window belongs to this app's process.
+fn foreground_is_own_process() -> bool {
+    // SAFETY: GetForegroundWindow has no preconditions.
+    let window = unsafe { GetForegroundWindow() };
+    !window.is_invalid() && window_belongs_to_this_process(window)
 }
 
 /// Mouse guard. `point` is the target in monitor pixels (`None` = no
@@ -406,8 +407,44 @@ impl LocalInput {
 impl Drop for LocalInput {
     fn drop(&mut self) {
         // The release path reports, it never panics (the sink's contract).
-        let _ = InputSink::release_all(&mut self.0, AllKeysUpTrigger::Disconnect);
+        // A release Windows refuses is retried a few times: a key left
+        // down outlives this sink, and nothing else would know about it.
+        for attempt in 0..3 {
+            let _ = InputSink::release_all(&mut self.0, AllKeysUpTrigger::Disconnect);
+            if InputSink::held_count(&self.0) == 0 {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(40 * (attempt + 1)));
+        }
     }
+}
+
+/// What a running plan asks before every group of events. The desktop can
+/// change under a plan (a consent prompt appears and pulls this app to the
+/// front, the human alt-tabs back into it) between the first check and a
+/// later step, so the guards are live, not once.
+type LiveGuard<'a> = &'a dyn Fn() -> Result<(), String>;
+
+fn refuse(refusal: Option<Refusal>) -> Result<(), String> {
+    match refusal {
+        Some(refusal) => Err(refusal.to_string()),
+        None => Ok(()),
+    }
+}
+
+fn mouse_guard<'a>(
+    point: Option<(i32, i32)>,
+    consent: &'a dyn Fn() -> bool,
+) -> impl Fn() -> Result<(), String> + 'a {
+    move || refuse(mouse_refusal(point, consent()))
+}
+
+fn key_guard<'a>(
+    key: Option<(u16, bool)>,
+    modifiers: &'a [Modifier],
+    consent: &'a dyn Fn() -> bool,
+) -> impl Fn() -> Result<(), String> + 'a {
+    move || refuse(key_refusal(key, modifiers, consent()))
 }
 
 /// One thing to do on the input stream: hand off a group of events, or
@@ -487,10 +524,15 @@ impl Plan {
     }
 }
 
-fn play(sink: &mut LocalInput, steps: &[Step]) -> Result<(), String> {
+fn play(sink: &mut LocalInput, steps: &[Step], guard: LiveGuard<'_>) -> Result<(), String> {
     for step in steps {
         match step {
-            Step::Events(events) => sink.send(events)?,
+            // Asked again right before EVERY group. A refusal ends the
+            // plan here; the sink's drop guard releases whatever it holds.
+            Step::Events(events) => {
+                guard()?;
+                sink.send(events)?;
+            }
             Step::Pause(delay) => std::thread::sleep(*delay),
         }
     }
@@ -505,11 +547,9 @@ pub(crate) fn click(
     y: u16,
     button: MouseButton,
     clicks: u64,
-    consent_waiting: bool,
+    consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    if let Some(refusal) = mouse_refusal(Some(point), consent_waiting) {
-        return Err(refusal.to_string());
-    }
+    mouse_guard(Some(point), consent)()?;
     let mut sink = LocalInput::open()?;
     let mut plan = Plan::default();
     plan.move_to(x, y);
@@ -520,7 +560,7 @@ pub(crate) fn click(
         plan.button(button, ButtonState::Released);
         plan.pause(70);
     }
-    play(&mut sink, &plan.steps)?;
+    play(&mut sink, &plan.steps, &mouse_guard(Some(point), consent))?;
     Ok(format!(
         "clicked {} time(s) with the {button:?} button on this machine",
         clicks.max(1)
@@ -528,16 +568,17 @@ pub(crate) fn click(
 }
 
 /// Left-button drag from (`x`, `y`) to (`to_x`, `to_y`), both normalized.
-/// `point` (monitor pixels) is only for the own-window guard.
+/// `from_point` / `to_point` (monitor pixels) are for the own-window
+/// guard: neither end of the drag may be inside this app's window.
 pub(crate) fn drag(
-    point: (i32, i32),
+    from_point: (i32, i32),
+    to_point: (i32, i32),
     from: (u16, u16),
     to: (u16, u16),
-    consent_waiting: bool,
+    consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    if let Some(refusal) = mouse_refusal(Some(point), consent_waiting) {
-        return Err(refusal.to_string());
-    }
+    mouse_guard(Some(from_point), consent)?;
+    mouse_guard(Some(to_point), consent)?;
     let mut sink = LocalInput::open()?;
     let mut plan = Plan::default();
     plan.move_to(from.0, from.1);
@@ -556,7 +597,10 @@ pub(crate) fn drag(
     }
     plan.pause(80);
     plan.button(MouseButton::Left, ButtonState::Released);
-    play(&mut sink, &plan.steps)?;
+    // The drop is what could land on this app: asked at the very end too.
+    let guard = mouse_guard(Some(to_point), consent);
+    let live = move || guard().and_then(|()| mouse_guard(Some(from_point), consent)());
+    play(&mut sink, &plan.steps, &live)?;
     Ok("dragged with the left button on this machine".to_owned())
 }
 
@@ -600,13 +644,17 @@ fn text_plan(text: &str) -> Vec<Step> {
 }
 
 /// Type `text` into whatever is focused on this machine.
-pub(crate) fn type_text(text: &str, consent_waiting: bool) -> Result<String, String> {
-    if let Some(refusal) = key_refusal(None, &[], consent_waiting) {
-        return Err(refusal.to_string());
+pub(crate) fn type_text(text: &str, consent: &dyn Fn() -> bool) -> Result<String, String> {
+    if text.encode_utf16().count() > TEXT_MAX_UNITS || text.lines().count() > TEXT_MAX_LINES {
+        return Err(format!(
+            "text is too long for one call (at most {TEXT_MAX_LINES} lines and \
+             {TEXT_MAX_UNITS} characters) — send it in parts"
+        ));
     }
+    key_guard(None, &[], consent)?;
     let mut sink = LocalInput::open()?;
     let steps = text_plan(text);
-    play(&mut sink, &steps)?;
+    play(&mut sink, &steps, &key_guard(None, &[], consent))?;
     let chars = text.chars().filter(|ch| *ch != '\r').count();
     Ok(format!("typed {chars} character(s) on this machine"))
 }
@@ -638,14 +686,12 @@ pub(crate) fn press_key(
     key: (u16, bool),
     modifiers: &[Modifier],
     count: u64,
-    consent_waiting: bool,
+    consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    if let Some(refusal) = key_refusal(Some(key), modifiers, consent_waiting) {
-        return Err(refusal.to_string());
-    }
+    key_guard(Some(key), modifiers, consent)?;
     let mut sink = LocalInput::open()?;
     let steps = key_plan(key, modifiers, count);
-    play(&mut sink, &steps)?;
+    play(&mut sink, &steps, &key_guard(Some(key), modifiers, consent))?;
     Ok(format!(
         "pressed the key {} time(s) on this machine",
         count.max(1)
@@ -654,14 +700,14 @@ pub(crate) fn press_key(
 
 /// Turn the wheel `notches` times (positive = up, negative = down), at
 /// normalized (`x`, `y`) when a point is given, else at the pointer.
+/// `point` (monitor pixels) is for the own-window guard.
 pub(crate) fn scroll(
     notches: i64,
     at: Option<(u16, u16)>,
-    consent_waiting: bool,
+    point: Option<(i32, i32)>,
+    consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    if let Some(refusal) = mouse_refusal(None, consent_waiting) {
-        return Err(refusal.to_string());
-    }
+    mouse_guard(point, consent)?;
     let notches = notches.clamp(-WHEEL_MAX_NOTCHES, WHEEL_MAX_NOTCHES);
     let mut sink = LocalInput::open()?;
     let mut plan = Plan::default();
@@ -677,7 +723,7 @@ pub(crate) fn scroll(
         });
         plan.pause(30);
     }
-    play(&mut sink, &plan.steps)?;
+    play(&mut sink, &plan.steps, &mouse_guard(point, consent))?;
     Ok(format!(
         "scrolled {} notch(es) {} on this machine",
         notches.unsigned_abs(),
@@ -851,20 +897,6 @@ mod tests {
             fit_to_shot(5, 1080, shot.0, shot.1, screen.0, screen.1),
             None
         );
-
-        let space = LocalSpace {
-            width: shot.0,
-            height: shot.1,
-            screen_width: screen.0,
-            screen_height: screen.1,
-        };
-        assert_eq!(shot_to_screen(800.0, 450.0, space), (960, 540));
-        assert_eq!(
-            shot_to_screen(1600.0, 900.0, space),
-            (1919, 1079),
-            "clamped"
-        );
-        assert_eq!(shot_to_screen(-4.0, -4.0, space), (0, 0));
     }
 
     /// Runs on a real desktop (the developer machine) and on CI, where
@@ -884,5 +916,58 @@ mod tests {
             }
             Err(err) => eprintln!("no desktop to capture here: {err}"),
         }
+    }
+
+    #[test]
+    fn oversized_text_is_refused_before_anything_is_typed() {
+        let never = || false;
+        let too_many_lines = "a\n".repeat(TEXT_MAX_LINES + 1);
+        assert!(
+            type_text(&too_many_lines, &never)
+                .unwrap_err()
+                .contains("too long")
+        );
+        let too_long = "x".repeat(TEXT_MAX_UNITS + 1);
+        assert!(
+            type_text(&too_long, &never)
+                .unwrap_err()
+                .contains("too long")
+        );
+    }
+
+    /// A plan stops at the first group its live guard refuses — the desktop
+    /// can change between one group and the next (a consent prompt appears
+    /// and pulls this app to the front, the human alt-tabs back into it).
+    #[test]
+    fn a_plan_stops_at_the_first_refused_group() {
+        let mut sink = match LocalInput::open() {
+            Ok(sink) => sink,
+            Err(err) => return eprintln!("no desktop to inject on here: {err}"),
+        };
+        // `AllKeysUp` with nothing held is the sink's documented no-op, so
+        // this plan touches no window.
+        let nothing = InputEvent::AllKeysUp {
+            trigger: AllKeysUpTrigger::Disconnect,
+        };
+        let steps = vec![
+            Step::Events(vec![nothing.clone()]),
+            Step::Events(vec![nothing.clone()]),
+            Step::Events(vec![nothing]),
+        ];
+        let groups = std::cell::Cell::new(0u32);
+        let guard = || {
+            groups.set(groups.get() + 1);
+            if groups.get() < 3 {
+                Ok(())
+            } else {
+                Err("refused".to_owned())
+            }
+        };
+        assert_eq!(
+            play(&mut sink, &steps, &guard),
+            Err("refused".to_owned()),
+            "the third group is where the guard says no"
+        );
+        assert_eq!(groups.get(), 3, "asked before every group");
     }
 }

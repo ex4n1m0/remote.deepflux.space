@@ -357,6 +357,9 @@ fn forward_event(app: &AppHandle, event: EngineEvent) -> bool {
                     return true;
                 }
                 trust.prompt = Some((controller_device_id.clone(), false, false));
+                // When it went up: the timeout cooldown (ADR-006 B3) must
+                // tell an expired prompt from one the requester cancelled.
+                trust.prompt_shown_ms = now;
                 // The account prompt's Always/Decline keys on the PROVEN
                 // installation id, not the (rotatable) signaling id.
                 trust.prompt_account = account
@@ -1017,7 +1020,7 @@ pub fn list_monitors(app: AppHandle) -> CmdResult<serde_json::Value> {
 
 // -- machine chat + pairing (ADR-005, RD-022/RD-023) -----------------------
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ChatSendArgs {
     pub code: String,
     pub text: String,
@@ -1041,7 +1044,8 @@ pub fn chat_send(app: AppHandle, args: ChatSendArgs) -> CmdResult<()> {
     }
     // Local perspective: the human typed it, addressed to the peer's
     // assistant ("to-agent" renders as "you → their assistant"). The
-    // local assistant authoring a message records "agent" on its own path.
+    // local assistant records the same "to-agent" for an instruction it
+    // sends on the human's behalf, and "agent" for its own replies.
     let sender = if args.agent { "to-agent" } else { "user" };
     crate::chat::record_outgoing(&app, &code, sender, text);
     let (in_session, base_url, token, me) = {

@@ -323,9 +323,9 @@ public launch, woven through the phases):**
   on the assistant's own machine (ADR-015), a step budget and a reply
   wait that fit a desktop task, a failure reply to the asking machine,
   and the fixes that test surfaced (the assistant key and Base URL were
-  never saved through the dialog; monitor selection from the UI; the
-  consent-timeout cooldown never ran; the controller now waits out the
-  whole consent prompt). Its gate result is on the branch. Still not run:
+  never saved through the dialog; the consent-timeout cooldown never ran;
+  the controller now waits out the whole consent prompt). Its gate result
+  is on the branch. Still not run:
   the desktop task between two real machines on that build, and the
   5-machine fleet drill.
 - **P4 — swarm inference in the app:** per-machine "host models"
