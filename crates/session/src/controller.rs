@@ -1181,11 +1181,10 @@ mod tests {
     #[test]
     fn the_request_timeout_outlasts_the_consent_prompt() {
         let cfg = SessionConfig::default();
+        let (request, consent) = (cfg.request_timeout_ms, cfg.consent_timeout_ms);
         assert!(
-            cfg.request_timeout_ms > cfg.consent_timeout_ms,
-            "request {} ms must outlast the consent prompt {} ms",
-            cfg.request_timeout_ms,
-            cfg.consent_timeout_ms
+            request > consent,
+            "request {request} ms must outlast the consent prompt {consent} ms"
         );
     }
 

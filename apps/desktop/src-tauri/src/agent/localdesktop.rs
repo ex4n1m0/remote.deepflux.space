@@ -578,7 +578,7 @@ pub(crate) fn split_utf16(text: &str, limit: usize) -> Vec<String> {
 
 /// The keystrokes for `text`: each line as Unicode `Text` events (chunked,
 /// surrogate pairs kept whole) and an Enter press between lines.
-pub(crate) fn text_plan(text: &str) -> Vec<Step> {
+fn text_plan(text: &str) -> Vec<Step> {
     let mut plan = Plan::default();
     for (index, line) in text.split('\n').enumerate() {
         if index > 0 {
@@ -608,7 +608,7 @@ pub(crate) fn type_text(text: &str, consent_waiting: bool) -> Result<String, Str
 
 /// The keystrokes for one chord: modifiers down (as given), the key tapped
 /// `count` times, modifiers up in REVERSE order.
-pub(crate) fn key_plan(key: (u16, bool), modifiers: &[Modifier], count: u64) -> Vec<Step> {
+fn key_plan(key: (u16, bool), modifiers: &[Modifier], count: u64) -> Vec<Step> {
     let mut plan = Plan::default();
     for modifier in modifiers {
         let (scan_code, extended) = modifier.scan_code();

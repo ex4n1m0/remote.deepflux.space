@@ -2213,9 +2213,11 @@ mod tests {
         let now = 10_000u64;
 
         // A prompt nobody answered, then the host falls back to Online.
-        let mut t = TrustState::default();
-        t.prompt = Some(("ctrl".to_owned(), false, false));
-        t.prompt_account = Some("install-a".to_owned());
+        let mut t = TrustState {
+            prompt: Some(("ctrl".to_owned(), false, false)),
+            prompt_account: Some("install-a".to_owned()),
+            ..TrustState::default()
+        };
         assert!(t.consent_unanswered());
         assert_eq!(t.note_host_back_online(now).as_deref(), Some("ctrl"));
         assert!(t.blocked("ctrl", now + 1), "on the timeout cooldown");
@@ -2236,8 +2238,10 @@ mod tests {
         );
 
         // Answered prompts — either way — never cool anything down.
-        let mut t = TrustState::default();
-        t.prompt = Some(("ctrl".to_owned(), true, false));
+        let mut t = TrustState {
+            prompt: Some(("ctrl".to_owned(), true, false)),
+            ..TrustState::default()
+        };
         assert!(!t.consent_unanswered());
         assert_eq!(t.note_host_back_online(now), None);
         t.prompt = Some(("ctrl".to_owned(), false, true));

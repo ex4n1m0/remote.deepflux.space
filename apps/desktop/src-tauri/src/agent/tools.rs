@@ -760,18 +760,6 @@ const LETTER_SCAN_CODES: [u16; 26] = [
 /// handshake.
 const WAIT_CONNECTED_DEFAULT_MS: u64 = 45_000;
 
-/// The own-screen tools (ADR-015), one list so the tests and the docs
-/// cannot drift from `tool_specs`.
-pub(crate) const LOCAL_TOOLS: &[&str] = &[
-    "local_screenshot",
-    "local_click",
-    "local_type_text",
-    "local_press_key",
-    "local_scroll",
-    "local_drag",
-    "local_wait",
-];
-
 /// Coordinate spaces of the most recent screenshots — `click` needs the
 /// remote one, `local_click` this machine's own. Kept by the assistant
 /// worker beside its turn log (a reset starts both over).
@@ -1769,9 +1757,14 @@ fn local_space(shots: &ShotSpaces) -> Result<localdesktop::LocalSpace, String> {
     })
 }
 
-/// A screenshot pixel as both the normalized wire coordinate (0..=65535
-/// over the monitor) and a monitor pixel (what the own-window guard tests).
-fn local_point(shots: &ShotSpaces, x: f64, y: f64) -> Result<((i32, i32), (u16, u16)), String> {
+/// A point on the monitor, in pixels — what the own-window guard tests.
+type ScreenPoint = (i32, i32);
+/// A point on the input wire: 0..=65535 over the monitor.
+type WirePoint = (u16, u16);
+
+/// A screenshot pixel as both the normalized wire coordinate and a monitor
+/// pixel (what the own-window guard tests).
+fn local_point(shots: &ShotSpaces, x: f64, y: f64) -> Result<(ScreenPoint, WirePoint), String> {
     let space = local_space(shots)?;
     Ok((
         localdesktop::shot_to_screen(x, y, space),
@@ -3504,7 +3497,18 @@ mod tests {
 
     #[test]
     fn the_own_screen_tools_are_advertised_to_every_turn() {
-        // ADR-015: acting on THIS machine is what a remotely-instructed
+        // The own-screen tools (ADR-015), one list so this test cannot drift
+        // from `tool_specs`.
+        const LOCAL_TOOLS: &[&str] = &[
+            "local_screenshot",
+            "local_click",
+            "local_type_text",
+            "local_press_key",
+            "local_scroll",
+            "local_drag",
+            "local_wait",
+        ];
+        // Acting on THIS machine is what a remotely-instructed
         // assistant is for, so Remote turns see the local_* tools too (the
         // forbidden list stays exactly the propagation/persistence pair).
         for origin in [TurnOrigin::Local, TurnOrigin::Remote] {

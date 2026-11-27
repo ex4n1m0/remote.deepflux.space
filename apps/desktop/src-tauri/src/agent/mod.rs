@@ -969,7 +969,7 @@ fn run_turn(
     Err(STEP_BUDGET_ERROR.to_owned())
 }
 
-/// Typed command surface (thin, like the rest of commands.rs).
+// Typed command surface (thin, like the rest of commands.rs).
 
 /// The frontend sends camelCase keys (`apiKey`, `baseUrl`): without the
 /// rename they were silently ignored and only `model` ever saved.
@@ -1157,9 +1157,12 @@ mod tests {
     fn a_whole_turn_fits_inside_the_history_cap() {
         // One tool step adds two messages; the cap must hold the user's
         // instruction plus every step of a maximum-length turn, or the
-        // instruction falls out of the model's view mid-task.
-        assert!(HISTORY_CAP >= 1 + 2 * MAX_STEPS);
-        assert!(MAX_STEPS > 16, "a desktop task needs more than the old 16");
+        // instruction falls out of the model's view mid-task. Checked at
+        // compile time (the gate's lint rejects constant runtime asserts).
+        const {
+            assert!(HISTORY_CAP > 2 * MAX_STEPS);
+            assert!(MAX_STEPS > 16, "a desktop task needs more than the old 16");
+        }
     }
 
     #[test]
