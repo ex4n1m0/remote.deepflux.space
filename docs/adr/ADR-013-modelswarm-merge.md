@@ -313,6 +313,21 @@ public launch, woven through the phases):**
   opt-in is deliberately inbox-scoped: the in-session agent wake rides the
   live remote-control session's full-control consent (a separate trust
   grant), as the toggle's UI copy states.
+  *Agent-to-agent status (2026-11-27):* the owner named agent-to-agent
+  (human → local assistant → the other machine's assistant executes) as
+  the product's core (2026-11-25). The first live test, the same night on
+  two machines on one LAN over the in-session route, passed for a shell
+  task and failed for a desktop task: the instructed machine's assistant
+  could not operate its own screen and fell back to keystroke scripts.
+  Branch `feat/agent-computer-use` answers that with native computer use
+  on the assistant's own machine (ADR-015), a step budget and a reply
+  wait that fit a desktop task, a failure reply to the asking machine,
+  and the fixes that test surfaced (the assistant key and Base URL were
+  never saved through the dialog; monitor selection from the UI; the
+  consent-timeout cooldown never ran; the controller now waits out the
+  whole consent prompt). Its gate result is on the branch. Still not run:
+  the desktop task between two real machines on that build, and the
+  5-machine fleet drill.
 - **P4 — swarm inference in the app:** per-machine "host models"
   toggle; local gateway on every node; master's agent gains swarm
   inference tools. *Accept:* master's assistant answers a prompt

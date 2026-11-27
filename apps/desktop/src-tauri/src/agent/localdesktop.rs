@@ -330,14 +330,19 @@ pub(crate) fn key_refusal(
     None
 }
 
-/// Esc = 0x01 and Tab = 0x0F (set-1 scan codes, not extended).
+/// Esc = 0x01 and Tab = 0x0F (set-1 scan codes, not extended); the left
+/// Windows key = 0x5B, extended.
 const ESC_SCAN_CODE: (u16, bool) = (0x01, false);
 const TAB_SCAN_CODE: (u16, bool) = (0x0F, false);
+const WIN_SCAN_CODE: (u16, bool) = (0x5B, true);
 
-/// Win and any Win chord, `ctrl+escape` (Start) and `alt+tab` (switcher).
+/// The bare Windows key (Start), any Win chord, `ctrl+escape` (Start) and
+/// `alt+tab` (switcher). The bare key matters most: it is how a task starts
+/// the moment after the human typed it into this app.
 fn hands_off_to_windows(key: (u16, bool), modifiers: &[Modifier]) -> bool {
     let only = |wanted: Modifier| modifiers.len() == 1 && modifiers[0] == wanted;
-    modifiers.contains(&Modifier::Win)
+    key == WIN_SCAN_CODE
+        || modifiers.contains(&Modifier::Win)
         || (key == ESC_SCAN_CODE && only(Modifier::Ctrl))
         || (key == TAB_SCAN_CODE && only(Modifier::Alt))
 }

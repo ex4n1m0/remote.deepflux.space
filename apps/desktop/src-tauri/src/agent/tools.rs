@@ -3523,10 +3523,17 @@ mod tests {
                     "{origin:?} turns must advertise {tool}"
                 );
             }
+            // Every `local_*` tool belongs to the list — except
+            // `local_task`, the older maintenance recipes, which share the
+            // prefix ("this machine") but are not own-screen tools.
             let unlisted: Vec<&str> = names
                 .iter()
                 .copied()
-                .filter(|name| name.starts_with("local_") && !LOCAL_TOOLS.contains(name))
+                .filter(|name| {
+                    name.starts_with("local_")
+                        && *name != "local_task"
+                        && !LOCAL_TOOLS.contains(name)
+                })
                 .collect();
             assert!(
                 unlisted.is_empty(),
