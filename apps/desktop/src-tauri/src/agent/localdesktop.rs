@@ -577,8 +577,8 @@ pub(crate) fn drag(
     to: (u16, u16),
     consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    mouse_guard(Some(from_point), consent)?;
-    mouse_guard(Some(to_point), consent)?;
+    mouse_guard(Some(from_point), consent)()?;
+    mouse_guard(Some(to_point), consent)()?;
     let mut sink = LocalInput::open()?;
     let mut plan = Plan::default();
     plan.move_to(from.0, from.1);
@@ -651,7 +651,7 @@ pub(crate) fn type_text(text: &str, consent: &dyn Fn() -> bool) -> Result<String
              {TEXT_MAX_UNITS} characters) — send it in parts"
         ));
     }
-    key_guard(None, &[], consent)?;
+    key_guard(None, &[], consent)()?;
     let mut sink = LocalInput::open()?;
     let steps = text_plan(text);
     play(&mut sink, &steps, &key_guard(None, &[], consent))?;
@@ -688,7 +688,7 @@ pub(crate) fn press_key(
     count: u64,
     consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    key_guard(Some(key), modifiers, consent)?;
+    key_guard(Some(key), modifiers, consent)()?;
     let mut sink = LocalInput::open()?;
     let steps = key_plan(key, modifiers, count);
     play(&mut sink, &steps, &key_guard(Some(key), modifiers, consent))?;
@@ -707,7 +707,7 @@ pub(crate) fn scroll(
     point: Option<(i32, i32)>,
     consent: &dyn Fn() -> bool,
 ) -> Result<String, String> {
-    mouse_guard(point, consent)?;
+    mouse_guard(point, consent)()?;
     let notches = notches.clamp(-WHEEL_MAX_NOTCHES, WHEEL_MAX_NOTCHES);
     let mut sink = LocalInput::open()?;
     let mut plan = Plan::default();
