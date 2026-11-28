@@ -1,8 +1,9 @@
 # ADR-016: SSH power — the assistant runs commands on another machine directly
 
 - Status: Accepted (owner request, 2026-11-28); revised the same day after
-  an independent security review and a correctness review, and after the
-  first CI run.
+  an independent security review, a correctness review and the first CI
+  runs, and validated live the same day between three machines (see Known
+  limits).
 - Deciders: the user (owner) — 2026-11-28 "could you give SSH power to our
   client, so that it gives the same type of remote power control", then
   "yes add it as a tool to the client".
@@ -133,18 +134,30 @@ exact command, not a second assistant's summary of it.
 | A remotely-woken turn pivots to a third machine | `ssh_run` is neither advertised nor executed on a Remote turn (the FIX 1 boundary). A Remote turn keeps `run_shell`, which can run `ssh.exe` itself — the ADR-013 accepted residual, unchanged in kind. |
 | The bridge's prompt tool gives an unelevated caller an elevated assistant | The stdio bridge exists only for the process that launched the app, and the elevation relaunch starts a fresh process through the shell (`elevate.rs`) without those pipes. Relied on, not exercised live. |
 | The bridge's transcript shows more than the panel | It holds the panel's events — assistant messages, peer-agent and scheduled-task instruction bodies, the first 160 characters of each tool result, errors — and, unlike the panel, no typed prompts. It is cleared with the panel. |
-| The far command outlives a timed-out call | ssh is killed here; the report says the command may still be running there. Whether the far machine ends it is up to its SSH server. Not verified live. |
+| The far command outlives a timed-out call | ssh is killed here; the report says the command may still be running there. It does: seen live on 2026-11-28 — a `ping` was still running on the far laptop after the connection was closed. Whether a far machine ends it is up to its SSH server, so the report tells the model to check before retrying. |
 | The far machine is not reachable | `ConnectTimeout=10`, then a report that starts with `ssh_run failed`, says what happened and where this machine's public key is. |
 | A key is left half-made or without its public half | Made under a temporary name and renamed into place; leftover temporaries are swept before a new key is made; a lost public half is remade from the private key; a key whose public half cannot be published is withdrawn again. |
 
 ## Known limits
 
-- **Not validated between two real machines at the time of writing.** The
-  unit tests cover the pure parts — validation, the argv, the encoded
-  PowerShell form and its own length bound, the report framing, the key
-  made once and its public half remade (`ssh-keygen` runs for real) — and
-  the option list was checked against the shipped client's own
-  configuration dump (`ssh -G`, 9.5.6).
+- **Validated live on 2026-11-28**, between one Windows 11 machine (the
+  assistant, driven through the bridge) and two Windows 11 laptops on one
+  LAN, both running the test kit: a command by machine name on each
+  laptop; the PowerShell shell with accented text; a failing far command
+  (exit code and error stream each under their own heading); three
+  refusals before any process; a timeout; an address nobody answers; a
+  changed recorded host key (refused, the command never ran); both laptops
+  in one turn. Three to fourteen seconds a turn, where the agent-to-agent
+  path had taken one to two minutes for `echo`. Not validated live: a
+  laptop as the master, a reboot of the laptops, a network other than one
+  LAN. The unit tests cover the pure parts — validation, the argv, the
+  encoded PowerShell form and its own length bound, the report framing and
+  the audit rail's verdict on it, the key made once and its public half
+  remade (`ssh-keygen` runs for real) — and the option list was checked
+  against the shipped client's own configuration dump (`ssh -G`, 9.5.6).
+- The first-contact note follows the `--- stderr ---` heading of the
+  report; the model has been heard calling it part of stderr. A heading of
+  its own would fix that.
 - The client must understand `-F none`. It does on 9.5.6; older clients
   shipped with early Windows 10 were not tried.
 - Only `ssh-ed25519` host keys are accepted: a server with none is
