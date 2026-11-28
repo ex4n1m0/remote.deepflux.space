@@ -128,7 +128,8 @@ const TRANSCRIPT_CAP: usize = 200;
 /// The most recent assistant events, for an external agent that drives the
 /// assistant through the `--mcp` bridge (ADR-016): it hands in a prompt
 /// with `deepflux_prompt` and reads here what the assistant did and said.
-/// Text + metadata only — exactly the events the panel shows.
+/// Text + metadata only: the events the panel is shown, except typed
+/// prompts (those never pass through `emit`), and cleared with the panel.
 #[derive(Default)]
 struct Transcript {
     next_seq: usize,
@@ -148,6 +149,12 @@ impl Transcript {
         while self.entries.len() > TRANSCRIPT_CAP {
             self.entries.pop_front();
         }
+    }
+
+    /// Forget every event. Numbers keep counting, so a reader holding an
+    /// old sequence number never sees a repeated one.
+    fn clear(&mut self) {
+        self.entries.clear();
     }
 
     /// The entries after `after_seq`, at most `limit`, oldest first.
@@ -243,6 +250,24 @@ impl AssistantState {
         let busy = *self.busy.lock().expect("assistant busy");
         let transcript = self.transcript.lock().unwrap_or_else(|e| e.into_inner());
         (busy, transcript.since(after_seq, limit))
+    }
+
+    /// The sequence number the NEXT recorded event will get. `busy` turns
+    /// true only when the worker picks a prompt up, so "wait for an event
+    /// with at least this number" is the reliable way to wait for a turn.
+    pub fn transcript_next_seq(&self) -> usize {
+        self.transcript
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .next_seq
+    }
+
+    /// Forget the readable events (the panel was cleared).
+    pub fn clear_transcript(&self) {
+        self.transcript
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
 
     /// Park a yes/no question in front of the local user and block until
@@ -564,7 +589,9 @@ fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
     // The assistant's SSH key exists from the first launch (ADR-016), so
     // its public half can be allowed on other machines before the first
     // `ssh_run`. Non-fatal: the tool makes it on first use otherwise.
-    let _ = ssh::ensure_key(&ssh::ssh_dir(&app));
+    if let Ok(dir) = ssh::ssh_dir(&app) {
+        let _ = ssh::ensure_key(&dir);
+    }
     // Turn log: past user/assistant/tool traffic (bounded), replayed each
     // request under a FRESH system prompt (live context per turn).
     let mut log: Vec<ChatTurn> = Vec::new();
@@ -982,7 +1009,7 @@ fn run_turn(
         // instead of ending the turn — and the machine that asked — with
         // nothing to say.
         let wrap_up = step == MAX_STEPS;
-        let mut messages = vec![ChatTurn::system(&tools::system_prompt(app)).to_json()];
+        let mut messages = vec![ChatTurn::system(&tools::system_prompt(app, origin)).to_json()];
         messages.extend(replay(log));
         if wrap_up {
             messages.push(ChatTurn::user(STEP_BUDGET_NOTE).to_json());
@@ -1244,7 +1271,11 @@ pub fn agent_confirm(app: AppHandle, id: u64, allow: bool, remember: bool) -> Re
 
 #[tauri::command]
 pub fn agent_reset(app: AppHandle) -> Result<(), String> {
-    // Clearing = respawning the worker (the log lives on the thread).
+    // Clearing = respawning the worker (the log lives on the thread), and
+    // emptying what the bridge can read back with it.
+    app.state::<crate::commands::AppServices>()
+        .assistant
+        .clear_transcript();
     app.state::<crate::commands::AppServices>()
         .assistant
         .spawn(app.clone());
@@ -1287,6 +1318,41 @@ mod tests {
             .map(|entry| entry.seq)
             .collect();
         assert_eq!(first_three, vec![5, 6, 7]);
+        // Clearing forgets the events, and a number is never used twice.
+        transcript.clear();
+        assert!(transcript.since(0, 1_000).is_empty());
+        transcript.push(&AssistantEvent::Done { ok: true });
+        let after_clear = transcript.since(0, 1_000);
+        assert_eq!(after_clear.len(), 1);
+        assert!(after_clear[0].seq > last);
+    }
+
+    #[test]
+    fn a_transcript_entry_serializes_with_its_kind() {
+        // The bridge hands these to external agents, and they wait for the
+        // "done" one: the shape is a contract.
+        let entry = TranscriptEntry {
+            seq: 7,
+            event: AssistantEvent::Done { ok: true },
+        };
+        assert_eq!(
+            serde_json::to_value(&entry).expect("serializes"),
+            json!({ "seq": 7, "event": { "kind": "done", "ok": true } })
+        );
+        let call = TranscriptEntry {
+            seq: 8,
+            event: AssistantEvent::ToolCall {
+                name: "run_shell".to_owned(),
+                summary: "exit code 0".to_owned(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&call).expect("serializes"),
+            json!({
+                "seq": 8,
+                "event": { "kind": "tool_call", "name": "run_shell", "summary": "exit code 0" }
+            })
+        );
     }
 
     #[test]

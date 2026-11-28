@@ -12,13 +12,15 @@
 //!
 //! Safety posture (ADR-004 §4/§5): localhost process only (stdio), text
 //! payloads never logged (`AgentInput`'s redacted Debug), no remote shell
-//! in v1, bounded batches (`MAX_AGENT_BATCH`), and the host consent gate
-//! is unchanged — the bridge cannot accept on the host's behalf. The
-//! prompt tool speaks to the assistant with the launching process's own
-//! authority: stdio exists only for the process that started the app, and
-//! the elevation relaunch (`elevate.rs`: a fresh process started through
-//! the shell) cannot carry those pipes across — so an unelevated caller
-//! never reaches an elevated assistant.
+//! of its own, bounded batches (`MAX_AGENT_BATCH`), and the host consent
+//! gate is unchanged — the bridge cannot accept on the host's behalf.
+//! ADR-016: `deepflux_prompt` starts a turn of the in-app assistant with
+//! the LOCAL user's full authority (shell, files, `ssh_run`). That is the
+//! launching process's own authority: stdio exists only for the process
+//! that started the app, and the elevation relaunch (`elevate.rs`: a fresh
+//! process started through the shell) does not carry those pipes — relied
+//! on here, not exercised live. The audit rail records WHO started such a
+//! turn (actor `mcp-bridge`), never the prompt.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -442,7 +444,7 @@ impl AgentBridge {
 
     /// Hand the in-app assistant a prompt (the same as typing it into its panel).
     #[tool(
-        description = "Give the in-app assistant a prompt — the same as typing it into its panel — and return at once. Then read deepflux_assistant until busy is false. Refused when the assistant has no API key or is still busy."
+        description = "Give the in-app assistant a prompt — the same as typing it into its panel — and return at once with wait_for_seq. The turn ends with an event of kind \"done\": read deepflux_assistant until it shows one whose seq is at least wait_for_seq (busy alone is not a start or end signal). Refused when the assistant has no API key or is still busy."
     )]
     fn deepflux_prompt(
         &self,
@@ -465,6 +467,13 @@ impl AgentBridge {
                 "the in-app assistant is still busy with another turn",
             );
         }
+        // The turn's events get this number or a higher one. `busy` is no
+        // start signal: it turns true only when the worker picks the prompt
+        // up, which can be a moment after this returns.
+        let next_seq = app
+            .state::<crate::commands::AppServices>()
+            .assistant
+            .transcript_next_seq();
         match crate::agent::agent_send(app.clone(), crate::agent::AgentSendArgs { text }) {
             Ok(()) => {
                 // ADR-013 audit rail: the prompt TEXT never enters the log
@@ -475,7 +484,15 @@ impl AgentBridge {
                     "assistant-turn",
                     "queued",
                 ));
-                ok_json("prompt queued — read deepflux_assistant until busy is false")
+                serde_json::json!({
+                    "ok": true,
+                    "wait_for_seq": next_seq,
+                    "detail": format!(
+                        "prompt queued — read deepflux_assistant until an event of kind \"done\" \
+                         with a seq of at least {next_seq} appears; it ends the turn"
+                    ),
+                })
+                .to_string()
             }
             Err(e) => err_json("prompt", &e),
         }
@@ -483,7 +500,7 @@ impl AgentBridge {
 
     /// What the in-app assistant did and said most recently.
     #[tool(
-        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, events:[{seq, event}]}, oldest first. after_seq returns only newer events; limit caps them (default 50, max 200)."
+        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, next_seq, events:[{seq, event}]}, oldest first; an event is {seq, event:{kind, ...}} and kind \"done\" ends a turn. after_seq returns only newer events; limit caps them (default 50, max 200)."
     )]
     fn deepflux_assistant(
         &self,
@@ -493,7 +510,8 @@ impl AgentBridge {
         let (busy, events) = services
             .assistant
             .transcript_since(after_seq.unwrap_or(0), limit.unwrap_or(50).clamp(1, 200));
-        let answer = serde_json::json!({ "busy": busy, "events": events });
+        let next_seq = services.assistant.transcript_next_seq();
+        let answer = serde_json::json!({ "busy": busy, "next_seq": next_seq, "events": events });
         serde_json::to_string(&answer).unwrap_or_else(|e| err_json("assistant", &e.to_string()))
     }
 }

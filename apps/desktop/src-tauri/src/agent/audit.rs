@@ -47,7 +47,8 @@ pub struct AuditEntry {
     /// label (never instruction content): the wake label, or
     /// "assistant-turn" for a prompt from the bridge.
     pub action: String,
-    /// "ok" | "error:<bounded msg>" | "denied".
+    /// "ok" | "error:<bounded msg>" | "denied" | "queued" (a prompt the
+    /// `--mcp` bridge handed in, before the turn runs).
     pub outcome: String,
 }
 
