@@ -516,8 +516,11 @@ mod tests {
             "a;b",
         ] {
             let refusal = target(host, "", 22, "echo hi").expect_err("must be refused");
-            // A refusal never quotes what was refused.
-            assert!(!refusal.contains(host.trim()), "{host:?}: {refusal}");
+            // A refusal never quotes what was refused (the empty host has
+            // nothing to quote: every text "contains" it).
+            if !host.is_empty() {
+                assert!(!refusal.contains(host.trim()), "{host:?}: {refusal}");
+            }
         }
         for user in ["-v", "a b", "u;ser"] {
             assert!(
