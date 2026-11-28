@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
-use crate::agent::{audit, localdesktop, schedule, startup, winctl};
+use crate::agent::{audit, localdesktop, schedule, ssh, startup, winctl};
 use crate::engine::{self, AgentInput};
 use crate::store::AppSettings;
 use schedule::Trigger;
@@ -476,6 +476,27 @@ pub fn tool_specs() -> Vec<Value> {
             }),
         ),
         f(
+            "ssh_run",
+            "Run a command on ANOTHER machine over SSH and get its exact output and exit code — \
+             no remote-desktop session and no assistant needed there. The other machine needs an \
+             SSH server (Windows: optional feature \"OpenSSH Server\") that already allows this \
+             machine's key. host: its hostname or IP. Leave user out to use this Windows \
+             account's name; shell: cmd (default) or powershell. Output is capped like \
+             run_shell.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Hostname or IP address of the other machine" },
+                    "user": { "type": "string", "description": "Login name there (default: this Windows account's name)" },
+                    "port": { "type": "integer", "description": "Default 22" },
+                    "shell": { "type": "string", "enum": ["cmd", "powershell"] },
+                    "command": { "type": "string" },
+                    "timeout_secs": { "type": "integer", "description": "1-300, default 30" }
+                },
+                "required": ["host", "command"]
+            }),
+        ),
+        f(
             "fs_list",
             "List one directory's entries (name, type, size, modified) — up to 500.              `~` expands to the user's home.",
             json!({
@@ -651,10 +672,12 @@ pub enum TurnOrigin {
 /// Tools a Remote-origin turn may never execute: `fleet_run` is the
 /// amplification vector (one remote instruction fans out to every paired
 /// machine), `schedule` the persistence vector (a remote instruction arms
-/// a recurring full-power turn). Everything else stays available — acting
+/// a recurring full-power turn), and `ssh_run` (ADR-016) a direct line to
+/// another machine — the same propagation the agent-addressed chat is
+/// refused for. Everything else stays available — acting
 /// on THIS machine is the intended fleet behavior (bounded by the opt-in
 /// and the wake budget).
-pub const REMOTE_FORBIDDEN_TOOLS: &[&str] = &["fleet_run", "schedule"];
+pub const REMOTE_FORBIDDEN_TOOLS: &[&str] = &["fleet_run", "schedule", "ssh_run"];
 
 /// The advertised tool surface for one turn: a Remote turn never even
 /// SEES the forbidden tools (the model cannot call what is not
@@ -681,7 +704,8 @@ fn remote_origin_refusal(origin: TurnOrigin, name: &str) -> Option<String> {
     if origin == TurnOrigin::Remote && REMOTE_FORBIDDEN_TOOLS.contains(&name) {
         return Some(format!(
             "{name} refused: a remotely-woken turn may act on this machine only — \
-             it cannot instruct other machines (fleet_run) or create scheduled tasks (schedule)"
+             it cannot instruct or reach other machines (fleet_run, ssh_run) or create \
+             scheduled tasks (schedule)"
         ));
     }
     None
@@ -783,7 +807,8 @@ pub fn execute(
     origin: TurnOrigin,
 ) -> ToolOutput {
     // FIX 1 dispatch boundary (defense in depth behind the advertisement
-    // filter): a Remote-origin turn never executes fleet_run / schedule.
+    // filter): a Remote-origin turn never executes fleet_run / schedule /
+    // ssh_run.
     if let Some(refusal) = remote_origin_refusal(origin, name) {
         return ToolOutput::text(refusal);
     }
@@ -1512,6 +1537,36 @@ pub fn execute(
             ) {
                 Ok(report) => ToolOutput::text(report),
                 Err(err) => ToolOutput::text(format!("run_shell failed: {err}")),
+            }
+        }
+        "ssh_run" => {
+            // ADR-016: the target and the command are checked before any
+            // process exists; a Remote turn never gets here (it is neither
+            // advertised nor let past the boundary at the top of execute).
+            let (Some(host), Some(command)) = (
+                args.get("host").and_then(|v| v.as_str()),
+                args.get("command").and_then(|v| v.as_str()),
+            ) else {
+                return ToolOutput::text("ssh_run requires host and command");
+            };
+            let user = args.get("user").and_then(|v| v.as_str()).unwrap_or("");
+            let port = args.get("port").and_then(|v| v.as_u64()).unwrap_or(22);
+            let shell = match args.get("shell").and_then(|v| v.as_str()) {
+                Some(name) if name.eq_ignore_ascii_case("powershell") => ssh::Shell::PowerShell,
+                _ => ssh::Shell::Cmd,
+            };
+            let timeout = args
+                .get("timeout_secs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30)
+                .clamp(1, 300);
+            let target = match ssh::validate(host, user, port, command) {
+                Ok(target) => target,
+                Err(refusal) => return ToolOutput::text(format!("ssh_run failed: {refusal}")),
+            };
+            match ssh::run(app, &target, command, shell, Duration::from_secs(timeout)) {
+                Ok(report) => ToolOutput::text(report),
+                Err(err) => ToolOutput::text(format!("ssh_run failed: {err}")),
             }
         }
         "fs_list" => {
@@ -2356,9 +2411,13 @@ fn kill_tree(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
-/// Generic bounded runner shared by run_shell (cmd.exe) and the winget
-/// helpers (direct argv — no shell, no quoting, no %VAR% surface).
-fn run_command(cmd: &mut std::process::Command, timeout: Duration) -> Result<String, String> {
+/// Generic bounded runner shared by run_shell (cmd.exe), the winget
+/// helpers (direct argv — no shell, no quoting, no %VAR% surface) and the
+/// SSH client call (`agent/ssh.rs`, also direct argv).
+pub(super) fn run_command(
+    cmd: &mut std::process::Command,
+    timeout: Duration,
+) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     use std::sync::mpsc;
     cmd.creation_flags(CREATE_NO_WINDOW)
@@ -3167,6 +3226,12 @@ Working with another machine's assistant: connect(code), wait_connected, chat_se
 machine with its local_* tools — then chat_wait(code) for the answer (allow \
 timeout_secs=300 for a desktop task; never poll chat_read). Report that answer to the \
 user.\n\
+For plain machine work on another computer you can go straight there over SSH (ssh_run): no \
+session and no assistant is needed on it — it must run an SSH server that already allows this \
+machine's key. You need its hostname or IP address (ask the user; add user= when its account \
+name differs from this one). You get the exact output and exit code: use it for files, \
+services, configuration, logs — anything you would otherwise ask the other assistant to run. \
+Anything visual still needs that machine's own assistant and its local_* tools.\n\
 You can also download files to this machine's Downloads folder (download_file): HTTPS only, \
 up to 2 GB, resumable. After starting one, poll download_status with wait_secs=25 until it \
 completes, then report the saved path; if the local user is asked to approve a new domain and \
@@ -3539,7 +3604,7 @@ mod tests {
         ];
         // Acting on THIS machine is what a remotely-instructed
         // assistant is for, so Remote turns see the local_* tools too (the
-        // forbidden list stays exactly the propagation/persistence pair).
+        // forbidden list holds only the propagation and persistence tools).
         for origin in [TurnOrigin::Local, TurnOrigin::Remote] {
             let specs = tool_specs_for(origin);
             let names: Vec<&str> = specs

@@ -67,6 +67,8 @@ export function toolLine(name: string): { icon: IconName; label: string } {
       return { icon: "users", label: "Sends a task to several machines" };
     case "run_shell":
       return { icon: "terminal", label: "Runs a command" };
+    case "ssh_run":
+      return { icon: "terminal", label: "Runs a command on another machine" };
     case "fs_list":
       return { icon: "file", label: "Lists a folder" };
     case "fs_read":

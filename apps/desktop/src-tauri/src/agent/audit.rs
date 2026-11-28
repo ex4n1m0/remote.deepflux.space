@@ -1,8 +1,9 @@
 //! Local audit rail (ADR-013 P3, slice 1): every agent action performed
-//! on this machine leaves a who/what/when/result record. Two hook points
-//! today — the assistant's single tool funnel and a remote peer-agent
-//! wake, both in `agent/mod.rs`. Groundwork only: no query, rotation, or
-//! UI in this slice.
+//! on this machine leaves a who/what/when/result record. Three hook
+//! points today — the assistant's single tool funnel and a remote
+//! peer-agent wake (both in `agent/mod.rs`), and a prompt handed in by an
+//! external agent through the `--mcp` bridge (`mcp.rs`, ADR-016).
+//! Groundwork only: no query, rotation, or UI in this slice.
 //!
 //! Storage mirrors the chat-history discipline: one JSONL file under the
 //! app data dir (`audit/audit.jsonl`), hard-capped, oldest evicted,
@@ -37,12 +38,14 @@ const OUTCOME_MSG_MAX: usize = 160;
 pub struct AuditEntry {
     /// Wall-clock ms since the Unix epoch.
     pub ts_ms: u64,
-    /// Who initiated: "local-assistant" or "peer-agent:<device-id>".
+    /// Who initiated: "local-assistant", "peer-agent:<device-id>", or
+    /// "mcp-bridge" (an external agent that handed in a prompt, ADR-016).
     pub actor: String,
-    /// Which rail recorded: "tool" | "remote-wake".
+    /// Which rail recorded: "tool" | "remote-wake" | "prompt".
     pub origin: String,
     /// What ran — the bounded TOOL NAME (never arguments), or a fixed
-    /// wake label (never instruction content).
+    /// label (never instruction content): the wake label, or
+    /// "assistant-turn" for a prompt from the bridge.
     pub action: String,
     /// "ok" | "error:<bounded msg>" | "denied".
     pub outcome: String,

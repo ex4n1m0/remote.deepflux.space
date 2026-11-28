@@ -5,18 +5,27 @@
 //! SDK) serves the engine to the user's local agent — ZCode, Claude Code,
 //! Cursor — as tools: the agent sees screenshots (ADR-004's scoped
 //! invariant-1 exception) and drives the remote machine through the same
-//! `InputEvent` wire path as the human viewer.
+//! `InputEvent` wire path as the human viewer. ADR-016 adds the two tools
+//! an external agent needs to drive the in-app assistant instead:
+//! `deepflux_prompt` hands in a prompt (the same call the panel's input
+//! box makes) and `deepflux_assistant` reads back what it did and said.
 //!
 //! Safety posture (ADR-004 §4/§5): localhost process only (stdio), text
 //! payloads never logged (`AgentInput`'s redacted Debug), no remote shell
 //! in v1, bounded batches (`MAX_AGENT_BATCH`), and the host consent gate
-//! is unchanged — the bridge cannot accept on the host's behalf.
+//! is unchanged — the bridge cannot accept on the host's behalf. The
+//! prompt tool speaks to the assistant with the launching process's own
+//! authority: stdio exists only for the process that started the app, and
+//! the elevation relaunch (`elevate.rs`: a fresh process started through
+//! the shell) cannot carry those pipes across — so an unelevated caller
+//! never reaches an elevated assistant.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
+use crate::agent::audit::{AuditEntry, AuditLog};
 use crate::engine::{self, AgentInput, EngineHandle};
 use crate::ipc::EngineStatusDto;
 
@@ -430,6 +439,74 @@ impl AgentBridge {
             }
         }
     }
+
+    /// Hand the in-app assistant a prompt (the same as typing it into its panel).
+    #[tool(
+        description = "Give the in-app assistant a prompt — the same as typing it into its panel — and return at once. Then read deepflux_assistant until busy is false. Refused when the assistant has no API key or is still busy."
+    )]
+    fn deepflux_prompt(
+        &self,
+        Parameters(PromptParams { text }): Parameters<PromptParams>,
+    ) -> String {
+        let app = &self.app;
+        let (configured, busy) = match crate::agent::agent_status(app.clone()) {
+            Ok(status) => (
+                status.get("configured") == Some(&serde_json::Value::Bool(true)),
+                status.get("busy") == Some(&serde_json::Value::Bool(true)),
+            ),
+            Err(e) => return err_json("prompt", &e),
+        };
+        if !configured {
+            return err_json("prompt", "the in-app assistant has no API key configured");
+        }
+        if busy {
+            return err_json(
+                "prompt",
+                "the in-app assistant is still busy with another turn",
+            );
+        }
+        match crate::agent::agent_send(app.clone(), crate::agent::AgentSendArgs { text }) {
+            Ok(()) => {
+                // ADR-013 audit rail: the prompt TEXT never enters the log
+                // (invariant 6) — only that an external agent started a turn.
+                AuditLog::shared(app).record(AuditEntry::new(
+                    "mcp-bridge",
+                    "prompt",
+                    "assistant-turn",
+                    "queued",
+                ));
+                ok_json("prompt queued — read deepflux_assistant until busy is false")
+            }
+            Err(e) => err_json("prompt", &e),
+        }
+    }
+
+    /// What the in-app assistant did and said most recently.
+    #[tool(
+        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, events:[{seq, event}]}, oldest first. after_seq returns only newer events; limit caps them (default 50, max 200)."
+    )]
+    fn deepflux_assistant(
+        &self,
+        Parameters(AssistantParams { after_seq, limit }): Parameters<AssistantParams>,
+    ) -> String {
+        let services = self.app.state::<crate::commands::AppServices>();
+        let (busy, events) = services
+            .assistant
+            .transcript_since(after_seq.unwrap_or(0), limit.unwrap_or(50).clamp(1, 200));
+        let answer = serde_json::json!({ "busy": busy, "events": events });
+        serde_json::to_string(&answer).unwrap_or_else(|e| err_json("assistant", &e.to_string()))
+    }
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PromptParams {
+    text: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AssistantParams {
+    after_seq: Option<usize>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]

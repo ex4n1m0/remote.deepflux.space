@@ -12,6 +12,7 @@ pub mod apps;
 pub mod audit;
 pub mod localdesktop;
 pub mod schedule;
+pub mod ssh;
 pub mod startup;
 pub mod tools;
 pub mod winctl;
@@ -120,6 +121,56 @@ const CONFIRM_TIMEOUT: Duration = Duration::from_secs(300);
 const PEER_AGENT_WAKE_LIMIT: usize = 4;
 const PEER_AGENT_WAKE_WINDOW_MS: u64 = 10 * 60 * 1000;
 
+/// How many recent assistant events are kept for the `--mcp` bridge to
+/// read back (ADR-016). Bounded: the oldest go first.
+const TRANSCRIPT_CAP: usize = 200;
+
+/// The most recent assistant events, for an external agent that drives the
+/// assistant through the `--mcp` bridge (ADR-016): it hands in a prompt
+/// with `deepflux_prompt` and reads here what the assistant did and said.
+/// Text + metadata only — exactly the events the panel shows.
+#[derive(Default)]
+struct Transcript {
+    next_seq: usize,
+    entries: VecDeque<(usize, AssistantEvent)>,
+}
+
+impl Transcript {
+    fn push(&mut self, event: &AssistantEvent) {
+        // Busy on/off carries nothing an external reader needs: the last
+        // event's kind already says whether the turn ended.
+        if matches!(event, AssistantEvent::Busy { .. }) {
+            return;
+        }
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        self.entries.push_back((seq, event.clone()));
+        while self.entries.len() > TRANSCRIPT_CAP {
+            self.entries.pop_front();
+        }
+    }
+
+    /// The entries after `after_seq`, at most `limit`, oldest first.
+    fn since(&self, after_seq: usize, limit: usize) -> Vec<TranscriptEntry> {
+        self.entries
+            .iter()
+            .filter(|(seq, _)| *seq > after_seq)
+            .take(limit)
+            .map(|(seq, event)| TranscriptEntry {
+                seq: *seq,
+                event: event.clone(),
+            })
+            .collect()
+    }
+}
+
+/// One readable event: its sequence number and the event itself.
+#[derive(serde::Serialize)]
+pub struct TranscriptEntry {
+    pub seq: usize,
+    pub event: AssistantEvent,
+}
+
 /// Shared assistant state (UI status + worker coordination).
 pub struct AssistantState {
     pub busy: Mutex<bool>,
@@ -131,6 +182,7 @@ pub struct AssistantState {
     confirm: Mutex<Option<PendingConfirm>>,
     /// Rolling timestamps of recent peer-agent wakes (loop breaker).
     agent_wake_times: Mutex<VecDeque<u64>>,
+    transcript: Mutex<Transcript>,
 }
 
 /// One worker input: a human turn, or an agent-to-agent instruction from a
@@ -171,7 +223,26 @@ impl AssistantState {
             respawn: Mutex::new(()),
             confirm: Mutex::new(None),
             agent_wake_times: Mutex::new(VecDeque::new()),
+            transcript: Mutex::new(Transcript::default()),
         }
+    }
+
+    /// Keep one event for the bridge to read back (`emit` calls this for
+    /// every assistant event). Poison-tolerant: a transcript lock must
+    /// never stop an event reaching the panel.
+    pub fn note(&self, event: &AssistantEvent) {
+        self.transcript
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(event);
+    }
+
+    /// The most recent events with a sequence number above `after_seq`
+    /// (at most `limit`, oldest first), and whether a turn is running.
+    pub fn transcript_since(&self, after_seq: usize, limit: usize) -> (bool, Vec<TranscriptEntry>) {
+        let busy = *self.busy.lock().expect("assistant busy");
+        let transcript = self.transcript.lock().unwrap_or_else(|e| e.into_inner());
+        (busy, transcript.since(after_seq, limit))
     }
 
     /// Park a yes/no question in front of the local user and block until
@@ -369,6 +440,9 @@ fn emit(app: &AppHandle, event: AssistantEvent) {
         AssistantEvent::Confirm { .. } => "assistant://confirm",
         AssistantEvent::ConfirmDone { .. } => "assistant://confirm-done",
     };
+    app.state::<crate::commands::AppServices>()
+        .assistant
+        .note(&event);
     let _ = app.emit(name, event);
 }
 
@@ -487,6 +561,10 @@ fn turn_origin(input: &AssistantInput) -> tools::TurnOrigin {
 }
 
 fn run_worker(app: AppHandle, rx: Receiver<AssistantInput>) {
+    // The assistant's SSH key exists from the first launch (ADR-016), so
+    // its public half can be allowed on other machines before the first
+    // `ssh_run`. Non-fatal: the tool makes it on first use otherwise.
+    let _ = ssh::ensure_key(&ssh::ssh_dir(&app));
     // Turn log: past user/assistant/tool traffic (bounded), replayed each
     // request under a FRESH system prompt (live context per turn).
     let mut log: Vec<ChatTurn> = Vec::new();
@@ -1176,6 +1254,40 @@ pub fn agent_reset(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcript_keeps_the_newest_events_and_skips_busy() {
+        // ADR-016: what the bridge reads back is bounded (oldest go
+        // first), numbered, and does not spend entries on busy on/off.
+        let mut transcript = Transcript::default();
+        transcript.push(&AssistantEvent::Busy { on: true });
+        for n in 0..(TRANSCRIPT_CAP + 5) {
+            transcript.push(&AssistantEvent::Message {
+                role: "assistant".into(),
+                content: format!("message {n}"),
+            });
+        }
+        let all = transcript.since(0, 1_000);
+        assert_eq!(all.len(), TRANSCRIPT_CAP);
+        assert_eq!(all.first().map(|entry| entry.seq), Some(5));
+        let last = TRANSCRIPT_CAP + 4;
+        assert_eq!(all.last().map(|entry| entry.seq), Some(last));
+        let newest = all.last().expect("there is a newest entry");
+        let AssistantEvent::Message { role, content } = &newest.event else {
+            panic!("the newest entry is a message");
+        };
+        assert_eq!(role.as_str(), "assistant");
+        assert_eq!(content, &format!("message {last}"));
+        // Only newer events, and never more than the limit.
+        assert!(transcript.since(last, 1_000).is_empty());
+        assert!(transcript.since(5, 1_000).iter().all(|entry| entry.seq > 5));
+        let first_three: Vec<usize> = transcript
+            .since(0, 3)
+            .iter()
+            .map(|entry| entry.seq)
+            .collect();
+        assert_eq!(first_three, vec![5, 6, 7]);
+    }
 
     #[test]
     fn chat_turn_json_shapes() {
