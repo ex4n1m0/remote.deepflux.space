@@ -160,21 +160,26 @@ pub fn validate(host: &str, user: &str, port: u64, command: &str) -> Result<Targ
     })
 }
 
+/// What the `powershell` shell wraps a command in: UTF-8 on the way back
+/// (PowerShell writes in the console code page otherwise, which mangles
+/// accents), no progress records, and error records as plain text on the
+/// error stream. With its streams redirected, PowerShell writes errors —
+/// and even its first-use progress note — as XML on the error stream; the
+/// first live run (2026-11-28) returned that XML in a successful result.
+/// A native command keeps its own exit code; a cmdlet error, or a
+/// terminating one, exits with 1.
+const PS_PREFIX: &str = "$ProgressPreference = 'SilentlyContinue'; try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }; $dmErr = New-Object System.IO.StreamWriter([Console]::OpenStandardError(), (New-Object System.Text.UTF8Encoding($false))); $dmErr.AutoFlush = $true; $dmFailed = $false; try { & { ";
+const PS_SUFFIX: &str = " } 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $dmErr.WriteLine($_.ToString()); $dmFailed = $true } else { $_ } } } catch { $dmErr.WriteLine($_.ToString()); $dmErr.Flush(); exit 1 }; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE } elseif ($dmFailed) { exit 1 }";
+
 /// What is sent to the far machine as the one trailing argv element.
 fn remote_command(command: &str, shell: Shell) -> Result<String, String> {
     match shell {
         Shell::Cmd => Ok(command.to_owned()),
         Shell::PowerShell => {
-            // UTF-8 back to this machine: PowerShell writes in the console
-            // code page unless told otherwise, which mangles accents.
-            let wrapped = format!(
-                "try {{ [Console]::OutputEncoding = [Text.Encoding]::UTF8 }} catch {{ }}; {command}"
-            );
+            let wrapped = format!("{PS_PREFIX}{command}{PS_SUFFIX}");
             let utf16: Vec<u8> = wrapped.encode_utf16().flat_map(u16::to_le_bytes).collect();
             use base64::Engine as _;
             let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
-            // Text output: with anything else PowerShell may wrap the error
-            // stream in XML when its streams are redirected.
             let built = format!(
                 "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand \
                  {encoded}"
@@ -581,14 +586,17 @@ mod tests {
         let (pairs, _odd_bytes) = bytes.as_chunks::<2>();
         let wide: Vec<u16> = pairs.iter().map(|pair| u16::from_le_bytes(*pair)).collect();
         let decoded = String::from_utf16(&wide).expect("UTF-16");
-        assert!(decoded.ends_with(command), "{decoded}");
+        assert!(decoded.contains(command), "{decoded}");
+        // The wrapper: quiet on progress, UTF-8 out, errors as plain text.
+        assert!(decoded.starts_with("$ProgressPreference"), "{decoded}");
         assert!(decoded.contains("OutputEncoding"));
+        assert!(decoded.contains("OpenStandardError"), "{decoded}");
     }
 
     #[test]
     fn the_powershell_form_has_its_own_length_bound() {
-        assert!(remote_command(&"x".repeat(2_500), Shell::PowerShell).is_ok());
-        let too_long = "x".repeat(4_000);
+        assert!(remote_command(&"x".repeat(1_800), Shell::PowerShell).is_ok());
+        let too_long = "x".repeat(2_700);
         let refusal =
             remote_command(&too_long, Shell::PowerShell).expect_err("too long for that shell");
         assert!(refusal.contains("too long"), "{refusal}");

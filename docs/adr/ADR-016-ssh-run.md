@@ -67,10 +67,12 @@ exact command, not a second assistant's summary of it.
    hostname/address characters; the login is passed with `-l`, not as a
    `user@host` string, and obeys the same rules. A command is one argv
    element of at most 8 000 characters; the `powershell` form travels
-   base64-encoded (UTF-16, `-EncodedCommand`, `-OutputFormat Text`), so no
-   quoting has to survive two shells, and is refused when that encoded
-   form would not fit the far `cmd.exe` line. A refusal never quotes what
-   was refused — tool text reaches the audit rail's outcome.
+   base64-encoded (UTF-16, `-EncodedCommand`, `-OutputFormat Text`) inside
+   a wrapper that switches progress records off and turns error records
+   into plain text (with its streams redirected, PowerShell writes both as
+   XML), so no quoting has to survive two shells, and is refused when that
+   encoded form would not fit the far `cmd.exe` line. A refusal never
+   quotes what was refused — tool text reaches the audit rail's outcome.
 6. **Not for remotely-woken turns — at the tool level.** `ssh_run` joins
    `fleet_run` and `schedule` in `REMOTE_FORBIDDEN_TOOLS`: a turn that
    another machine's assistant started is neither advertised the tool,
@@ -150,7 +152,7 @@ exact command, not a second assistant's summary of it.
 - On Windows the `cmd` shell writes in the console code page, so accented
   text may come back mangled; the `powershell` shell sets UTF-8 first.
 - The `powershell` form of a command is refused when its encoded form
-  would not fit the far `cmd.exe` line (roughly beyond 2 900 characters).
+  would not fit the far `cmd.exe` line (roughly beyond 2 200 characters).
 - On a timeout the partial output is empty: the runner reads each stream
   to its end before it reports.
 - Key exchange between machines is manual by design in this ADR. The
