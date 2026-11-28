@@ -308,10 +308,13 @@ fn frame_report(
     }
     let mut framed = report.to_owned();
     if !was_known {
+        // A heading of its own: right after the stderr section the model
+        // took the note for part of stderr.
+        framed.push_str("\n--- note ---\n");
         framed.push_str(if is_known(known_hosts, target) {
-            "\nFIRST CONTACT: this machine's host key was not known before; it is now recorded, and a different key will be rejected from here on.\n"
+            "FIRST CONTACT: this machine's host key was not known before; it is now recorded, and a different key will be rejected from here on.\n"
         } else {
-            "\nWARNING — FIRST CONTACT: this machine's host key was not known before and could NOT be recorded (the host-keys file could not be written), so every connection to it is a first contact. Tell the user.\n"
+            "WARNING — FIRST CONTACT: this machine's host key was not known before and could NOT be recorded (the host-keys file could not be written), so every connection to it is a first contact. Tell the user.\n"
         });
     }
     framed
@@ -707,8 +710,9 @@ mod tests {
         .expect("overwrite known_hosts");
         let recorded = frame_report(ok, &fresh, &known_hosts, false, public);
         assert!(recorded.starts_with(ok), "{recorded}");
+        // Under a heading of its own: the model took a bare note for stderr.
         assert!(
-            recorded.contains("\nFIRST CONTACT: this machine's host key was not known"),
+            recorded.contains("--- note ---\nFIRST CONTACT: this machine's host key was not known"),
             "{recorded}"
         );
         assert_eq!(crate::agent::audit::outcome_from_tool_text(&recorded), "ok");
@@ -716,7 +720,10 @@ mod tests {
         let lost = target("host-d", "", 22, "echo hi").expect("passes");
         let warned = frame_report(ok, &lost, &known_hosts, false, public);
         assert!(warned.starts_with(ok), "{warned}");
-        assert!(warned.contains("\nWARNING — FIRST CONTACT:"), "{warned}");
+        assert!(
+            warned.contains("--- note ---\nWARNING — FIRST CONTACT:"),
+            "{warned}"
+        );
         assert!(warned.contains("could NOT be recorded"));
         let _ = std::fs::remove_dir_all(&dir);
     }

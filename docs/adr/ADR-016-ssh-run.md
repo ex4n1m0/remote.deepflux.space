@@ -56,8 +56,8 @@ exact command, not a second assistant's summary of it.
    is not in `known_hosts` yet, or matches what is recorded there; a
    changed key is refused by ssh itself, and with
    `HostKeyAlgorithms=ssh-ed25519` there is no second key type an impostor
-   could offer instead. A first contact is noted after the output
-   (`FIRST CONTACT`), and as a warning when its entry could not be
+   could offer instead. A first contact is noted after the output, under
+   a `--- note ---` heading of its own (`FIRST CONTACT`), and as a warning when its entry could not be
    recorded (then every connection to it is a first contact). The report's
    first line stays the runner's, because the audit rail judges a tool by
    its first line: a note that came first, with the word "refused" in it,
@@ -155,9 +155,6 @@ exact command, not a second assistant's summary of it.
   the audit rail's verdict on it, the key made once and its public half
   remade (`ssh-keygen` runs for real) — and the option list was checked
   against the shipped client's own configuration dump (`ssh -G`, 9.5.6).
-- The first-contact note follows the `--- stderr ---` heading of the
-  report; the model has been heard calling it part of stderr. A heading of
-  its own would fix that.
 - The client must understand `-F none`. It does on 9.5.6; older clients
   shipped with early Windows 10 were not tried.
 - Only `ssh-ed25519` host keys are accepted: a server with none is

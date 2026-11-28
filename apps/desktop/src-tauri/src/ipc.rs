@@ -149,6 +149,9 @@ pub struct EngineStatusDto {
     pub session_agent: bool,
     /// Host side: the connected controller asked us not to stream video.
     pub streaming_suppressed: bool,
+    /// The connection service answers right now. The panel clears its
+    /// "lost its connection service" banner on this flag (`state/reducer.ts`).
+    pub signaling_online: bool,
     pub counters: EngineCounters,
 }
 
@@ -172,7 +175,52 @@ impl From<EngineStatus> for EngineStatusDto {
             viewer_suppressed: status.viewer_suppressed,
             session_agent: status.session_agent,
             streaming_suppressed: status.streaming_suppressed,
+            signaling_online: status.signaling_online,
             counters: status.counters,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_status_the_panel_receives_carries_the_signaling_flag() {
+        // The panel clears its "lost its connection service" banner when
+        // this flag is true (`state/reducer.ts`, the `poll` action). The
+        // engine flag and the panel half landed in 9e0493a; the status in
+        // between did not carry it, so the banner never cleared by itself
+        // (seen live on 2026-11-25 and on 2026-11-28). The `--mcp` bridge
+        // serves this same status.
+        let status = crate::engine::EngineStatus {
+            device_id: "0123456789abcdef".to_owned(),
+            host_state: "Idle".to_owned(),
+            controller_state: "Online".to_owned(),
+            session_id: None,
+            session_peer: None,
+            viewer_created: false,
+            viewer_hwnd: 0,
+            viewer_fullscreen: false,
+            viewer_focused: false,
+            viewer_scale: "fit".to_owned(),
+            viewer_client_w: 0,
+            viewer_client_h: 0,
+            viewer_swapchain_w: 0,
+            viewer_swapchain_h: 0,
+            host_monitors: Vec::new(),
+            peer_monitors: Vec::new(),
+            active_monitor: None,
+            quality: "balanced".to_owned(),
+            encoder: None,
+            viewer_suppressed: false,
+            session_agent: false,
+            streaming_suppressed: false,
+            signaling_online: true,
+            counters: crate::engine::EngineCounters::default(),
+            input: crate::engine::diag::InputStat::default(),
+        };
+        let json = serde_json::to_value(EngineStatusDto::from(status)).expect("serializes");
+        assert_eq!(json["signaling_online"], serde_json::Value::Bool(true));
     }
 }
