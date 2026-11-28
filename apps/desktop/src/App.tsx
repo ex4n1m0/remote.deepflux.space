@@ -44,7 +44,8 @@ import { AgentChat } from "./components/AgentChat";
 import { Conversation } from "./components/Conversation";
 import { SessionCard } from "./components/ControllerPanel";
 import { DiagnosticsOverlay } from "./components/DiagnosticsOverlay";
-import { ErrorBanner } from "./components/Common";
+import { CopyButton, ErrorBanner } from "./components/Common";
+import { Icon } from "./components/Icon";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { useUpdate } from "./hooks/useUpdate";
 import { api, normalizeCode } from "./ipc";
@@ -419,17 +420,15 @@ export default function App() {
             <div className="machine-head">
               <div className="machine-title">
                 <h2>{selected.name}</h2>
-                <p className="muted">
+                <p className="muted machine-meta">
                   <span
                     className={`dot ${selected.online === true ? "on" : selected.online === false ? "off" : "unknown"}`}
                     aria-hidden="true"
-                  />{" "}
-                  {selected.online === true
-                    ? "online"
-                    : selected.online === false
-                      ? "offline"
-                      : "presence unknown"}{" "}
-                  · code <code className="code">{selected.code}</code>
+                  />
+                  {selected.online === true || selected.online === false ? (
+                    <span>{selected.online ? "online" : "offline"}</span>
+                  ) : null}
+                  <CopyButton value={selected.code} label="machine code" chip />
                 </p>
               </div>
               <div className="machine-actions">
@@ -440,6 +439,7 @@ export default function App() {
                     onClick={() => engine.run(() => api.viewerShow())}
                     title="Show the remote screen and control it — your mouse and keyboard go to it; closing the window keeps the chat session"
                   >
+                    <Icon name="monitor" />
                     Show screen
                   </button>
                 ) : (
@@ -453,6 +453,7 @@ export default function App() {
                         : "They'll be asked to allow it — once per machine"
                     }
                   >
+                    <Icon name="monitor" />
                     Control
                   </button>
                 )}
@@ -464,9 +465,10 @@ export default function App() {
                   title={
                     connectedToSelected
                       ? "This machine's assistant is already reachable — its chat box is below"
-                      : "Connect chat-only: give this machine's assistant instructions without opening the screen"
+                      : "Give this machine's assistant a task — no screen"
                   }
                 >
+                  <Icon name="bot" />
                   Agent
                 </button>
                 {/* Only paired machines have a stored row to forget — a
@@ -481,13 +483,7 @@ export default function App() {
             </div>
           ) : (
             <div className="machine-head">
-              <h2>Your machines</h2>
-              <p className="muted">
-                One list for messaging and remote control: enter a
-                machine's connection code on the left (or ask the
-                assistant), then press Control. The other machine allows it
-                once with "Always allow" and it stays in this list.
-              </p>
+              <h2>Pick a machine</h2>
             </div>
           )}
 

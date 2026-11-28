@@ -8,7 +8,8 @@
 //! * [`TimerQueue::schedule`] assigns a monotonically increasing sequence
 //!   number, so two timers with the same deadline fire in the order they
 //!   were scheduled (deterministic tie-break — the property the
-//!   `request_and_consent_timeouts_fire_in_schedule_order` scenario pins).
+//!   `an_unanswered_prompt_rejects_the_controller_before_its_own_timeout`
+//!   scenario pins).
 //! * [`TimerQueue::due`] drains everything at or before `now_ms` in that
 //!   order, removing each entry as it is returned (a fired timer cannot
 //!   re-fire; the machine re-arms by scheduling a fresh entry).

@@ -5,6 +5,7 @@
  * list above it — no agent tool reads or posts into rooms (D4). */
 
 import type { HumanRoomState } from "../types";
+import { Icon } from "./Icon";
 
 export function HumanChatCard({
   room,
@@ -34,7 +35,7 @@ export function HumanChatCard({
             epoch {room?.epoch ?? 0}
           </span>
           <p className="hint">
-            end-to-end encrypted · {room?.peers.length ?? 0} member
+            encrypted · {room?.peers.length ?? 0} member
             {(room?.peers.length ?? 0) === 1 ? "" : "s"}
           </p>
           <button type="button" className="primary small" onClick={onOpen}>
@@ -42,15 +43,15 @@ export function HumanChatCard({
           </button>
         </>
       ) : (
-        <>
-          <p className="hint">
-            Chat end-to-end with other people — never the server, never the
-            assistant.
-          </p>
-          <button type="button" className="ghost small rail-join-human" onClick={onJoin}>
-            Join a room
-          </button>
-        </>
+        <button
+          type="button"
+          className="ghost small rail-join-human"
+          onClick={onJoin}
+          title="Chat with other people, end to end — never the server, never the assistant"
+        >
+          <Icon name="users" />
+          Join a room
+        </button>
       )}
     </div>
   );

@@ -103,6 +103,9 @@ pub struct TrustState {
     /// rejected) — resolved by the accept command, the reject command, or
     /// host-state inference for the timeout.
     pub prompt: Option<(String, bool, bool)>,
+    /// When the prompt on screen went up (epoch ms). The timeout cooldown
+    /// has to tell an expired prompt from one the requester cancelled.
+    pub prompt_shown_ms: u64,
     /// controller code -> blocked-until epoch ms.
     pub block_until: std::collections::HashMap<String, u64>,
     /// The outbound pairing offer our own `connect` command owes this peer
@@ -130,6 +133,17 @@ pub struct TrustState {
 pub const REJECT_COOLDOWN_MS: u64 = 5 * 60 * 1000;
 /// Cooldown after a consent timeout (the prompt expired unanswered).
 pub const TIMEOUT_COOLDOWN_MS: u64 = 60 * 1000;
+/// How long the host keeps a consent prompt up (the session machines'
+/// default `consent_timeout_ms`, mirrored here for the cooldown below).
+const CONSENT_PROMPT_WINDOW_MS: u64 = 30_000;
+/// An unanswered prompt counts as a TIMEOUT once it has been up this long.
+/// A request cancelled or cut short before that is not a timeout and must
+/// not put its requester on the cooldown.
+const CONSENT_TIMEOUT_MIN_AGE_MS: u64 = CONSENT_PROMPT_WINDOW_MS - 2_000;
+/// How long an unanswered ask to a peer's assistant keeps expecting its
+/// reply. Past it the ask is presumed lost, and a later agent-authored
+/// arrival from that machine is an instruction again — it must wake.
+pub const ASK_REPLY_WINDOW_MS: u64 = 10 * 60 * 1000;
 /// Controller-side pending offers older than this are purged on read.
 pub const PENDING_PAIRING_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 /// Global prompt budget (prompt-flood follow-up, post-0.10.2): at most
@@ -159,6 +173,41 @@ impl TrustState {
     /// Forget expired blocks (bounded memory).
     pub fn sweep(&mut self, now: u64) {
         self.block_until.retain(|_, until| *until > now);
+    }
+
+    /// A consent prompt is on screen and nobody has answered it. (The
+    /// assistant's own-screen tools refuse to act while this is true:
+    /// consent is the human's decision, ADR-015.)
+    pub fn consent_unanswered(&self) -> bool {
+        self.prompt
+            .as_ref()
+            .is_some_and(|(_, accepted, rejected)| !accepted && !rejected)
+    }
+
+    /// ADR-006 B3, the timeout half, as a pure step: the host left
+    /// `ConsentPrompted` without an accept or an explicit reject. Only a
+    /// prompt that had been up for (almost) the whole consent window
+    /// expired — that requester goes on the timeout cooldown so it cannot
+    /// re-spam prompts. A prompt the requester cancelled, or one cut short
+    /// by "Stop sharing" or a collision, cools nobody down: the next
+    /// attempt is a legitimate one. The prompt's account claim dies with
+    /// the prompt either way (ADR-013 P2: a later accept for a different
+    /// machine must never arm an intent the user never answered). Returns
+    /// the controller that was put on cooldown, if any.
+    ///
+    /// Until 2026-11-27 this never ran: the engine names the machine
+    /// `"host"` (lowercase, `MachineKind::name`) and the caller compared
+    /// against `"Host"`.
+    pub fn note_host_back_online(&mut self, now: u64) -> Option<String> {
+        self.sweep(now);
+        self.prompt_account = None;
+        let (controller, accepted, rejected) = self.prompt.take()?;
+        let expired = now.saturating_sub(self.prompt_shown_ms) >= CONSENT_TIMEOUT_MIN_AGE_MS;
+        if accepted || rejected || !expired || self.blocked(&controller, now) {
+            return None;
+        }
+        self.block(&controller, now + TIMEOUT_COOLDOWN_MS);
+        Some(controller)
     }
 
     /// Global prompt budget: call before showing a prompt to an
@@ -213,11 +262,13 @@ struct PairingsDoc {
     account_remembered: Vec<String>,
 }
 
-/// One stored chat line. `sender`: "user" | "agent" | "peer-user" |
-/// "peer-agent" (perspective: this machine's store) — plus "to-agent":
-/// this machine's human addressed the peer's assistant via the
-/// Conversation toggle (the wire still carries the agent bit, so the
-/// peer labels the same line "peer-agent" on its side).
+/// One stored chat line. `sender`: "user" | "agent" (this machine's
+/// assistant speaking) | "peer-user" | "peer-agent" (perspective: this
+/// machine's store) — plus "to-agent": an instruction addressed to the
+/// peer's assistant, typed by this machine's human in the Conversation
+/// or sent by this machine's assistant on the human's behalf (the wire
+/// carries the agent bit either way, so the peer labels the same line
+/// "peer-agent" on its side).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatLine {
     pub id: u64,
@@ -772,25 +823,35 @@ pub fn record_incoming(app: &AppHandle, peer: &str, id: u64, ts_ms: u64, sender:
     if sender == "agent" && should_wake_for_agent_line(&existing) {
         // In-session arrivals carry no fleet correlation (the live chat
         // wire has no fleet id field) — the reply rides back plain.
-        app.state::<crate::commands::AppServices>()
+        let taken = app
+            .state::<crate::commands::AppServices>()
             .assistant
             .deliver_peer_agent(peer, body, None);
+        if !taken {
+            // Busy, or the wake budget is spent: say so now instead of
+            // letting the asking machine wait for an answer that will
+            // not come (ADR-015).
+            crate::agent::send_failure_reply(app, peer, crate::agent::NOT_TAKEN_REPLY, None);
+        }
     }
 }
 
 /// Wake gate for an agent-bit arrival, judged on the lines already stored
 /// for this peer (the new line is appended by the caller): wake unless
-/// the last agent-box line from THIS machine is an unanswered human ask
-/// ("to-agent") — that arrival is its reply. Once a peer-agent line
-/// follows the ask, later arrivals are fresh instructions (or
-/// agent-to-agent traffic) and wake again.
+/// the last agent-box line from THIS machine is an ask that is still
+/// expecting its answer ("to-agent") — that arrival is the reply. Once a
+/// peer-agent line follows the ask, later arrivals are fresh instructions
+/// (or agent-to-agent traffic) and wake again.
 fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
+    let now = now_ms();
     for line in prior.iter().rev() {
         match line.sender.as_str() {
-            // The human asked the peer's assistant and nothing
-            // agent-authored has arrived since → the next agent-bit
-            // message is the reply to display, not an instruction.
-            "to-agent" => return false,
+            // Our ask — the human's, or our assistant's on their behalf —
+            // and nothing agent-authored has arrived since: the next
+            // agent-bit message is its reply, to display. An ask that has
+            // gone unanswered for longer than the reply window expects
+            // nothing any more; what arrives then is an instruction.
+            "to-agent" => return !ask_expects_reply(line, now),
             "peer-agent" | "agent" => return true,
             // Plain traffic (user / peer-user) keeps looking further
             // back for the last agent-box line.
@@ -798,6 +859,12 @@ fn should_wake_for_agent_line(prior: &[ChatLine]) -> bool {
         }
     }
     true
+}
+
+/// Whether an ask is young enough that the next agent-authored line from
+/// the peer is read as its answer.
+fn ask_expects_reply(ask: &ChatLine, now: u64) -> bool {
+    now.saturating_sub(ask.ts_ms) <= ASK_REPLY_WINDOW_MS
 }
 
 /// Inbox arrival (ADR-013 P3 fleet slice 2): store the decrypted line
@@ -864,9 +931,20 @@ pub fn record_incoming_inbox(
             &existing,
         )
     {
-        app.state::<crate::commands::AppServices>()
+        let taken = app
+            .state::<crate::commands::AppServices>()
             .assistant
-            .deliver_peer_agent(peer, body, fleet_call_id);
+            .deliver_peer_agent(peer, body, fleet_call_id.clone());
+        if !taken {
+            // Busy, or the wake budget is spent: the fleet's scan collects
+            // this like any answer instead of reporting a bare timeout.
+            crate::agent::send_failure_reply(
+                app,
+                peer,
+                crate::agent::NOT_TAKEN_REPLY,
+                fleet_call_id.as_deref(),
+            );
+        }
     }
     true
 }
@@ -1508,7 +1586,9 @@ mod tests {
     fn line(sender: &str, id: u64) -> ChatLine {
         ChatLine {
             id,
-            ts_ms: id,
+            // Fresh: the reply gate only honours an ask for
+            // ASK_REPLY_WINDOW_MS (see `stale_asks_stop_swallowing`).
+            ts_ms: now_ms(),
             sender: sender.to_owned(),
             body: "x".to_owned(),
             fleet_call_id: None,
@@ -1539,8 +1619,8 @@ mod tests {
         ];
         assert!(should_wake_for_agent_line(&answered));
 
-        // Agent-to-agent: our assistant instructed theirs ("agent" out) —
-        // their assistant's answer is conversational and wakes us.
+        // Our assistant's own reply to them ("agent" out) is not an ask:
+        // what their side sends next is conversational and wakes us.
         let instructed = [line("agent", 5), line("peer-user", 6)];
         assert!(should_wake_for_agent_line(&instructed));
 
@@ -1551,6 +1631,31 @@ mod tests {
         // Plain-only history changes nothing.
         let plain = [line("user", 7), line("peer-user", 8)];
         assert!(should_wake_for_agent_line(&plain));
+    }
+
+    #[test]
+    fn stale_asks_stop_swallowing_instructions() {
+        // An ask nobody answered is presumed lost after ASK_REPLY_WINDOW_MS.
+        // A later agent-authored line from that machine is an instruction
+        // again and must wake us — an unanswered ask must not swallow every
+        // later instruction for good.
+        let mut stale = line("to-agent", 1);
+        stale.ts_ms = now_ms().saturating_sub(ASK_REPLY_WINDOW_MS + 1);
+        assert!(
+            should_wake_for_agent_line(&[stale.clone()]),
+            "stale ask, new arrival: an instruction"
+        );
+        assert!(
+            should_wake_for_agent_line(&[stale, line("agent", 2)]),
+            "our own reply after it is the newest agent-box line"
+        );
+        // Younger than the window: still expecting its answer.
+        let mut young = line("to-agent", 3);
+        young.ts_ms = now_ms().saturating_sub(ASK_REPLY_WINDOW_MS - 1_000);
+        assert!(
+            !should_wake_for_agent_line(&[young]),
+            "fresh ask: the arrival is its answer"
+        );
     }
 
     // ---- ADR-013 P3 fleet slice 2: inbox agent-bit + opt-in wake gate ----
@@ -2172,6 +2277,78 @@ mod tests {
         t.block("old", now - 1);
         t.sweep(now);
         assert!(t.block_until.len() == 1, "swept the expired block");
+    }
+
+    #[test]
+    fn an_expired_prompt_cools_its_controller_down() {
+        // ADR-006 B3, the timeout half — which never ran before 2026-11-27:
+        // the engine names the role "host" and the caller compared with
+        // "Host", so the condition was always false.
+        let now = 1_000_000u64;
+
+        // A prompt that was up for the whole consent window and nobody
+        // answered; then the host falls back to Online.
+        let mut t = TrustState {
+            prompt: Some(("ctrl".to_owned(), false, false)),
+            prompt_account: Some("install-a".to_owned()),
+            prompt_shown_ms: now - CONSENT_PROMPT_WINDOW_MS,
+            ..TrustState::default()
+        };
+        assert!(t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now).as_deref(), Some("ctrl"));
+        assert!(t.blocked("ctrl", now + 1), "on the timeout cooldown");
+        assert!(
+            !t.blocked("ctrl", now + TIMEOUT_COOLDOWN_MS),
+            "for exactly one window"
+        );
+        assert!(!t.blocked("other", now + 1), "per controller");
+        assert!(
+            t.prompt.is_none() && t.prompt_account.is_none(),
+            "the prompt is gone together with its account claim"
+        );
+        assert!(!t.consent_unanswered());
+        assert_eq!(
+            t.note_host_back_online(now + 1),
+            None,
+            "a plain host restart onto Online changes nothing"
+        );
+
+        // A prompt the requester CANCELLED a few seconds in is not a
+        // timeout: the next attempt is legitimate and must get its prompt.
+        let mut t = TrustState {
+            prompt: Some(("ctrl".to_owned(), false, false)),
+            prompt_shown_ms: now - 3_000,
+            ..TrustState::default()
+        };
+        assert_eq!(
+            t.note_host_back_online(now),
+            None,
+            "cancelled, not timed out"
+        );
+        assert!(!t.blocked("ctrl", now + 1));
+        assert!(t.prompt.is_none(), "but the prompt is still gone");
+
+        // Answered prompts — either way — never cool anything down.
+        let mut t = TrustState {
+            prompt: Some(("ctrl".to_owned(), true, false)),
+            prompt_shown_ms: now - CONSENT_PROMPT_WINDOW_MS,
+            ..TrustState::default()
+        };
+        assert!(!t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now), None);
+        t.prompt = Some(("ctrl".to_owned(), false, true));
+        assert!(!t.consent_unanswered());
+        assert_eq!(t.note_host_back_online(now), None);
+        assert!(!t.blocked("ctrl", now + 1));
+    }
+
+    #[test]
+    fn the_host_role_is_named_the_way_the_engine_names_it() {
+        // commands.rs compares the engine's role name through the typed
+        // constant; a literal "Host" there is how the cooldown above was
+        // lost for weeks.
+        assert_eq!(node_runtime::MachineKind::Host.name(), "host");
+        assert_eq!(node_runtime::MachineKind::Controller.name(), "controller");
     }
 
     #[test]

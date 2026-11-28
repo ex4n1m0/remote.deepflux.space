@@ -6,6 +6,7 @@
  * only while a session with that machine is live. */
 import { useEffect, useRef, useState } from "react";
 import type { ChatBinding } from "../hooks/useChat";
+import { Icon } from "./Icon";
 
 /** Lines that belong to the human conversation: you, them, and your own
  * assistant speaking for you. Agent-to-agent lines ("to-agent" /
@@ -41,8 +42,8 @@ export function Conversation({
         {lines.length === 0 ? (
           <p className="muted">
             {name
-              ? `No messages yet with ${name}. Chat works even without a session — messages wait sealed until the machine returns.`
-              : "Select a machine to see your conversation."}
+              ? `No messages yet — a message waits for ${name} to come online.`
+              : "Choose one on the left, or enter its code."}
           </p>
         ) : (
           lines.map((line) => (
@@ -84,6 +85,7 @@ export function Conversation({
           disabled={!draft.trim() || !name || chat.sending}
           onClick={() => void submit()}
         >
+          <Icon name="send" />
           Send
         </button>
       </div>

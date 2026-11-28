@@ -5,18 +5,29 @@
 //! SDK) serves the engine to the user's local agent — ZCode, Claude Code,
 //! Cursor — as tools: the agent sees screenshots (ADR-004's scoped
 //! invariant-1 exception) and drives the remote machine through the same
-//! `InputEvent` wire path as the human viewer.
+//! `InputEvent` wire path as the human viewer. ADR-016 adds the two tools
+//! an external agent needs to drive the in-app assistant instead:
+//! `deepflux_prompt` hands in a prompt (the same call the panel's input
+//! box makes) and `deepflux_assistant` reads back what it did and said.
 //!
 //! Safety posture (ADR-004 §4/§5): localhost process only (stdio), text
 //! payloads never logged (`AgentInput`'s redacted Debug), no remote shell
-//! in v1, bounded batches (`MAX_AGENT_BATCH`), and the host consent gate
-//! is unchanged — the bridge cannot accept on the host's behalf.
+//! of its own, bounded batches (`MAX_AGENT_BATCH`), and the host consent
+//! gate is unchanged — the bridge cannot accept on the host's behalf.
+//! ADR-016: `deepflux_prompt` starts a turn of the in-app assistant with
+//! the LOCAL user's full authority (shell, files, `ssh_run`). That is the
+//! launching process's own authority: stdio exists only for the process
+//! that started the app, and the elevation relaunch (`elevate.rs`: a fresh
+//! process started through the shell) does not carry those pipes — relied
+//! on here, not exercised live. The audit rail records WHO started such a
+//! turn (actor `mcp-bridge`), never the prompt.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
+use crate::agent::audit::{AuditEntry, AuditLog};
 use crate::engine::{self, AgentInput, EngineHandle};
 use crate::ipc::EngineStatusDto;
 
@@ -393,27 +404,127 @@ impl AgentBridge {
 
     /// Block until the session is live (or timeout) — for consent waits.
     #[tool(
-        description = "Wait up to timeout_ms (default 30000) for the controller session to reach Connected (i.e. the host human accepted). Returns the final state."
+        description = "Wait up to timeout_ms (default 45000, covering the host's 30 s consent window) for the controller session to reach Connected (i.e. the host human accepted). Returns as soon as the host answers either way, with the final state."
     )]
     fn deepflux_wait_connected(
         &self,
         Parameters(WaitParams { timeout_ms }): Parameters<WaitParams>,
     ) -> String {
         let deadline = std::time::Instant::now()
-            + Duration::from_millis(timeout_ms.unwrap_or(30_000).min(120_000));
+            + Duration::from_millis(timeout_ms.unwrap_or(45_000).min(120_000));
+        let mut asking = false;
         loop {
             match self.with_engine(|handle| Ok(handle.status().controller_state)) {
                 Ok(state) if state == "Connected" => {
                     return ok_json("session connected");
                 }
-                Ok(state) if std::time::Instant::now() >= deadline => {
-                    return err_json("wait_connected", &format!("timed out in state {state}"));
+                Ok(state) => {
+                    asking |= matches!(state.as_str(), "Requesting" | "Offering" | "Connecting");
+                    // Once the request was under way, Disconnected is the
+                    // host's final answer: no reason to sit out the rest of
+                    // the timeout.
+                    let refused = asking && state == "Disconnected";
+                    if refused || std::time::Instant::now() >= deadline {
+                        let why = if refused {
+                            " — the other machine declined, is busy, or nobody answered its prompt"
+                        } else {
+                            ""
+                        };
+                        return err_json(
+                            "wait_connected",
+                            &format!("not connected — controller state {state}{why}"),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
                 }
-                Ok(_) => std::thread::sleep(Duration::from_millis(200)),
                 Err(e) => return err_json("wait_connected", &e),
             }
         }
     }
+
+    /// Hand the in-app assistant a prompt (the same as typing it into its panel).
+    #[tool(
+        description = "Give the in-app assistant a prompt — the same as typing it into its panel — and return at once with wait_for_seq. The turn ends with an event of kind \"done\": read deepflux_assistant until it shows one whose seq is at least wait_for_seq (busy alone is not a start or end signal). Refused when the assistant has no API key or is still busy."
+    )]
+    fn deepflux_prompt(
+        &self,
+        Parameters(PromptParams { text }): Parameters<PromptParams>,
+    ) -> String {
+        let app = &self.app;
+        let (configured, busy) = match crate::agent::agent_status(app.clone()) {
+            Ok(status) => (
+                status.get("configured") == Some(&serde_json::Value::Bool(true)),
+                status.get("busy") == Some(&serde_json::Value::Bool(true)),
+            ),
+            Err(e) => return err_json("prompt", &e),
+        };
+        if !configured {
+            return err_json("prompt", "the in-app assistant has no API key configured");
+        }
+        if busy {
+            return err_json(
+                "prompt",
+                "the in-app assistant is still busy with another turn",
+            );
+        }
+        // The turn's events get this number or a higher one. `busy` is no
+        // start signal: it turns true only when the worker picks the prompt
+        // up, which can be a moment after this returns.
+        let next_seq = app
+            .state::<crate::commands::AppServices>()
+            .assistant
+            .transcript_next_seq();
+        match crate::agent::agent_send(app.clone(), crate::agent::AgentSendArgs { text }) {
+            Ok(()) => {
+                // ADR-013 audit rail: the prompt TEXT never enters the log
+                // (invariant 6) — only that an external agent started a turn.
+                AuditLog::shared(app).record(AuditEntry::new(
+                    "mcp-bridge",
+                    "prompt",
+                    "assistant-turn",
+                    "queued",
+                ));
+                serde_json::json!({
+                    "ok": true,
+                    "wait_for_seq": next_seq,
+                    "detail": format!(
+                        "prompt queued — read deepflux_assistant until an event of kind \"done\" \
+                         with a seq of at least {next_seq} appears; it ends the turn"
+                    ),
+                })
+                .to_string()
+            }
+            Err(e) => err_json("prompt", &e),
+        }
+    }
+
+    /// What the in-app assistant did and said most recently.
+    #[tool(
+        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, next_seq, events:[{seq, event}]}, oldest first; an event is {seq, event:{kind, ...}} and kind \"done\" ends a turn. from_seq returns the events from that sequence number on (pass the last seq you have plus one); left out, all kept events. limit caps them (default 50, max 200)."
+    )]
+    fn deepflux_assistant(
+        &self,
+        Parameters(AssistantParams { from_seq, limit }): Parameters<AssistantParams>,
+    ) -> String {
+        let services = self.app.state::<crate::commands::AppServices>();
+        let (busy, events) = services
+            .assistant
+            .transcript_since(from_seq.unwrap_or(0), limit.unwrap_or(50).clamp(1, 200));
+        let next_seq = services.assistant.transcript_next_seq();
+        let answer = serde_json::json!({ "busy": busy, "next_seq": next_seq, "events": events });
+        serde_json::to_string(&answer).unwrap_or_else(|e| err_json("assistant", &e.to_string()))
+    }
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct PromptParams {
+    text: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AssistantParams {
+    from_seq: Option<usize>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]

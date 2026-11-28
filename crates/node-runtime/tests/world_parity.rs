@@ -729,10 +729,11 @@ fn late_peer_request_after_accept_still_hits_the_tie_break() {
     assert_eq!(b.node.counters().illegal_transitions, 0);
 }
 
-/// Request timeout (10 s) fires before consent timeout (30 s); both
-/// leave empty timer queues behind.
+/// The controller's request timeout outlasts the host's consent prompt:
+/// an unanswered prompt comes back as the host's explicit `Reject{Timeout}`
+/// (which cancels the request timer); both leave empty timer queues behind.
 #[test]
-fn request_and_consent_timeouts_fire_in_schedule_order() {
+fn an_unanswered_prompt_rejects_the_controller_before_its_own_timeout() {
     let hub = SignalingHub::new();
     let mut a = TestNode::attach(&hub, "device-a");
     let mut b = TestNode::attach(&hub, "device-b");
@@ -741,25 +742,39 @@ fn request_and_consent_timeouts_fire_in_schedule_order() {
     a.controller_connect("device-b");
     settle(&mut a, &mut b);
 
-    // Advance both clocks; run a's pump after each advance.
+    // Past the old 10 s request timeout: still asking, prompt still up.
     a.clock.set_ms(11_000);
     a.pump();
+    b.clock.set_ms(11_000);
+    b.pump();
     assert!(matches!(
         a.node.controller_state(),
-        ControllerState::Disconnected {
-            cause: DisconnectCause::Timeout
-        }
+        ControllerState::Requesting { .. }
     ));
     assert!(matches!(
         b.node.host_state(),
         HostState::ConsentPrompted { .. }
     ));
-    assert!(a.node.timers().is_empty());
 
+    // The consent window closes: the host rejects explicitly.
     b.clock.set_ms(40_000);
     b.pump();
     assert_eq!(b.node.host_state().name(), "Online");
     assert!(b.node.timers().is_empty());
+
+    // …and the controller, still inside its own (longer) wait, ends with
+    // that typed cause. Its clock stays below its request deadline so the
+    // reject, not the timer, is what ends the attempt.
+    a.clock.set_ms(31_000);
+    a.pump();
+    settle(&mut a, &mut b);
+    assert!(matches!(
+        a.node.controller_state(),
+        ControllerState::Disconnected {
+            cause: DisconnectCause::Rejected(protocol::signaling::RejectReason::Timeout)
+        }
+    ));
+    assert!(a.node.timers().is_empty());
 }
 
 /// Controller cancel returns the host to Online with clean timer state.

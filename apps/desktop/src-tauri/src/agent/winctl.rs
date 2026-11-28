@@ -33,6 +33,9 @@ pub fn list_windows() -> Vec<WindowInfo> {
     unsafe {
         let _ = EnumWindows(Some(enum_proc), LPARAM(boxed as isize));
     }
+    // The assistant never operates its own app (ADR-015): its windows are
+    // not listed, so the focus / minimize / close verbs cannot target them.
+    out.retain(|window| window.pid != std::process::id());
     out.sort_by_key(|w| w.title.to_lowercase());
     out
 }

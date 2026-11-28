@@ -1350,3 +1350,115 @@ button.link {
 .human-room-join-modal .row {
   margin: 12px 16px 16px;
 }
+
+/* ---- Simplicity pass (2026-11-27): icons, fewer words, roomier rows ----
+   Explanations moved onto the control they belong to (title tooltips);
+   what stays visible is the control and a label that says what it does. */
+
+/* Icons sit inline before their label and follow the label's color. */
+.icon {
+  flex: none;
+  vertical-align: -0.15em;
+}
+
+button > .icon,
+.starter > .icon {
+  margin-right: 6px;
+}
+
+/* Icon-only buttons keep a square, clickable shape. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+}
+
+button > .icon:only-child {
+  margin-right: 0;
+}
+
+/* The rail scrolls as one column; the machine list takes the room that is
+   left and never collapses into its own small inner scroller. */
+.rail {
+  overflow-y: auto;
+}
+
+.rail-list {
+  flex: 1 0 auto;
+  min-height: 96px;
+  overflow: visible;
+}
+
+.rail-row {
+  padding: 9px 10px;
+}
+
+.rail-name {
+  font-weight: 600;
+}
+
+.rail-connect {
+  padding: 5px 7px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.trusted-shield,
+.dir-tag {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The machine page's one status line: dot, word, code, copy. */
+.machine-head .machine-meta {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A tool call reads as one short line; its result is on the tooltip. */
+.msg.tool-msg {
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.tool-name {
+  font-family: inherit;
+  color: var(--text);
+}
+
+.starter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.starter > .icon {
+  margin-right: 0;
+  color: var(--accent);
+}
+
+.agent-box-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A code shown as a pill that copies itself when clicked. */
+.code-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 2px;
+}
+
+.code-chip .code {
+  background: transparent;
+  border: 0;
+  padding: 1px 4px;
+}
+
+/* An unknown presence shows as the hollow dot alone — no word for it. */
+.machine-meta .dot.unknown + .code-chip {
+  margin-left: 0;
+}

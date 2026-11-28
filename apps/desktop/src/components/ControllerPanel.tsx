@@ -9,6 +9,7 @@
  * affordance to attach the visual for monitoring, same disconnect. */
 
 import { Section, StatusChip } from "./Common";
+import { Icon } from "./Icon";
 import { controllerView, formatMonitorLabel } from "../state/mapping";
 import type {
   ControllerStateName,
@@ -93,16 +94,16 @@ export function SessionCard({
       ) : agentCard ? (
         <>
           <p className="muted">
-            Connected without the screen — you're chatting with {who}'s
-            assistant in the box below; it executes your instructions over
-            there. Attach the visual any time to watch what it does; closing
-            that window returns here without ending the session.
+            Chatting with {who}'s assistant in the box below — it works on
+            that machine.
           </p>
           <div className="row">
             <button type="button" className="primary" onClick={onShowViewer}>
+              <Icon name="monitor" />
               Show the screen
             </button>
             <button type="button" className="danger" onClick={onDisconnect}>
+              <Icon name="x" />
               Stop session
             </button>
           </div>
@@ -111,7 +112,7 @@ export function SessionCard({
         <>
           <p className="muted">
             {viewerCreated
-              ? "The viewer window shows the remote desktop. Click it to send keyboard and mouse; F11 toggles fullscreen."
+              ? "Click the viewer window to control it. F11 toggles fullscreen."
               : "Opening the viewer window…"}
           </p>
           <div className="controls-grid">
@@ -169,8 +170,13 @@ export function SessionCard({
           </div>
           {agentOrigin && viewerCreated ? (
             <div className="row">
-              <button type="button" onClick={onHideViewer}>
-                Hide the screen (keep the agent session)
+              <button
+                type="button"
+                onClick={onHideViewer}
+                title="Keep the agent session — the chat stays open"
+              >
+                <Icon name="x" />
+                Hide the screen
               </button>
             </div>
           ) : null}

@@ -226,13 +226,17 @@ describe("MachinesRail", () => {
     expect(screen.getByRole("button", { name: "Share this machine" })).toBeTruthy();
   });
 
-  it("teaches the one-list model in the header and empty state", () => {
+  it("empty state is one line, and no caption explains the list", () => {
     render(<MachinesRail {...base} machines={[]} />);
-    expect(screen.getByText(/message or control — same list/i)).toBeTruthy();
     expect(screen.getByText(/No machines yet/i)).toBeTruthy();
-    expect(
-      screen.getByText(/appear here on their own/i),
-    ).toBeTruthy();
+    // 2026-11-27 simplicity pass: the how-it-works sentences moved onto
+    // the controls themselves (title tooltips) or went away.
+    expect(screen.queryByText(/message or control/i)).toBeNull();
+    expect(screen.queryByText(/appear here on their own/i)).toBeNull();
+    // The one fact a newcomer needs is where the code lives — on the box.
+    expect(screen.getByLabelText("Connection code").getAttribute("title")).toMatch(
+      /other machine/i,
+    );
   });
 
   it("connect box: Control and Agent dial the entered code (ADR-009)", () => {
@@ -258,7 +262,7 @@ describe("MachinesRail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Control" }));
     expect(onConnect).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain(
-      "doesn't look like a connection code",
+      "not a connection code",
     );
     // A corrected code clears the error and dials.
     fireEvent.change(input, { target: { value: "ccccdddd11112222" } });
@@ -270,7 +274,7 @@ describe("MachinesRail", () => {
   it("This-machine card shows this machine's name, the code, and a copy button", () => {
     render(<MachinesRail {...base} machines={[]} />);
     expect(screen.getByText("Office PC")).toBeTruthy();
-    expect(screen.getByText(/family enter this code to reach you/i)).toBeTruthy();
+    expect(screen.queryByText(/family enter this code/i)).toBeNull();
     expect(screen.getByRole("button", { name: "Copy code" })).toBeTruthy();
   });
 
@@ -364,9 +368,36 @@ describe("AssistantPanel", () => {
       />,
     );
     expect(screen.getByText("list my machines")).toBeTruthy();
-    expect(screen.getByText("machines_list")).toBeTruthy();
+    // A tool call reads as a plain-English line; the raw name and the
+    // result stay on the row's tooltip (2026-11-27 simplicity pass).
+    const tool = screen.getByText("machines list");
+    expect(tool.closest(".tool-msg")?.getAttribute("title")).toBe(
+      "machines_list: 1 trusted machine",
+    );
     expect(screen.getByText("One: Mom's PC.")).toBeTruthy();
     expect(screen.getByText("provider down")).toBeTruthy();
+  });
+
+  it("tool lines say which screen they act on, in plain words", () => {
+    render(
+      <AssistantPanel
+        assistant={makeAssistant({
+          messages: [
+            { kind: "tool", name: "local_screenshot", summary: "1600x900 px", id: 1 },
+            { kind: "tool", name: "screenshot", summary: "1600x900 px", id: 2 },
+            { kind: "tool", name: "run_shell", summary: "exit code 0", id: 3 },
+            { kind: "tool", name: "chat_wait", summary: "answer…", id: 4 },
+          ],
+        })}
+        onOpenConfig={() => {}}
+      />,
+    );
+    expect(screen.getByText("Looks at this screen")).toBeTruthy();
+    expect(screen.getByText("Looks at the other screen")).toBeTruthy();
+    expect(screen.getByText("Runs a command")).toBeTruthy();
+    expect(screen.getByText("Waits for the other assistant's answer")).toBeTruthy();
+    // The raw result text is not printed as a second line.
+    expect(screen.queryByText("exit code 0")).toBeNull();
   });
 
   it("error cards are loud: alert role, heading, and the message", () => {
@@ -398,21 +429,21 @@ describe("filterMachines (search)", () => {
 });
 
 describe("RemoveMachineButton (machine-page removal)", () => {
-  it("two-step confirm: Remove… → Remove fires, Cancel does not", () => {
+  it("two-step confirm: Forget Office → Forget fires, Cancel does not", () => {
     const onRemove = vi.fn();
     render(<RemoveMachineButton name="Office" onRemove={onRemove} />);
     // Nothing fires on the first click — it only arms the confirm.
-    fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forget Office" }));
     expect(onRemove).not.toHaveBeenCalled();
-    expect(screen.getByRole("alertdialog", { name: "Remove machine" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByRole("alertdialog", { name: "Forget machine" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
   it("cancel disarms without removing", () => {
     const onRemove = vi.fn();
     render(<RemoveMachineButton name="Office" onRemove={onRemove} />);
-    fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forget Office" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onRemove).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -472,9 +503,9 @@ describe("Conversation / AgentChat split", () => {
     expect(chat.send).toHaveBeenLastCalledWith("empty the recycle bin", true);
   });
 
-  it("each box teaches its purpose when empty", () => {
+  it("each box says its purpose in one short line when empty", () => {
     render(<Conversation name="Office" chat={chatBinding()} />);
-    expect(screen.getByText(/messages wait sealed until the machine returns/i)).toBeTruthy();
+    expect(screen.getByText(/waits for Office to come online/i)).toBeTruthy();
     cleanup();
     render(<AgentChat name="Office" chat={chatBinding()} />);
     expect(screen.getByText(/Tell Office's assistant what to do/i)).toBeTruthy();

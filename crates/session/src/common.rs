@@ -12,6 +12,12 @@ use protocol::signaling::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionConfig {
     /// Controller: `connect_request` sent → `accept`/`reject` received.
+    /// MUST outlast `consent_timeout_ms`: the host's prompt is the thing
+    /// the controller is waiting for, and when it expires the host sends
+    /// an explicit `Reject{Timeout}`. With the old 10 s the controller gave
+    /// up two-thirds into the prompt window — a human who clicked at 15 s
+    /// got nothing — and the user saw a generic "timed out" that read like
+    /// a network problem.
     pub request_timeout_ms: u64,
     /// Host: consent prompt shown → user decision. The prompt auto-rejects
     /// after this.
@@ -33,7 +39,9 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            request_timeout_ms: 10_000,
+            // The consent window (30 s) plus room for the signaling round
+            // trips on a slow link.
+            request_timeout_ms: 35_000,
             consent_timeout_ms: 30_000,
             connect_timeout_ms: 10_000,
             heartbeat_period_ms: 15_000,

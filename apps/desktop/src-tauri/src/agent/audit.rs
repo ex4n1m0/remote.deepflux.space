@@ -1,8 +1,9 @@
 //! Local audit rail (ADR-013 P3, slice 1): every agent action performed
-//! on this machine leaves a who/what/when/result record. Two hook points
-//! today — the assistant's single tool funnel and a remote peer-agent
-//! wake, both in `agent/mod.rs`. Groundwork only: no query, rotation, or
-//! UI in this slice.
+//! on this machine leaves a who/what/when/result record. Three hook
+//! points today — the assistant's single tool funnel and a remote
+//! peer-agent wake (both in `agent/mod.rs`), and a prompt handed in by an
+//! external agent through the `--mcp` bridge (`mcp.rs`, ADR-016).
+//! Groundwork only: no query, rotation, or UI in this slice.
 //!
 //! Storage mirrors the chat-history discipline: one JSONL file under the
 //! app data dir (`audit/audit.jsonl`), hard-capped, oldest evicted,
@@ -37,14 +38,17 @@ const OUTCOME_MSG_MAX: usize = 160;
 pub struct AuditEntry {
     /// Wall-clock ms since the Unix epoch.
     pub ts_ms: u64,
-    /// Who initiated: "local-assistant" or "peer-agent:<device-id>".
+    /// Who initiated: "local-assistant", "peer-agent:<device-id>", or
+    /// "mcp-bridge" (an external agent that handed in a prompt, ADR-016).
     pub actor: String,
-    /// Which rail recorded: "tool" | "remote-wake".
+    /// Which rail recorded: "tool" | "remote-wake" | "prompt".
     pub origin: String,
     /// What ran — the bounded TOOL NAME (never arguments), or a fixed
-    /// wake label (never instruction content).
+    /// label (never instruction content): the wake label, or
+    /// "assistant-turn" for a prompt from the bridge.
     pub action: String,
-    /// "ok" | "error:<bounded msg>" | "denied".
+    /// "ok" | "error:<bounded msg>" | "denied" | "queued" (a prompt the
+    /// `--mcp` bridge handed in, before the turn runs).
     pub outcome: String,
 }
 
@@ -131,18 +135,26 @@ fn audit_dir(app: &AppHandle) -> PathBuf {
 /// (no structured error flag), but the module's convention is stable:
 /// failures render as "<tool> failed: …", "error: …", or "unknown
 /// tool: …"; a refused confirmation as "… denied by the local user" or
-/// "… not allowed". Judged on the FIRST line only, so a successful
-/// result whose content mentions failure (a status snapshot, a read
-/// file) is not misclassified. `ask_the_human` returning NO is a
-/// successful tool call and stays "ok".
+/// "… not allowed"; a guard refusal of an own-screen action (ADR-015) as
+/// "<tool>: not done: …" or "<tool>: … refused". Judged on the FIRST line
+/// only, so a successful result whose content mentions failure (a status
+/// snapshot, a read file) is not misclassified. `ask_the_human` returning
+/// NO is a successful tool call and stays "ok".
 pub fn outcome_from_tool_text(text: &str) -> String {
     let head = text.lines().next().unwrap_or("");
-    if head.contains("denied by the local user") || head.contains("not allowed") {
-        "denied".to_owned()
-    } else if head.contains(" failed")
+    let denied = head.contains("denied by the local user")
+        || head.contains("not allowed")
+        || head.contains("not done")
+        || head.contains("refused");
+    if denied {
+        return "denied".to_owned();
+    }
+    let failed = head.contains(" failed")
+        || head.contains("could not inject")
+        || head.contains("too long")
         || head.starts_with("error:")
-        || head.starts_with("unknown tool")
-    {
+        || head.starts_with("unknown tool");
+    if failed {
         let msg = head.strip_prefix("error: ").unwrap_or(head);
         format!("error:{msg}")
     } else {
@@ -275,6 +287,28 @@ mod tests {
             outcome_from_tool_text("file read ok:\nlater: it failed to build"),
             "ok",
             "classification reads the first line only"
+        );
+        // Own-screen guard refusals (ADR-015), injection failures and
+        // oversized input: never "ok" on the audit rail.
+        assert_eq!(
+            outcome_from_tool_text(
+                "local_click: not done: that point is inside this app's own window"
+            ),
+            "denied"
+        );
+        assert_eq!(
+            outcome_from_tool_text(
+                "local_press_key: a remotely-woken turn may not do that — refused"
+            ),
+            "denied"
+        );
+        assert_eq!(
+            outcome_from_tool_text("local_click: could not inject input: blocked"),
+            "error:local_click: could not inject input: blocked"
+        );
+        assert_eq!(
+            outcome_from_tool_text("local_type_text: text is too long for one call"),
+            "error:local_type_text: text is too long for one call"
         );
     }
 
