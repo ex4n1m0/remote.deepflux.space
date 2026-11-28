@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://deepflux.space/#remote",
+      "permanent": false
+    },
+    {
+      "source": "/index.html",
+      "destination": "https://deepflux.space/#remote",
+      "permanent": false
+    }
+  ]
+}
