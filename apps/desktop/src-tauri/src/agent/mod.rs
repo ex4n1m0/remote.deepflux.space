@@ -157,11 +157,13 @@ impl Transcript {
         self.entries.clear();
     }
 
-    /// The entries after `after_seq`, at most `limit`, oldest first.
-    fn since(&self, after_seq: usize, limit: usize) -> Vec<TranscriptEntry> {
+    /// The entries numbered `from_seq` or higher, at most `limit`, oldest
+    /// first. Inclusive, so the very first event of a session (number 0)
+    /// can be read as well.
+    fn since(&self, from_seq: usize, limit: usize) -> Vec<TranscriptEntry> {
         self.entries
             .iter()
-            .filter(|(seq, _)| *seq > after_seq)
+            .filter(|(seq, _)| *seq >= from_seq)
             .take(limit)
             .map(|(seq, event)| TranscriptEntry {
                 seq: *seq,
@@ -244,12 +246,12 @@ impl AssistantState {
             .push(event);
     }
 
-    /// The most recent events with a sequence number above `after_seq`
-    /// (at most `limit`, oldest first), and whether a turn is running.
-    pub fn transcript_since(&self, after_seq: usize, limit: usize) -> (bool, Vec<TranscriptEntry>) {
+    /// The events numbered `from_seq` or higher (at most `limit`, oldest
+    /// first), and whether a turn is running.
+    pub fn transcript_since(&self, from_seq: usize, limit: usize) -> (bool, Vec<TranscriptEntry>) {
         let busy = *self.busy.lock().expect("assistant busy");
         let transcript = self.transcript.lock().unwrap_or_else(|e| e.into_inner());
-        (busy, transcript.since(after_seq, limit))
+        (busy, transcript.since(from_seq, limit))
     }
 
     /// The sequence number the NEXT recorded event will get. `busy` turns
@@ -1309,9 +1311,14 @@ mod tests {
         };
         assert_eq!(role.as_str(), "assistant");
         assert_eq!(content, &format!("message {last}"));
-        // Only newer events, and never more than the limit.
-        assert!(transcript.since(last, 1_000).is_empty());
-        assert!(transcript.since(5, 1_000).iter().all(|entry| entry.seq > 5));
+        // From a number on (inclusive), and never more than the limit.
+        assert_eq!(
+            transcript.since(last, 1_000).len(),
+            1,
+            "the last one is included"
+        );
+        assert!(transcript.since(last + 1, 1_000).is_empty());
+        assert!(!transcript.since(5, 1_000).iter().any(|entry| entry.seq < 5));
         let first_three: Vec<usize> = transcript
             .since(0, 3)
             .iter()

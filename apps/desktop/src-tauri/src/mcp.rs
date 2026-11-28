@@ -500,16 +500,16 @@ impl AgentBridge {
 
     /// What the in-app assistant did and said most recently.
     #[tool(
-        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, next_seq, events:[{seq, event}]}, oldest first; an event is {seq, event:{kind, ...}} and kind \"done\" ends a turn. after_seq returns only newer events; limit caps them (default 50, max 200)."
+        description = "The in-app assistant's recent events — messages, tool calls with a short result summary, errors, done — as JSON: {busy, next_seq, events:[{seq, event}]}, oldest first; an event is {seq, event:{kind, ...}} and kind \"done\" ends a turn. from_seq returns the events from that sequence number on (pass the last seq you have plus one); left out, all kept events. limit caps them (default 50, max 200)."
     )]
     fn deepflux_assistant(
         &self,
-        Parameters(AssistantParams { after_seq, limit }): Parameters<AssistantParams>,
+        Parameters(AssistantParams { from_seq, limit }): Parameters<AssistantParams>,
     ) -> String {
         let services = self.app.state::<crate::commands::AppServices>();
         let (busy, events) = services
             .assistant
-            .transcript_since(after_seq.unwrap_or(0), limit.unwrap_or(50).clamp(1, 200));
+            .transcript_since(from_seq.unwrap_or(0), limit.unwrap_or(50).clamp(1, 200));
         let next_seq = services.assistant.transcript_next_seq();
         let answer = serde_json::json!({ "busy": busy, "next_seq": next_seq, "events": events });
         serde_json::to_string(&answer).unwrap_or_else(|e| err_json("assistant", &e.to_string()))
@@ -523,7 +523,7 @@ struct PromptParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct AssistantParams {
-    after_seq: Option<usize>,
+    from_seq: Option<usize>,
     limit: Option<usize>,
 }
 

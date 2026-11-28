@@ -55,9 +55,12 @@ exact command, not a second assistant's summary of it.
    is not in `known_hosts` yet, or matches what is recorded there; a
    changed key is refused by ssh itself, and with
    `HostKeyAlgorithms=ssh-ed25519` there is no second key type an impostor
-   could offer instead. The report starts with `FIRST CONTACT` when the
-   host was not known before, and with a warning when its entry could not
-   be recorded (then every connection to it is a first contact).
+   could offer instead. A first contact is noted after the output
+   (`FIRST CONTACT`), and as a warning when its entry could not be
+   recorded (then every connection to it is a first contact). The report's
+   first line stays the runner's, because the audit rail judges a tool by
+   its first line: a note that came first, with the word "refused" in it,
+   had the first live run recorded as `denied`.
    `ServerAliveInterval` ends a dead link early.
 5. **The target is checked before any process exists.** The host may not
    start with `-` (ssh would read it as an option) and may contain only
@@ -82,7 +85,8 @@ exact command, not a second assistant's summary of it.
    box makes; refused when the assistant has no key or is busy) and
    returns the sequence number the turn's events will start at;
    `deepflux_assistant` reads back the latest events — what the panel is
-   shown, except typed prompts — bounded to 200, numbered, cleared with
+   shown, except typed prompts — bounded to 200, numbered, read from a
+   sequence number on (inclusive), cleared with
    the panel. A `done` event ends a turn; `busy` alone is no start or end
    signal. The audit rail records that an external agent started a turn
    (actor `mcp-bridge`), as ever without the prompt text. The panel shows

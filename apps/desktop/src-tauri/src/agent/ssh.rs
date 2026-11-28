@@ -271,10 +271,12 @@ fn is_known(known_hosts: &Path, target: &Target) -> bool {
     })
 }
 
-/// Put the run in words the model and the audit rail can read: a failed
-/// connection and a timeout START with "ssh_run failed" (the rail judges
-/// the first line), a first contact is announced — or warned about when
-/// its entry could not be recorded.
+/// Put the run in words the model and the audit rail can read. The rail
+/// judges a tool by its FIRST line: a failed connection and a timeout START
+/// with "ssh_run failed"; a successful run keeps the runner's "exit code"
+/// line first, and a first contact is noted AFTER the output — in words
+/// that are none of the rail's refusal markers, and as a warning when its
+/// entry could not be recorded.
 fn frame_report(
     report: &str,
     target: &Target,
@@ -288,7 +290,7 @@ fn frame_report(
         return format!(
             "ssh_run failed: the command could not run on {host} — ssh itself failed. The \
              stderr below says which: the machine may be off or unreachable, this machine's key \
-             may not be allowed there (its public key is {public_key}), or its host key may \
+             may not be accepted there (its public key is {public_key}), or its host key may \
              have changed.\n{report}"
         );
     }
@@ -299,22 +301,14 @@ fn frame_report(
              retry.\n{report}"
         );
     }
-    let mut framed = String::new();
+    let mut framed = report.to_owned();
     if !was_known {
-        if is_known(known_hosts, target) {
-            framed.push_str(
-                "FIRST CONTACT: this machine's host key was not known before; it is now \
-                 recorded, and a changed key will be refused from here on.\n",
-            );
+        framed.push_str(if is_known(known_hosts, target) {
+            "\nFIRST CONTACT: this machine's host key was not known before; it is now recorded, and a different key will be rejected from here on.\n"
         } else {
-            framed.push_str(
-                "WARNING — FIRST CONTACT: this machine's host key was not known before and \
-                 could NOT be recorded (the host-keys file could not be written), so every \
-                 connection to it is a first contact. Tell the user.\n",
-            );
-        }
+            "\nWARNING — FIRST CONTACT: this machine's host key was not known before and could NOT be recorded (the host-keys file could not be written), so every connection to it is a first contact. Tell the user.\n"
+        });
     }
-    framed.push_str(report);
     framed
 }
 
@@ -693,7 +687,10 @@ mod tests {
         let ok = "exit code 0\n--- stdout ---\nhi\n--- stderr ---\n";
         // A known host: the report is not touched.
         assert_eq!(frame_report(ok, &upper, &known_hosts, true, public), ok);
-        // A first contact whose entry was recorded.
+        // A first contact whose entry was recorded: the note follows the
+        // output, and the audit rail (it judges the first line) still sees a
+        // success. The first live run on 2026-11-28 was recorded as "denied"
+        // because the note came first and used the word "refused".
         let fresh = target("host-c", "", 22, "echo hi").expect("passes");
         std::fs::write(
             &known_hosts,
@@ -701,14 +698,18 @@ mod tests {
         )
         .expect("overwrite known_hosts");
         let recorded = frame_report(ok, &fresh, &known_hosts, false, public);
-        assert!(recorded.starts_with("FIRST CONTACT:"), "{recorded}");
-        assert!(recorded.ends_with(ok));
+        assert!(recorded.starts_with(ok), "{recorded}");
+        assert!(
+            recorded.contains("\nFIRST CONTACT: this machine's host key was not known"),
+            "{recorded}"
+        );
+        assert_eq!(crate::agent::audit::outcome_from_tool_text(&recorded), "ok");
         // A first contact whose entry could not be written.
         let lost = target("host-d", "", 22, "echo hi").expect("passes");
         let warned = frame_report(ok, &lost, &known_hosts, false, public);
-        assert!(warned.starts_with("WARNING — FIRST CONTACT:"), "{warned}");
+        assert!(warned.starts_with(ok), "{warned}");
+        assert!(warned.contains("\nWARNING — FIRST CONTACT:"), "{warned}");
         assert!(warned.contains("could NOT be recorded"));
-        assert!(warned.ends_with(ok));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -725,11 +726,14 @@ mod tests {
             false,
             public,
         );
-        // The audit rail judges the first line: this must read as a failure.
+        // The audit rail judges the first line: this must read as an error
+        // (and not, through some word in it, as a refusal).
         assert!(failed.starts_with("ssh_run failed:"), "{failed}");
         assert!(failed.contains("ssh itself failed"));
         assert!(failed.contains(&public.display().to_string()));
         assert!(failed.contains("Permission denied"));
+        let outcome = crate::agent::audit::outcome_from_tool_text(&failed);
+        assert!(outcome.starts_with("error:ssh_run failed"), "{outcome}");
         let timed_out = frame_report(
             "timed out after 30s (process tree killed)\n--- partial stdout ---\n",
             &target,
@@ -739,6 +743,8 @@ mod tests {
         );
         assert!(timed_out.starts_with("ssh_run failed:"), "{timed_out}");
         assert!(timed_out.contains("may still be running"));
+        let outcome = crate::agent::audit::outcome_from_tool_text(&timed_out);
+        assert!(outcome.starts_with("error:ssh_run failed"), "{outcome}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
