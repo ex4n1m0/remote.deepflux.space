@@ -325,7 +325,7 @@ pub fn ssh_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|dir| dir.join("ssh"))
-        .ok_or_else(|| "this machine's app data folder could not be found".to_owned())
+        .map_err(|_| "this machine's app data folder could not be found".to_owned())
 }
 
 /// One key generation at a time per process, so the first launch (the
